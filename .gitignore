@@ -1,0 +1,14 @@
+﻿node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+firebase-applet-config.json
+node.exe
+node-v25.9.0-win-x64/
+npm_backup
+*.ps1
+*.cmd

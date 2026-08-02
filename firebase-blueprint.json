@@ -1,0 +1,138 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Details for seekers and employers",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "avatar": { "type": "string" },
+        "role": { "type": "string", "enum": ["seeker", "employer"] },
+        "isPro": { "type": "boolean" },
+        "bio": { "type": "string" },
+        "experience": { "type": "string" },
+        "skills": { "type": "array" }
+      },
+      "required": ["uid", "name", "email", "role"]
+    },
+    "Job": {
+      "title": "Job Posting",
+      "description": "Job details posted by employers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "employerId": { "type": "string" },
+        "title": { "type": "string" },
+        "company": { "type": "string" },
+        "description": { "type": "string" },
+        "location": { "type": "string" },
+        "salary": { "type": "string" },
+        "postedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["employerId", "title", "company"]
+    },
+    "Post": {
+      "title": "Social Post",
+      "description": "Feed post with space vibe",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorUid": { "type": "string" },
+        "content": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "likesCount": { "type": "integer" }
+      },
+      "required": ["authorUid", "content"]
+    },
+    "Message": {
+      "title": "Direct Message",
+      "description": "Chat messages between users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "receiverId": { "type": "string" },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "receiverId", "content"]
+    },
+    "Comment": {
+      "title": "Post Comment",
+      "description": "Replies to social posts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorUid": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorAvatar": { "type": "string" },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["authorUid", "content"]
+    },
+    "Connection": {
+      "title": "Signal Synchronization",
+      "description": "Following/Connection relationship",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "requesterId": { "type": "string" },
+        "recipientId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["requesterId", "recipientId", "status"]
+    },
+    "Notification": {
+      "title": "System Notification",
+      "description": "Alerts for user actions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["follow_request", "sync_approval", "like", "comment", "repost"] },
+        "fromId": { "type": "string" },
+        "fromName": { "type": "string" },
+        "fromAvatar": { "type": "string" },
+        "targetId": { "type": "string" },
+        "read": { "type": "boolean" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "type", "fromId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Main user collection"
+    },
+    "/jobs/{jobId}": {
+      "schema": "Job",
+      "description": "Job market listings"
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Professional feed updates"
+    },
+    "/posts/{postId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Replies to a specific professional update"
+    },
+    "/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Peer-to-peer communication"
+    },
+    "/connections/{connectionId}": {
+      "schema": "Connection",
+      "description": "User follow/relationship state"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User activity alerts"
+    }
+  }
+}

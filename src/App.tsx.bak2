@@ -1,0 +1,3632 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Home,
+  Users,
+  Briefcase,
+  MessageSquare,
+  Bell,
+  Search,
+  MoreHorizontal,
+  Image as ImageIcon,
+  Video,
+  Calendar,
+  FileText,
+  ThumbsUp,
+  MessageCircle,
+  Repeat2,
+  Send,
+  Plus,
+  ChevronDown,
+  Sparkles,
+  Rocket,
+  Shield,
+  Zap,
+  Globe,
+  Share,
+  Star,
+  LogOut,
+  User as UserIcon,
+  CircleDashed,
+  Cpu,
+  Navigation,
+  ExternalLink,
+  Info,
+  MapPin,
+  DollarSign,
+  Camera,
+  Edit2,
+  Trash2,
+  Flag,
+  Smile,
+  Paperclip
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { supabase } from './lib/supabase';
+
+// --- Types ---
+interface Post {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar: string;
+  authorTitle: string;
+  content: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  timestamp: any;
+  likesCount: number;
+}
+
+interface Job {
+  id: string;
+  employerId: string;
+  employerName: string;
+  title: string;
+  company: string;
+  location: string;
+  salary: string;
+  description: string;
+  postedAt: any;
+}
+
+// --- Network Broadcaster ---
+export const broadcastNetworkRefresh = (type: 'refreshData' | 'refreshMessages') => {
+  // تحديث محلي فوراً
+  window.dispatchEvent(new Event(type));
+  // إرسال إشارة عبر الشبكة للجميع (تتخطى مشاكل إعدادات الجداول)
+  const tempCh = supabase.channel('realtime-global');
+  tempCh.subscribe((status) => {
+    if (status === 'SUBSCRIBED') {
+      tempCh.send({ type: 'broadcast', event: type, payload: {} });
+      setTimeout(() => supabase.removeChannel(tempCh), 2000);
+    }
+  });
+};
+
+
+interface AppUser {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  role: 'seeker' | 'employer';
+  isPro: boolean;
+  bio?: string;
+  companyName?: string;
+  industry?: string;
+  website?: string;
+  skills?: string[];
+  location?: string;
+}
+
+interface AppConnection {
+  id: string;
+  requesterId: string;
+  recipientId: string;
+  status: 'pending' | 'accepted';
+  timestamp: any;
+}
+
+interface AppNotification {
+  id: string;
+  userId: string;
+  type: 'follow_request' | 'sync_approval' | 'like' | 'comment' | 'repost';
+  fromId: string;
+  fromName: string;
+  fromAvatar: string;
+  targetId: string;
+  read: boolean;
+  timestamp: any;
+}
+
+// --- Components ---
+
+const IcyBackground = () => {
+  return (
+    <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-[#f0f4f8]">
+      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-blue-200/40 blur-[150px] rounded-full animate-pulse" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-indigo-100/40 blur-[150px] rounded-full animate-pulse" />
+      <div className="absolute top-[20%] right-[10%] w-[30%] h-[30%] bg-cyan-50/30 blur-[120px] rounded-full" />
+      <div className="absolute inset-0 bg-white/40" />
+    </div>
+  );
+};
+
+const GlassButton = ({ onClick, children, variant = 'primary', icon: Icon, disabled = false, className = '' }: any) => {
+  const variants = {
+    primary: "bg-[#0a66c2] text-white shadow-lg hover:bg-[#004182]",
+    outline: "bg-white/40 text-[#0a66c2] border border-[#0a66c2]/20 hover:bg-white/60 backdrop-blur-md",
+    glass: "bg-white/20 text-slate-700 border border-white/40 hover:bg-white/40 backdrop-blur-md shadow-sm",
+    danger: "bg-red-50 text-red-600 border border-red-100 hover:bg-red-100"
+  };
+
+  return (
+    <motion.button
+      whileHover={!disabled ? { scale: 1.02 } : {}}
+      whileTap={!disabled ? { scale: 0.98 } : {}}
+      onClick={onClick}
+      disabled={disabled}
+      className={`relative px-5 py-2.5 rounded-xl font-bold transition-all flex items-center justify-center gap-2 ${variants[variant as keyof typeof variants]} ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${className}`}
+    >
+      {Icon && <Icon size={18} />}
+      {children}
+    </motion.button>
+  );
+};
+
+const GlassCard = ({ children, className = '' }: any) => (
+  <div className={`bg-white/70 backdrop-blur-xl border border-white shadow-sm overflow-hidden ${className}`}>
+    {children}
+  </div>
+);
+
+const RoleOption = ({ selected, icon: Icon, title, description, onClick }: any) => (
+  <motion.div
+    whileHover={{ scale: 1.02 }}
+    onClick={onClick}
+    className={`p-6 rounded-3xl cursor-pointer transition-all border-2 flex items-start gap-4 ${selected
+        ? 'bg-white border-[#0a66c2] shadow-md'
+        : 'bg-white/50 border-transparent hover:border-slate-200'
+      }`}
+  >
+    <div className={`p-4 rounded-2xl ${selected ? 'bg-[#0a66c2] text-white' : 'bg-slate-100 text-slate-500'}`}>
+      <Icon size={32} />
+    </div>
+    <div className="flex-1">
+      <h3 className={`font-bold text-lg mb-1 ${selected ? 'text-[#0a66c2]' : 'text-slate-800'}`}>{title}</h3>
+      <p className="text-sm text-slate-500 leading-snug">{description}</p>
+    </div>
+  </motion.div>
+);
+
+export default function App() {
+  const [user, setUser] = useState<any | null>(null);
+  const [appUser, setAppUser] = useState<AppUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [needsRole, setNeedsRole] = useState(false);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [allUsers, setAllUsers] = useState<AppUser[]>([]);
+  const [connections, setConnections] = useState<AppConnection[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [activeTab, setActiveTab] = useState('home');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedProfile, setSelectedProfile] = useState<AppUser | null>(null);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [toasts, setToasts] = useState<{ id: number, message: string, type: 'success' | 'error' }[]>([]);
+  const [showAdmin, setShowAdmin] = useState(false);
+  const [reports, setReports] = useState<any[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [selectedChat, setSelectedChat] = useState<AppUser | null>(null);
+  
+  // --- New States for Enhanced Features ---
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPhone, setAuthPhone] = useState('');
+  const [authName, setAuthName] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'phone'>('login');
+  const [isPhoneLogin, setIsPhoneLogin] = useState(true);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [activeNewsCategory, setActiveNewsCategory] = useState('all');
+  const [isApplying, setIsApplying] = useState(false);
+  const [applyingJob, setApplyingJob] = useState<Job | null>(null);
+  const [readNotifIds, setReadNotifIds] = useState<Set<string>>(new Set());
+  const [sharedPost, setSharedPost] = useState<Post | null>(null);
+
+  const addToast = (message: string, type: 'success' | 'error' = 'success') => {
+    const id = Date.now();
+    setToasts(prev => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+  };
+
+  // --- Auth Logic (Supabase) ---
+  const handleGoogleLogin = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
+    } catch (e: any) {
+      console.error("Auth Error:", e.message);
+      addToast("خطأ في تسجيل الدخول: " + e.message, "error");
+    }
+  };
+
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail || !authPassword) { addToast('يرجى ملء جميع الحقول', 'error'); return; }
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: authEmail.trim().toLowerCase(),
+        password: authPassword,
+      });
+      if (error) throw error;
+      addToast('مرحباً بك! تم تسجيل الدخول بنجاح ✅');
+    } catch (e: any) {
+      const errMap: any = {
+        'Invalid login credentials': 'البريد أو كلمة السر غير صحيحة',
+        'Email not confirmed': 'يرجى تفعيل بريدك أولاً',
+      };
+      addToast('فشل الدخول: ' + (errMap[e.message] || e.message), 'error');
+    } finally { setAuthLoading(false); }
+  };
+
+  const handleEmailSignUp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail || !authPassword) { addToast('يرجى ملء جميع الحقول', 'error'); return; }
+    if (authPassword.length < 6) { addToast('كلمة السر يجب أن تكون 6 أحرف على الأقل', 'error'); return; }
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.signUp({
+        email: authEmail.trim().toLowerCase(),
+        password: authPassword,
+        options: { data: { full_name: authEmail.split('@')[0] } }
+      });
+      if (error) throw error;
+      addToast('تم إنشاء الحساب! تحقق من بريدك أو سجّل الدخول مباشرة ✨');
+    } catch (e: any) {
+      const errMap: any = {
+        'User already registered': 'هذا البريد مسجّل مسبقاً، جرّب تسجيل الدخول',
+        'Password should be at least 6 characters': 'كلمة السر يجب أن تكون 6 أحرف على الأقل',
+      };
+      addToast('فشل التسجيل: ' + (errMap[e.message] || e.message), 'error');
+    } finally { setAuthLoading(false); }
+  };
+
+  const formatPhoneNumber = (phone: string): string => {
+    const cleaned = phone.replace(/[^\d]/g, '');
+    if (cleaned.startsWith('07') && cleaned.length === 11) return '+964' + cleaned.slice(1);
+    if (cleaned.startsWith('964')) return '+' + cleaned;
+    if (cleaned.startsWith('+')) return phone;
+    return '+' + cleaned;
+  };
+
+  const handlePhoneAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authPhone || !authPassword) { addToast('يرجى ملء الحقول المطلوبة', 'error'); return; }
+    if (!isPhoneLogin && !authName) { addToast('يرجى إدخال اسمك الكامل', 'error'); return; }
+    if (authPassword.length < 6) { addToast('كلمة السر يجب أن تكون 6 أحرف على الأقل', 'error'); return; }
+    
+    setAuthLoading(true);
+    try {
+      const fakeEmail = `phone_${authPhone.replace(/\D/g, '')}@prolink.app`;
+      if (isPhoneLogin) {
+        const { error } = await supabase.auth.signInWithPassword({ email: fakeEmail, password: authPassword });
+        if (error) throw error;
+        addToast('مرحباً بك مجدداً! تم تسجيل الدخول بنجاح ✅');
+      } else {
+        const { error } = await supabase.auth.signUp({
+          email: fakeEmail,
+          password: authPassword,
+          options: { data: { full_name: authName, phone: authPhone } }
+        });
+        if (error) throw error;
+        addToast('تم إنشاء الحساب بنجاح! 🎉');
+      }
+    } catch (e: any) {
+      addToast('خطأ: ' + e.message, 'error');
+    } finally { setAuthLoading(false); }
+  };
+
+  const handleApplyJob = async (job: Job) => {
+    if (!appUser) return;
+    // نعرض معاينة السيرة الذاتية أولاً
+    setApplyingJob(job);
+  };
+
+  const confirmApplyJob = async (job: Job) => {
+    setIsApplying(true);
+    setApplyingJob(null);
+    try {
+      const cvContent = `📄 **طلب تقديم وظيفة — برو لينك**
+━━━━━━━━━━━━━━━━━━━━━━
+👤 **الاسم الكامل:** ${appUser!.name}
+💼 **الوظيفة المطلوبة:** ${job.title}
+🏢 **الشركة:** ${job.company}
+━━━━━━━━━━━━━━━━━━━━━━
+📧 **البريد الإلكتروني:** ${appUser!.email || 'غير محدد'}
+📍 **الموقع:** ${(appUser as any).location || 'غير محدد'}
+🔗 **الموقع الإلكتروني:** ${(appUser as any).website || 'غير محدد'}
+━━━━━━━━━━━━━━━━━━━━━━
+🛠 **المهارات والخبرات:**
+${((appUser as any).skills || []).map((s: string) => `  • ${s}`).join('\n') || '  • لم يتم تحديد مهارات بعد'}
+━━━━━━━━━━━━━━━━━━━━━━
+📝 **النبذة الشخصية:**
+${(appUser as any).bio || 'لم يتم إضافة نبذة شخصية'}
+━━━━━━━━━━━━━━━━━━━━━━
+✅ تم إرسال هذا الطلب تلقائياً عبر منصة **برو لينك** المهنية`;
+
+      const { error } = await supabase.from('messages').insert([{
+        sender_id: appUser!.id,
+        receiver_id: job.employerId,
+        content: cvContent
+      }]);
+      if (error) throw error;
+      addToast('🚀 تم إرسال طلبك ومؤهلاتك لصاحب العمل مباشرةً!');
+    } catch (e: any) {
+      addToast('خطأ أثناء التقديم: ' + e.message, 'error');
+    } finally { setIsApplying(false); }
+  };
+
+  useEffect(() => {
+    console.log("App mounted, starting auth listener...");
+    
+    // مؤقت أمان لضمان اختفاء شاشة التحميل
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
+
+    // مراقب حالة الدخول في سوبابيس
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      try {
+        console.log("Auth Event:", event);
+        const u = session?.user || null;
+        setUser(u as any);
+        if (u) {
+          try {
+            // استخدام Promise.race لتجنب التعليق اللانهائي عند جلب الملف الشخصي
+            const fetchPromise = supabase.from('profiles').select('*').eq('id', u.id).single();
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Profile fetch timeout')), 15000));
+            
+            const response: any = await Promise.race([fetchPromise, timeoutPromise]);
+            const { data: profile, error } = response || { data: null, error: null };
+            
+            if (error && error.code !== 'PGRST116') {
+              console.error("Error fetching profile:", error);
+            }
+            if (profile) {
+              setAppUser({
+                id: profile.id,
+                name: profile.name,
+                email: profile.email,
+                avatar: profile.avatar_url,
+                role: profile.role,
+                isPro: profile.is_pro,
+                bio: profile.bio,
+                companyName: profile.company_name,
+                location: profile.location,
+                skills: profile.skills,
+                phone: profile.phone,
+                website: profile.website,
+                coverUrl: profile.cover_url
+              } as any);
+              setNeedsRole(false);
+            } else {
+              setAppUser(prev => { if (!prev) setNeedsRole(true); return prev; });
+            }
+          } catch (err) {
+            console.error("Profile fetch hung or failed:", err);
+            setAppUser(prev => { if (!prev) setNeedsRole(true); return prev; });
+          }
+        } else {
+          setAppUser(null);
+          setNeedsRole(false);
+        }
+      } catch (err: any) {
+        console.error("Auth Change Error:", err);
+        setAppUser(prev => { if (!prev) setNeedsRole(true); return prev; });
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    // Expose professional functions for sub-components
+    (window as any).handleApplyJobGlobal = handleApplyJob;
+
+    return () => {
+      clearTimeout(timer);
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (user && !needsRole) {
+      // جلب البيانات من سوبابيس (Realtime)
+      const fetchAllData = async () => {
+        try {
+          // المنشورات
+          const { data: postsData, error: postsErr } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
+          if (postsErr) throw new Error("Posts: " + postsErr.message);
+          if (postsData) setPosts(postsData.map(p => ({
+            id: p.id,
+            authorId: p.author_id,
+            authorName: p.author_name,
+            authorAvatar: p.author_avatar,
+            authorTitle: p.author_title,
+            content: p.content,
+            imageUrl: p.image_url,
+            videoUrl: p.video_url,
+            likesCount: p.likes_count || 0,
+            timestamp: { toDate: () => new Date(p.created_at) }
+          })));
+
+          // الوظائف
+          const { data: jobsData, error: jobsErr } = await supabase.from('jobs').select('*').order('created_at', { ascending: false });
+          if (jobsErr) throw new Error("Jobs: " + jobsErr.message);
+          if (jobsData) setJobs(jobsData.map(j => ({
+            id: j.id,
+            employerId: j.employer_id,
+            employerName: j.company,
+            title: j.title,
+            company: j.company,
+            description: j.description,
+            location: j.location,
+            salary: j.salary,
+            postedAt: { toDate: () => new Date(j.created_at) }
+          })));
+          
+          // المستخدمين
+          const { data: usersData, error: usersErr } = await supabase.from('profiles').select('*');
+          if (usersErr) throw new Error("Profiles: " + usersErr.message);
+          if (usersData) setAllUsers(usersData.map(u => ({
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            avatar: u.avatar_url,
+            role: u.role,
+            isPro: u.is_pro,
+            bio: u.bio,
+            companyName: u.company_name,
+            location: u.location,
+            skills: u.skills,
+            website: u.website
+          })));
+
+          // الاتصالات
+          const { data: connData, error: connErr } = await supabase.from('connections').select('*')
+            .or(`requester_id.eq.${user.id},recipient_id.eq.${user.id}`);
+          if (connErr) throw new Error("Connections: " + connErr.message);
+          if (connData) setConnections(connData.map(c => ({
+            id: c.id,
+            requesterId: c.requester_id,
+            recipientId: c.recipient_id,
+            status: c.status,
+            timestamp: { toDate: () => new Date(c.created_at) }
+          })));
+
+          // الإشعارات
+          const { data: notifData, error: notifErr } = await supabase.from('notifications').select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false });
+          if (notifErr) throw new Error("Notifications: " + notifErr.message);
+          if (notifData) setNotifications(notifData.map(n => ({
+            id: n.id,
+            userId: n.user_id,
+            type: n.type,
+            fromId: n.from_id,
+            fromName: n.from_name,
+            fromAvatar: n.from_avatar,
+            targetId: n.target_id,
+            read: n.read,
+            timestamp: { toDate: () => new Date(n.created_at) }
+          })));
+
+          // البلاغات (Reports)
+          const { data: reportsData, error: reportsErr } = await supabase.from('reports').select('*').order('created_at', { ascending: false });
+          if (reportsErr) throw new Error("Reports: " + reportsErr.message);
+          if (reportsData) setReports(reportsData);
+        } catch (error: any) {
+          console.error("Fetch Data Error:", error);
+          // addToast("خطأ في جلب البيانات: " + error.message, "error");
+        }
+      };
+
+      const fetchMessages = async () => {
+        try {
+          const { data, error } = await supabase
+            .from('messages')
+            .select('*')
+            .or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+            .order('created_at', { ascending: true });
+          if (error) throw error;
+          if (data) setMessages(data.map(m => ({
+            id: m.id,
+            senderId: m.sender_id,
+            receiverId: m.receiver_id,
+            content: m.content,
+            timestamp: { toDate: () => new Date(m.created_at) }
+          })));
+        } catch (error: any) {
+          console.error("Fetch Messages Error:", error);
+        }
+      };
+
+      fetchAllData();
+      fetchMessages();
+      
+      const channelName = `realtime-global-${user.id}`;
+      const postsChannel = supabase.channel(channelName)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => fetchAllData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, () => fetchAllData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => fetchAllData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'connections' }, () => fetchAllData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => fetchAllData())
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, () => fetchAllData())
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => fetchMessages())
+        .on('broadcast', { event: 'refreshData' }, () => fetchAllData())
+        .on('broadcast', { event: 'refreshMessages' }, () => fetchMessages())
+        .subscribe();
+
+      const globalChannel = supabase.channel('realtime-global-sync')
+        .on('broadcast', { event: 'refreshData' }, () => fetchAllData())
+        .on('broadcast', { event: 'refreshMessages' }, () => fetchMessages())
+        .subscribe();
+        
+      (window as any).globalRealtimeChannel = globalChannel;
+
+      const handleRefreshData = () => fetchAllData();
+      const handleRefreshMessages = () => fetchMessages();
+      window.addEventListener('refreshData', handleRefreshData);
+      window.addEventListener('refreshMessages', handleRefreshMessages);
+
+      return () => {
+        window.removeEventListener('refreshData', handleRefreshData);
+        window.removeEventListener('refreshMessages', handleRefreshMessages);
+        supabase.removeChannel(postsChannel);
+        supabase.removeChannel(globalChannel);
+      };
+    }
+  }, [user, needsRole]);
+  const filteredPosts = posts.filter(p =>
+    p.content.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    p.authorName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredJobs = jobs.filter(j =>
+    j.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    j.company.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredUsers = allUsers.filter(u =>
+    (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (u.companyName && u.companyName.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+
+
+  const toggleProRank = async () => {
+    if (user && appUser) {
+      try {
+        const { error } = await supabase.from('profiles').update({ is_pro: !appUser.isPro }).eq('id', user.id);
+        if (error) throw error;
+        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        if (data) setAppUser(data as any);
+        addToast("تم تحديث حالة العضوية");
+      } catch (e) { console.error(e); }
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setAppUser(null);
+    setSelectedChat(null);
+    addToast("تم تسجيل الخروج بأمان");
+  };
+
+  const selectRole = async (role: 'seeker' | 'employer') => {
+    console.warn("DEBUG: بداية حفظ الدور...");
+    addToast("جاري الإعداد...", "success");
+    if (!user) {
+      console.warn("DEBUG: خطأ: المتغير user فارغ!");
+      return;
+    }
+    try {
+      const profileData = {
+        id: user.id,
+        name: user?.user_metadata?.full_name || user.email?.split('@')[0] || 'مستخدم جديد',
+        email: user.email || '',
+        avatar_url: user?.user_metadata?.avatar_url || null,
+        phone: user?.user_metadata?.phone || '',
+        role: role,
+        is_pro: false,
+        bio: ''
+      };
+      
+      console.warn("DEBUG: جاري الإرسال لقاعدة البيانات...", profileData);
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .upsert(profileData)
+        .select();
+
+      if (error) throw error;
+      
+      console.warn("DEBUG: تم الحفظ بنجاح!", data);
+
+      setAppUser({
+        id: profileData.id,
+        name: profileData.name,
+        email: profileData.email,
+        avatar: profileData.avatar_url,
+        role: profileData.role,
+        isPro: profileData.is_pro,
+        bio: profileData.bio
+      } as any);
+      setNeedsRole(false);
+      addToast(`تم ضبط حسابك كـ ${role === 'seeker' ? 'باحث عن عمل' : 'صاحب عمل'}!`);
+    } catch (e: any) {
+      console.error(e);
+      alert("خطأ في حفظ البيانات: " + e.message);
+      addToast("خطأ في حفظ البيانات: " + e.message, "error");
+    }
+  };
+
+  useEffect(() => {
+    const handleEditProfile = () => setIsEditingProfile(true);
+    window.addEventListener('editProfile', handleEditProfile);
+    return () => window.removeEventListener('editProfile', handleEditProfile);
+  }, []);
+
+  const handleSyncSignal = async (targetUser: AppUser) => {
+    if (!appUser) return;
+    const existing = connections.find(c =>
+      (c.requesterId === appUser.id && c.recipientId === targetUser.id) ||
+      (c.requesterId === targetUser.id && c.recipientId === appUser.id)
+    );
+
+    if (existing) return;
+
+    try {
+      const connId = `${appUser.id}_${targetUser.id}`;
+      const { error: connErr } = await supabase.from('connections').insert([{
+        id: connId,
+        requester_id: appUser.id,
+        recipient_id: targetUser.id,
+        status: 'pending'
+      }]);
+
+      if (connErr) throw connErr;
+
+      await supabase.from('notifications').insert([{
+        user_id: targetUser.id,
+        type: 'follow_request',
+        from_id: appUser.id,
+        from_name: appUser.name,
+        from_avatar: appUser.avatar,
+        target_id: connId,
+        read: false
+      }]);
+
+      addToast("تم إرسال إشارة المزامنة");
+    } catch (e: any) {
+      console.error(e);
+      addToast("فشل إرسال الإشارة: " + e.message, "error");
+    }
+  };
+
+  const handleAcceptSync = async (notif: AppNotification) => {
+    try {
+      // 1. قبول الاتصال في قاعدة البيانات
+      const { error: connErr } = await supabase.from('connections')
+        .update({ status: 'accepted' })
+        .eq('id', notif.targetId);
+      if (connErr) throw connErr;
+
+      // 2. تعليم الإشعار كمقروء
+      await supabase.from('notifications')
+        .update({ read: true })
+        .eq('id', notif.id);
+
+      // 3. إرسال إشعار للطرف الآخر بقبول المزامنة
+      await supabase.from('notifications').insert([{
+        user_id: notif.fromId,
+        type: 'sync_approval',
+        from_id: appUser?.id,
+        from_name: appUser?.name,
+        from_avatar: appUser?.avatar,
+        target_id: appUser?.id,
+        read: false
+      }]);
+
+      // 4. تحديث الاتصالات محلياً فوراً بدون انتظار Realtime
+      setConnections(prev => prev.map(c =>
+        c.id === notif.targetId ? { ...c, status: 'accepted' } : c
+      ));
+
+      // 5. تعليم الإشعار محلياً
+      setNotifications(prev => prev.map(n =>
+        n.id === notif.id ? { ...n, read: true } : n
+      ));
+
+      addToast(`✅ تمت المزامنة مع ${notif.fromName}! يمكنك الآن المراسلة.`);
+      setShowNotifications(false);
+      setActiveTab('messages');
+    } catch (e: any) {
+      console.error(e);
+      addToast('فشل قبول المزامنة: ' + e.message, 'error');
+    }
+  };
+
+  const handleLike = async (postId: string) => {
+    try {
+      // تحديث محلي مؤقت
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, likesCount: p.likesCount + 1 } : p));
+      
+      const { data: post, error: fetchError } = await supabase
+        .from('posts')
+        .select('likes_count')
+        .eq('id', postId)
+        .single();
+        
+      if (fetchError) throw fetchError;
+
+      const { error: updateError } = await supabase
+        .from('posts')
+        .update({ likes_count: (post?.likes_count || 0) + 1 })
+        .eq('id', postId);
+
+      if (updateError) throw updateError;
+    } catch (e) {
+      console.error(e);
+      addToast("خطأ في تسجيل الإعجاب", "error");
+      // تراجع عن التحديث المحلي في حال الخطأ
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, likesCount: p.likesCount - 1 } : p));
+    }
+  };
+
+  const handleAddComment = async (postId: string, commentContent: string) => {
+    if (!appUser) return;
+    try {
+      const { error } = await supabase.from('comments').insert([{
+        post_id: postId,
+        author_id: appUser.id,
+        author_name: appUser.name,
+        author_avatar: appUser.avatar,
+        content: commentContent
+      }]);
+      if (error) throw error;
+      addToast("تمت إضافة التعليق ✅");
+    } catch (e: any) {
+      console.error(e);
+      addToast("خطأ في إضافة التعليق: " + e.message, "error");
+    }
+  };
+
+  const handleEchoPost = async (post: Post) => {
+    if (!appUser) return;
+    try {
+      const { error } = await supabase.from('posts').insert([{
+        author_id: appUser.id,
+        author_name: appUser.name,
+        author_avatar: appUser.avatar,
+        author_title: `صدى من ${post.authorName}`,
+        content: `📢 صدى لتوجيه احترافي:\n\n${post.content}`,
+        image_url: post.imageUrl || null,
+        likes_count: 0
+      }]);
+      if (error) throw error;
+      addToast('تم تسجيل صدى الإشارة بنجاح!');
+    } catch (e: any) {
+      console.error(e);
+      addToast('فشل تسجيل الصدى: ' + e.message, 'error');
+    }
+  };
+
+  const [relocatingPost, setRelocatingPost] = useState<Post | null>(null);
+
+  const handleRelocateToUser = async (targetUser: AppUser) => {
+    if (!appUser || !relocatingPost) return;
+    try {
+      const { error } = await supabase.from('messages').insert([{
+        sender_id: appUser.id,
+        receiver_id: targetUser.id,
+        content: `🔗 ترحيل توجيه من ${relocatingPost.authorName}:\n${relocatingPost.content}`
+      }]);
+      if (error) throw error;
+      addToast(`تم ترحيل البيانات إلى ${targetUser.name}`);
+      setRelocatingPost(null);
+    } catch (e: any) {
+      console.error(e);
+      addToast('فشل ترحيل البيانات: ' + e.message, 'error');
+    }
+  };
+
+  if (loading) return (
+    <div className="min-h-screen bg-[#f0f4f8] flex flex-col items-center justify-center relative overflow-hidden" dir="rtl">
+      <IcyBackground />
+      <div className="z-10 flex flex-col items-center">
+        <div className="relative">
+          <div className="w-20 h-20 border-4 border-blue-600/20 rounded-full"></div>
+          <div className="absolute top-0 w-20 h-20 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+          <Briefcase className="absolute inset-0 m-auto text-blue-600 animate-pulse" size={32} />
+        </div>
+        <div className="mt-8 text-center">
+          <h2 className="text-xl font-black text-slate-800 tracking-tighter mb-2">برو لينك</h2>
+          <p className="font-bold text-slate-400 uppercase tracking-[0.3em] text-[10px] animate-pulse">جاري الاتصال بالمجرة المهنية...</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  // إذا كان هناك مستخدم مسجل الدخول، لكن بياناته (appUser) لم تُجلب بعد، نعرض شاشة التحميل
+  if (user && !appUser && !needsRole) return (
+    <div className="min-h-screen bg-[#f0f4f8] flex flex-col items-center justify-center relative overflow-hidden" dir="rtl">
+      <IcyBackground />
+      <div className="z-10 flex flex-col items-center">
+        <div className="relative">
+          <div className="w-20 h-20 border-4 border-blue-600/20 rounded-full"></div>
+          <div className="absolute top-0 w-20 h-20 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+        <div className="mt-8 text-center">
+          <p className="font-bold text-slate-400 uppercase tracking-[0.3em] text-[10px] animate-pulse">جاري مزامنة ملفك الشخصي...</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-slate-50 relative flex items-center justify-center p-4 sm:p-6 overflow-hidden" dir="rtl">
+        <IcyBackground />
+        
+        {/* Decorative Elements */}
+        <div className="absolute top-0 left-0 w-full h-full pointer-events-none overflow-hidden">
+          <div className="absolute top-[-10%] right-[-5%] w-[400px] h-[400px] bg-blue-400/10 blur-[120px] rounded-full animate-pulse" />
+          <div className="absolute bottom-[-5%] left-[-5%] w-[300px] h-[300px] bg-indigo-400/10 blur-[100px] rounded-full" />
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="z-10 w-full max-w-[450px]"
+        >
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center bg-[#0a66c2] p-4 rounded-2xl shadow-xl mb-6 hover:rotate-6 transition-transform">
+              <Briefcase size={40} className="text-white" />
+            </div>
+            <h1 className="text-4xl font-black text-slate-800 tracking-tight mb-2">برو لينك</h1>
+            <p className="text-slate-500 font-medium">مجرتك المهنية الاحترافية في مكان واحد</p>
+          </div>
+
+          <GlassCard className="p-8 rounded-[2.5rem] shadow-2xl border-white/60">
+            {/* Auth Tabs */}
+            <div className="flex bg-slate-100/50 p-1 rounded-2xl mb-8">
+              <button 
+                onClick={() => setAuthMode('login')}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${authMode === 'login' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                دخول
+              </button>
+              <button 
+                onClick={() => setAuthMode('signup')}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${authMode === 'signup' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                تسجيل
+              </button>
+              <button 
+                onClick={() => setAuthMode('phone')}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${authMode === 'phone' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                هاتف
+              </button>
+            </div>
+
+            <AnimatePresence mode="wait">
+              {authMode === 'phone' ? (
+                <motion.div
+                  key="phone"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                >
+                  <div className="flex bg-slate-50/50 p-1 rounded-2xl mb-4 text-xs font-bold w-full max-w-[200px] mx-auto">
+                    <button type="button" onClick={() => setIsPhoneLogin(true)} className={`flex-1 py-1.5 rounded-xl transition-all ${isPhoneLogin ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>دخول</button>
+                    <button type="button" onClick={() => setIsPhoneLogin(false)} className={`flex-1 py-1.5 rounded-xl transition-all ${!isPhoneLogin ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>حساب جديد</button>
+                  </div>
+                  <form onSubmit={handlePhoneAuth} className="space-y-4">
+                    {!isPhoneLogin && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-400 mb-1.5 mr-1 uppercase tracking-wider">الاسم الكامل</label>
+                        <div className="relative">
+                          <UserIcon size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                          <input
+                            type="text"
+                            placeholder="محمد أحمد"
+                            value={authName}
+                            onChange={(e) => setAuthName(e.target.value)}
+                            className="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-3.5 pr-11 pl-4 text-sm font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                          />
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 mb-1.5 mr-1 uppercase tracking-wider">رقم الهاتف</label>
+                      <div className="relative">
+                        <div className="absolute right-4 top-1/2 -translate-y-1/2 bg-slate-200 text-slate-600 text-xs font-black px-2 py-1 rounded-lg">+964</div>
+                        <input
+                          type="tel"
+                          placeholder="07724053748"
+                          value={authPhone}
+                          onChange={(e) => setAuthPhone(e.target.value)}
+                          className="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-3.5 pr-16 pl-4 text-sm font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                          dir="ltr"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-400 mb-1.5 mr-1 uppercase tracking-wider">كلمة السر</label>
+                      <div className="relative">
+                        <Shield size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="password"
+                          placeholder="••••••••"
+                          value={authPassword}
+                          onChange={(e) => setAuthPassword(e.target.value)}
+                          className="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-3.5 pr-11 pl-4 text-sm font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                        />
+                      </div>
+                    </div>
+                    <GlassButton className="w-full py-4 text-sm" icon={isPhoneLogin ? Zap : Rocket} disabled={authLoading}>
+                      {authLoading ? 'جاري التنفيذ...' : isPhoneLogin ? 'دخول برقم الهاتف' : 'إنشاء الحساب'}
+                    </GlassButton>
+                  </form>
+                </motion.div>
+              ) : (
+                <motion.form
+                  key="email"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  onSubmit={authMode === 'login' ? handleEmailLogin : handleEmailSignUp}
+                  className="space-y-4"
+                >
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 mb-1.5 mr-1 uppercase tracking-wider">البريد الإلكتروني</label>
+                    <div className="relative">
+                      <Globe size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="email"
+                        placeholder="name@example.com"
+                        value={authEmail}
+                        onChange={(e) => setAuthEmail(e.target.value)}
+                        className="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-3.5 pr-11 pl-4 text-sm font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-400 mb-1.5 mr-1 uppercase tracking-wider">كلمة السر (6 أحرف على الأقل)</label>
+                    <div className="relative">
+                      <Shield size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="password"
+                        placeholder="••••••••"
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                        className="w-full bg-slate-50/50 border border-slate-200 rounded-xl py-3.5 pr-11 pl-4 text-sm font-bold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all outline-none"
+                      />
+                    </div>
+                  </div>
+                  <GlassButton className="w-full py-4 text-md" icon={Rocket} disabled={authLoading}>
+                    {authLoading ? 'جاري...' : authMode === 'login' ? 'دخول للمجرة' : 'إنشاء حساب جديد'}
+                  </GlassButton>
+                </motion.form>
+              )}
+            </AnimatePresence>
+
+            <div className="relative my-8">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-100"></div></div>
+              <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-4 text-slate-400 font-bold tracking-widest">أو عبر</span></div>
+            </div>
+
+            <GlassButton 
+              variant="outline" 
+              onClick={handleGoogleLogin} 
+              className="w-full py-4 text-sm border-slate-200 shadow-none hover:bg-slate-50" 
+              icon={Globe}
+            >
+              متابعة عبر حساب جوجل
+            </GlassButton>
+
+            <p className="text-[11px] text-center text-slate-400 mt-8 leading-relaxed font-medium">
+              بمجرد دخولك، أنت توافق على <span className="text-blue-600 underline cursor-pointer">شروط الخدمة</span> و <span className="text-blue-600 underline cursor-pointer">سياسة الخصوصية</span> لـ برو لينك.
+            </p>
+          </GlassCard>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (needsRole) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <IcyBackground />
+        <div className="z-10 w-full max-w-2xl bg-white/60 backdrop-blur-2xl p-10 rounded-[3rem] border border-white shadow-2xl" dir="rtl">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl font-bold text-slate-800 mb-3">إعداد ملفك الشخصي</h2>
+            <p className="text-slate-500">اختر الطريقة التي تود بها التفاعل مع شبكة برو لينك.</p>
+          </div>
+          <div className="space-y-6">
+            <RoleOption
+              title="باحث عن عمل"
+              description="ابحث عن فرص مهنية واعرض مهاراتك التقنية للعالم."
+              icon={Users}
+              onClick={() => selectRole('seeker')}
+            />
+            <RoleOption
+              title="قائد مهمة (صاحب عمل)"
+              description="انشر توجيهات مهمة جديدة واستقطب النخبة من المحترفين."
+              icon={Briefcase}
+              onClick={() => selectRole('employer')}
+            />
+            <div className="pt-6 border-t border-slate-200 mt-6 flex justify-center">
+              <GlassButton 
+                variant="danger" 
+                onClick={async () => {
+                  localStorage.clear();
+                  await supabase.auth.signOut();
+                  window.location.reload();
+                }}
+              >
+                تسجيل خروج / تهيئة المتصفح
+              </GlassButton>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#f3f2ef] text-slate-800 selection:bg-blue-100 font-sans" dir="rtl">
+      <IcyBackground />
+
+      {/* --- Global Navigation --- */}
+      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-white shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="bg-[#0a66c2] p-1.5 rounded-md shadow-md cursor-pointer hover:scale-105 transition-transform" onClick={() => { setActiveTab('home'); setSearchQuery(''); }}>
+              <Briefcase size={22} className="text-white" />
+            </div>
+            <div className="flex bg-slate-100 rounded-md px-3 py-1.5 items-center gap-2 w-full max-w-[120px] sm:max-w-xs group transition-all focus-within:bg-white focus-within:shadow-inner border border-transparent focus-within:border-slate-200">
+              <Search size={16} className="text-slate-400 group-focus-within:text-[#0a66c2]" />
+              <input
+                type="text"
+                placeholder="بحث..."
+                className="bg-transparent border-none outline-none text-sm w-full font-medium"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 sm:gap-6 h-full">
+            <NavbarItem icon={<Home size={22} />} label="الرئيسية" active={activeTab === 'home'} onClick={() => { setActiveTab('home'); setSearchQuery(''); }} />
+            <NavbarItem icon={<Users size={22} />} label="شبكتي" active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
+            <NavbarItem icon={<Briefcase size={22} />} label="الوظائف" active={activeTab === 'jobs'} onClick={() => setActiveTab('jobs')} />
+            <NavbarItem icon={<Users size={22} />} label="المجموعات" active={activeTab === 'groups'} onClick={() => setActiveTab('groups')} />
+            <NavbarItem icon={<MessageSquare size={22} />} label="الرسائل" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} />
+            <div className="relative h-full flex items-center">
+              <NavbarItem
+                icon={<Bell size={22} />}
+                label="الإشعارات"
+                active={showNotifications}
+                onClick={() => setShowNotifications(!showNotifications)}
+              />
+              {notifications.some(n => !n.read) && (
+                <span className="absolute top-3 right-5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-bounce pointer-events-none z-20" />
+              )}
+            </div>
+
+            <div className="h-2/3 w-[1px] bg-slate-200 mx-2 hidden sm:block" />
+
+            <div className="relative group ml-2">
+              <img
+                src={appUser?.avatar || 'https://ui-avatars.com/api/?name=User&background=random'}
+                className="w-8 h-8 rounded-full border-2 border-white shadow-sm cursor-pointer hover:border-blue-400 transition-colors"
+                alt="Profile"
+                referrerPolicy="no-referrer"
+                onClick={() => {
+                  setSelectedProfile(appUser);
+                  setIsEditingProfile(true);
+                }}
+              />
+              <div className="absolute top-full right-0 mt-3 hidden group-hover:block transition-all py-2">
+                <div className="bg-white border border-slate-200 rounded-xl shadow-xl p-4 w-48 backdrop-blur-xl">
+                  <p className="font-bold text-sm text-slate-800">{appUser?.name}</p>
+                  <p className="text-[10px] text-slate-400 mb-3">{appUser?.email}</p>
+                  <div className="border-t border-slate-100 my-2" />
+                  <button onClick={toggleProRank} className="flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-700 w-full text-right py-1.5">
+                    <Sparkles size={14} /> {appUser?.isPro ? 'الرتبة: النخبة' : 'ترقية الحساب'}
+                  </button>
+                  {(appUser?.email === 'admin@prolink.com' || appUser?.isPro) && (
+                    <button onClick={() => setShowAdmin(true)} className="flex items-center gap-2 text-xs font-bold text-amber-600 hover:text-amber-700 w-full text-right py-1.5">
+                      <Shield size={14} /> لوحة التحكم
+                    </button>
+                  )}
+                  <button onClick={handleLogout} className="flex items-center gap-2 text-xs font-bold text-red-500 hover:text-red-600 w-full text-right py-1.5">
+                    <LogOut size={14} /> تسجيل الخروج
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* --- Main Feed --- */}
+      <main className="relative z-10 max-w-6xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+
+        {/* === CV Preview Modal === */}
+        <AnimatePresence>
+          {applyingJob && appUser && (
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={() => setApplyingJob(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, y: 30 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 30 }}
+                className="bg-white rounded-[2rem] shadow-2xl max-w-lg w-full overflow-hidden"
+                onClick={e => e.stopPropagation()}
+                dir="rtl"
+              >
+                {/* Header */}
+                <div className="bg-gradient-to-l from-blue-600 to-indigo-700 p-6 text-white">
+                  <div className="flex items-center gap-3 mb-1">
+                    <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center"><Briefcase size={20} /></div>
+                    <div>
+                      <p className="font-black text-lg">{applyingJob.title}</p>
+                      <p className="text-blue-200 text-sm">{applyingJob.company}</p>
+                    </div>
+                  </div>
+                </div>
+                {/* CV Preview */}
+                <div className="p-6 space-y-4 max-h-[50vh] overflow-y-auto">
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest">معاينة ما سيُرسل لصاحب العمل</p>
+                  <div className="bg-slate-50 rounded-2xl p-4 border border-slate-100 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <img src={appUser.avatar || `https://ui-avatars.com/api/?name=${appUser.name}&background=0a66c2&color=fff`} className="w-12 h-12 rounded-full border-2 border-blue-100" referrerPolicy="no-referrer" />
+                      <div><p className="font-black text-slate-800">{appUser.name}</p><p className="text-xs text-blue-600 font-bold">{(appUser as any).location || 'موقع غير محدد'}</p></div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-100"><p className="text-slate-400 font-bold mb-0.5">البريد</p><p className="font-black text-slate-700 truncate">{appUser.email || '—'}</p></div>
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-100"><p className="text-slate-400 font-bold mb-0.5">الموقع</p><p className="font-black text-slate-700">{(appUser as any).website || '—'}</p></div>
+                    </div>
+                    {(appUser as any).skills?.length > 0 && (
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-100">
+                        <p className="text-slate-400 font-bold text-xs mb-2">المهارات</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {(appUser as any).skills.map((s: string) => <span key={s} className="px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-[10px] font-black">{s}</span>)}
+                        </div>
+                      </div>
+                    )}
+                    {(appUser as any).bio && (
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-100">
+                        <p className="text-slate-400 font-bold text-xs mb-1">النبذة الشخصية</p>
+                        <p className="text-xs text-slate-600 leading-relaxed">{(appUser as any).bio}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* Actions */}
+                <div className="p-4 border-t border-slate-100 flex gap-3">
+                  <button onClick={() => setApplyingJob(null)} className="flex-1 py-3 rounded-2xl border border-slate-200 text-slate-500 font-bold text-sm hover:bg-slate-50 transition-colors">إلغاء</button>
+                  <button
+                    onClick={() => confirmApplyJob(applyingJob)}
+                    disabled={isApplying}
+                    className="flex-1 py-3 rounded-2xl bg-blue-600 text-white font-black text-sm hover:bg-blue-700 transition-colors shadow-lg shadow-blue-200 flex items-center justify-center gap-2"
+                  >
+                    {isApplying ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />جاري الإرسال...</> : <><Send size={16} />إرسال طلب التقديم</>}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* === Notifications Panel === */}
+        <AnimatePresence>
+          {showNotifications && (
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              className="absolute top-0 right-4 z-[60] w-80"
+            >
+              <GlassCard className="rounded-[2rem] border border-white p-4 shadow-2xl bg-white/95 backdrop-blur-xl">
+                <div className="flex justify-between items-center mb-4 px-2">
+                  <h4 className="font-black text-slate-800 text-sm">الإشعارات</h4>
+                  <div className="flex items-center gap-2">
+                    {notifications.some(n => !n.read) && (
+                      <button
+                        onClick={async () => {
+                          const unread = notifications.filter(n => !n.read).map(n => n.id);
+                          if (unread.length) {
+                            await supabase.from('notifications').update({ read: true }).in('id', unread);
+                            setReadNotifIds(prev => { const s = new Set(prev); unread.forEach(id => s.add(id)); return s; });
+                          }
+                        }}
+                        className="text-[10px] text-blue-600 font-bold hover:underline"
+                      >تحديد الكل مقروء</button>
+                    )}
+                    <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-600 p-1"><Plus size={16} className="rotate-45" /></button>
+                  </div>
+                </div>
+                <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
+                  {notifications.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Bell size={32} className="mx-auto mb-3 text-slate-200" />
+                      <p className="text-slate-400 text-xs font-bold">لا توجد إشعارات</p>
+                    </div>
+                  ) : notifications.map(n => {
+                    const isRead = n.read || readNotifIds.has(n.id);
+                    return (
+                      <div key={n.id} className={`p-3 rounded-2xl border transition-all ${isRead ? 'bg-white/50 border-slate-50' : 'bg-blue-50/60 border-blue-100 shadow-sm'}`}>
+                        <div className="flex gap-3">
+                          <img src={n.fromAvatar || `https://ui-avatars.com/api/?name=${n.fromName}`} className="w-10 h-10 rounded-xl border border-white shadow-sm object-cover shrink-0" referrerPolicy="no-referrer" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-slate-800 leading-snug">
+                              <span className="font-black text-blue-600">{n.fromName}</span>{' '}
+                              {n.type === 'follow_request' ? 'أرسل لك طلب تواصل' : n.type === 'sync_approval' ? 'قبِل طلب تواصلك ✅' : n.type === 'like' ? 'أعجب بمنشورك' : 'علّق على منشورك'}
+                            </p>
+                            <p className="text-[9px] text-slate-400 mt-1 font-bold">الآن</p>
+                            {n.type === 'follow_request' && !isRead && (
+                              <div className="flex gap-2 mt-2">
+                                <button onClick={() => handleAcceptSync(n)} className="flex-1 py-1.5 bg-blue-600 text-white rounded-xl text-[10px] font-black">قبول</button>
+                                <button className="px-3 py-1.5 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-black">رفض</button>
+                              </div>
+                            )}
+                          </div>
+                          {!isRead && <div className="w-2 h-2 bg-blue-500 rounded-full shrink-0 mt-1" />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </GlassCard>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Left: Profile & Links */}
+        <div className="lg:col-span-3 space-y-2 hidden md:block">
+          <GlassCard className="rounded-xl">
+            <div className="h-14 bg-gradient-to-r from-blue-100 to-indigo-100 flex items-center justify-center">
+              <div className="w-16 h-16 rounded-full border-2 border-white bg-white shadow-sm -mb-8 z-10 overflow-hidden">
+                {appUser?.avatar && <img src={appUser.avatar} className="w-full h-full object-cover" alt="Me" referrerPolicy="no-referrer" />}
+              </div>
+            </div>
+            <div className="pt-10 pb-4 px-4 text-center border-b border-slate-100">
+              <h2 className="font-bold text-slate-800 hover:underline cursor-pointer">{appUser?.name}</h2>
+              <p className="text-[10px] text-slate-500 font-medium leading-tight mt-1">
+                {appUser?.role === 'employer' ? 'مدير مهام @ المقر' : 'عميل ميداني نخبة'}
+              </p>
+            </div>
+            <div className="py-3 px-4 border-b border-slate-100 hover:bg-slate-50 cursor-pointer">
+              <div className="flex justify-between text-[11px] font-bold">
+                <span className="text-slate-500">مشاهدات الإشارة</span>
+                <span className="text-blue-600">142</span>
+              </div>
+              <div className="flex justify-between text-[11px] font-bold mt-1">
+                <span className="text-slate-500">التفاعلات</span>
+                <span className="text-blue-600">2.4k</span>
+              </div>
+            </div>
+            <div
+              onClick={() => appUser && setSelectedProfile(appUser)}
+              className="p-3 hover:bg-slate-50 cursor-pointer text-xs font-bold text-slate-600 flex items-center gap-2"
+            >
+              <Sparkles size={14} className="text-yellow-500" />
+              <span>تعزيز الحالة</span>
+            </div>
+          </GlassCard>
+
+          <GlassCard className="rounded-xl sticky top-20">
+            <div className="p-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">المجموعات الأخيرة</div>
+            <div className="px-3 pb-3 space-y-2">
+              <SidebarLink label="مجرة ريأكت" />
+              <SidebarLink label="حدود التصميم" />
+              <SidebarLink label="إعلانات المقر" />
+            </div>
+            <div className="border-t border-slate-100 p-3 text-xs font-bold text-blue-600 text-center hover:bg-slate-50 cursor-pointer">
+              اكتشاف المزيد
+            </div>
+          </GlassCard>
+        </div>
+
+        {/* Center: Feed Transmission */}
+        <div className="lg:col-span-6 space-y-4">
+          {searchQuery ? (
+            <div className="space-y-6 pb-20">
+              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+                  <Search size={18} className="text-blue-600" /> نتائج البحث عن "{searchQuery}"
+                </h3>
+                <div className="flex gap-4 border-b border-slate-100 pb-2">
+                  <button className="text-xs font-bold text-blue-600 border-b-2 border-blue-600 pb-2">كل النتائج</button>
+                  <button className="text-xs font-bold text-slate-400 hover:text-slate-600 pb-2">الأشخاص ({filteredUsers.length})</button>
+                  <button className="text-xs font-bold text-slate-400 hover:text-slate-600 pb-2">الوظائف ({filteredJobs.length})</button>
+                </div>
+              </div>
+
+              {filteredUsers.length > 0 && (
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <h4 className="text-xs font-black uppercase text-slate-400 mb-4 px-2">الأشخاص</h4>
+                  <div className="grid grid-cols-1 gap-3">
+                    {filteredUsers.map(u => (
+                      <div key={u.uid} onClick={() => setSelectedProfile(u)} className="flex items-center gap-4 hover:bg-slate-50 p-3 rounded-xl cursor-pointer transition-colors border border-transparent hover:border-slate-100">
+                        <img src={u.avatar} className="w-12 h-12 rounded-full" alt={u.name} referrerPolicy="no-referrer" />
+                        <div>
+                          <p className="font-bold text-slate-800">{u.name}</p>
+                          <p className="text-[10px] text-slate-500">{u.companyName || (u.role === 'employer' ? 'صاحب عمل' : 'باحث عن عمل')}</p>
+                        </div>
+                        <button className="mr-auto p-2 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-600 hover:text-white transition-all"><Users size={16} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {filteredJobs.length > 0 && (
+                <div className="bg-white rounded-xl border border-slate-200 p-4">
+                  <h4 className="text-xs font-black uppercase text-slate-400 mb-4 px-2">الوظائف</h4>
+                  <div className="space-y-3">
+                    {filteredJobs.map(j => (
+                      <div key={j.id} onClick={() => { setActiveTab('jobs'); setSearchQuery(''); }} className="flex items-center gap-4 hover:bg-slate-50 p-3 rounded-xl cursor-pointer border border-transparent hover:border-slate-100">
+                        <div className="p-3 bg-blue-100 text-blue-600 rounded-xl"><Briefcase size={20} /></div>
+                        <div>
+                          <p className="font-bold text-slate-800">{j.title}</p>
+                          <p className="text-[10px] text-slate-500 font-bold">{j.company} • {j.location}</p>
+                        </div>
+                        <button className="mr-auto text-xs font-bold text-blue-600">عرض</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {filteredPosts.length > 0 && (
+                <div className="space-y-3">
+                  <h4 className="text-xs font-black uppercase text-slate-400 px-3">المنشورات</h4>
+                  {filteredPosts.map((post, idx) => (
+                    <PostTransmissionCard
+                      key={post.id}
+                      post={post}
+                      delay={idx * 0.1}
+                      user={user}
+                      onUserClick={() => {
+                        const found = allUsers.find(au => au.id === post.authorId);
+                        if (found) setSelectedProfile(found);
+                      }}
+                      handleRelocatePost={handleEchoPost}
+                      setRelocatingPost={setRelocatingPost}
+                      addToast={addToast}
+                      onLike={handleLike}
+                      onAddComment={handleAddComment}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {filteredUsers.length === 0 && filteredJobs.length === 0 && filteredPosts.length === 0 && (
+                <div className="text-center py-20 bg-white/40 border-2 border-dashed border-slate-200 rounded-[3rem]">
+                  <Search size={48} className="mx-auto text-slate-200 mb-4" />
+                  <p className="text-slate-500 font-bold">لا توجد إشارات لـ "{searchQuery}"</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              {activeTab === 'home' && (
+                <>
+                  <PostBox avatar={appUser?.avatar} appUser={appUser} addToast={addToast} />
+                  <div className="space-y-3 pb-20">
+                  {posts.map((post, idx) => (
+                      <PostTransmissionCard
+                        key={post.id}
+                        post={post}
+                        delay={idx * 0.1}
+                        user={user}
+                        onUserClick={() => {
+                          const found = allUsers.find(au => au.id === post.authorId);
+                          if (found) setSelectedProfile(found);
+                        }}
+                        handleRelocatePost={handleEchoPost}
+                        setRelocatingPost={setRelocatingPost}
+                        addToast={addToast}
+                        onLike={handleLike}
+                        onAddComment={handleAddComment}
+                        onShareToGroup={(p: Post) => { setSharedPost(p); setActiveTab('groups'); addToast('سيتم مشاركة المنشور في المجموعة 📤'); }}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {activeTab === 'jobs' && <MissionsView jobs={jobs} appUser={appUser} addToast={addToast} />}
+              {activeTab === 'network' && (
+                <NetworkView
+                  users={allUsers}
+                  connections={connections}
+                  onUserClick={setSelectedProfile}
+                  onSyncSignal={handleSyncSignal}
+                  currentId={appUser?.id || 'https://ui-avatars.com/api/?name=User&background=random'}
+                />
+              )}
+              {activeTab === 'messages' && (
+                <MessagingView
+                  messages={messages}
+                  currentUser={appUser}
+                  allUsers={allUsers}
+                  connections={connections}
+                  selectedChat={selectedChat}
+                  onSelectChat={setSelectedChat}
+                />
+              )}
+              {activeTab === 'groups' && (
+                <GroupsView addToast={addToast} appUser={appUser} sharedPost={sharedPost} onClearSharedPost={() => setSharedPost(null)} />
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Right: Intelligence Center */}
+        <div className="lg:col-span-3 space-y-2 hidden lg:block">
+          <GlassCard className="rounded-xl p-4">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-bold text-slate-700 text-sm">أخبار برو لينك</h3>
+              <Info size={14} className="text-slate-400 cursor-help" />
+            </div>
+            <ul className="space-y-4">
+              {(() => {
+                const isTech = appUser?.industry?.includes('برمجة') || appUser?.industry?.includes('تقنية') || appUser?.industry?.includes('حاسوب') || appUser?.industry?.includes('سوفتوير') || appUser?.industry?.includes('Software');
+                const isEng = appUser?.industry?.includes('هندسة') || appUser?.industry?.includes('Engineering');
+                const isMed = appUser?.industry?.includes('طب') || appUser?.industry?.includes('صحة');
+                
+                if (isTech) {
+                  return (
+                    <>
+                      <NewsUpdate title="أحدث تقنيات الذكاء الاصطناعي في تطوير البرمجيات" time="1س" stats="رائج في قطاع التقنية" />
+                      <NewsUpdate title="شركات التكنولوجيا الكبرى تفتح باب التوظيف عن بعد" time="3س" stats="فرصة واعدة" />
+                      <NewsUpdate title="تحديثات جديدة في لغات البرمجة الأكثر طلباً لعام 2026" time="يوم" stats="12k قراءة" />
+                    </>
+                  );
+                } else if (isEng) {
+                  return (
+                    <>
+                      <NewsUpdate title="تطورات جديدة في مشاريع البنية التحتية الذكية" time="2س" stats="قطاع الهندسة" />
+                      <NewsUpdate title="كيف يؤثر الذكاء الاصطناعي على التصميم الهندسي؟" time="5س" stats="مقال تحليلي" />
+                      <NewsUpdate title="أهم المهارات المطلوبة للمهندسين في المشاريع الكبرى" time="يوم" stats="8k قراءة" />
+                    </>
+                  );
+                } else if (isMed) {
+                  return (
+                    <>
+                      <NewsUpdate title="التقنيات الحديثة في التشخيص الطبي عن بعد" time="1س" stats="القطاع الصحي" />
+                      <NewsUpdate title="مؤتمر طبي دولي يناقش مستقبل الرعاية الصحية" time="4س" stats="تحديث هام" />
+                      <NewsUpdate title="وظائف شاغرة للكفاءات الطبية في كبرى المستشفيات" time="يوم" stats="5k تفاعل" />
+                    </>
+                  );
+                } else if (appUser?.role === 'seeker') {
+                  return (
+                    <>
+                      <NewsUpdate title="كيفية إبراز مهاراتك في سيرتك الذاتية بشكل احترافي" time="2س" stats="نصائح مهنية" />
+                      <NewsUpdate title="شركات كبرى تبحث عن كفاءات جديدة في مختلف المجالات" time="5س" stats="فرصة ذهبية" />
+                      <NewsUpdate title="توقعات رواتب الخبراء والمبتدئين في سوق العمل لعام 2026" time="يوم" stats="8.5k قراءة" />
+                    </>
+                  );
+                } else {
+                  return (
+                    <>
+                      <NewsUpdate title="أفضل استراتيجيات جذب المواهب والكفاءات لشركتك" time="1س" stats="للقادة فقط" />
+                      <NewsUpdate title="كيفية إدارة الفرق عن بعد بكفاءة وإنتاجية عالية" time="3س" stats="2k تفاعل" />
+                      <NewsUpdate title="تحليلات سوق العمل ومؤشرات النمو الاقتصادي للشركات" time="يوم" stats="خبر هام" />
+                    </>
+                  );
+                }
+              })()}
+            </ul>
+            <GlassButton variant="glass" className="w-full mt-4 py-1.5 text-xs">عرض كافة المعلومات</GlassButton>
+          </GlassCard>
+
+          <div className="sticky top-20 space-y-2">
+            <GlassCard className="rounded-xl p-6 text-center border-dashed border-blue-200">
+              <p className="text-[10px] text-slate-400 uppercase font-black mb-3 italic">بث خارجي</p>
+              <Rocket size={40} className="mx-auto text-blue-400 mb-4" />
+              <p className="font-bold text-slate-700 mb-2">هل تريد نشر توجيهك الخاص؟</p>
+              <p className="text-[11px] text-slate-500 mb-6">قم بترقية إشارتك للوصول لضعف القوة من العملاء.</p>
+              <GlassButton variant="outline" className="w-full text-xs">ترقية الإشارة</GlassButton>
+            </GlassCard>
+
+            <div className="text-center py-4 space-y-2">
+              <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[10px] text-slate-400 font-medium tracking-normal">
+                <button onClick={() => addToast("يمكنك مراسلتنا عبر: support@prolink.com", "success")} className="hover:underline">تواصل معنا</button>
+                <a href="#" className="hover:underline">قانوني</a>
+                <a href="#" className="hover:underline">مركز الأوامر</a>
+                <a href="#" className="hover:underline">السياسات</a>
+              </div>
+              <p className="text-[10px] text-slate-400 font-bold">ProLink HQ © 2026</p>
+            </div>
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {relocatingPost && (
+            <RelocateModal
+              post={relocatingPost}
+              connections={connections}
+              allUsers={allUsers}
+              currentId={appUser?.id || 'https://ui-avatars.com/api/?name=User&background=random'}
+              onClose={() => setRelocatingPost(null)}
+              onRelocate={handleRelocateToUser}
+            />
+          )}
+        </AnimatePresence>
+      </main>
+
+      <AnimatePresence>
+        {selectedProfile && (
+          <ProfileModal
+            profile={selectedProfile}
+            isMe={selectedProfile.id === appUser?.id}
+            isEditing={isEditingProfile}
+            user={user}
+            isConnected={connections.some(c =>
+              c.status === 'accepted' &&
+              ((c.requesterId === appUser?.id && c.recipientId === selectedProfile.id) ||
+                (c.requesterId === selectedProfile.id && c.recipientId === appUser?.id))
+            )}
+            onSyncSignal={() => handleSyncSignal(selectedProfile)}
+            handleRelocatePost={handleEchoPost}
+            setRelocatingPost={setRelocatingPost}
+            addToast={addToast}
+            onLike={handleLike}
+            onAddComment={handleAddComment}
+            onClose={() => {
+              setSelectedProfile(null);
+              setIsEditingProfile(false);
+            }}
+            onSave={async (updates) => {
+              if (appUser) {
+                const dbUpdates = {
+                  name: updates.name,
+                  bio: updates.bio,
+                  company_name: updates.companyName,
+                  location: updates.location,
+                  website: updates.website,
+                  industry: updates.industry,
+                  avatar_url: updates.avatar
+                };
+                const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', appUser.id);
+                if (error) throw error;
+                const { data } = await supabase.from('profiles').select('*').eq('id', appUser.id).single();
+                setAppUser(data as any);
+                setIsEditingProfile(false);
+                setSelectedProfile(data as any);
+                addToast("تم تحديث البيانات بنجاح");
+              }
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <ToastContainer toasts={toasts} />
+
+      <AnimatePresence>
+        {showAdmin && <AdminDashboard reports={reports} onClose={() => setShowAdmin(false)} addToast={addToast} />}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// --- New Core Components ---
+
+function ToastContainer({ toasts }: { toasts: any[] }) {
+  return (
+    <div className="fixed bottom-6 left-6 z-[200] space-y-3 pointer-events-none">
+      <AnimatePresence>
+        {toasts.map(t => (
+          <motion.div
+            key={t.id}
+            initial={{ opacity: 0, x: -20, scale: 0.9 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            className={`px-6 py-3 rounded-2xl shadow-xl backdrop-blur-md border flex items-center gap-3 pointer-events-auto ${t.type === 'success' ? 'bg-green-500/90 text-white border-green-400' : 'bg-red-500/90 text-white border-red-400'
+              }`}
+          >
+            {t.type === 'success' ? <Zap size={18} /> : <Info size={18} />}
+            <span className="text-sm font-bold">{t.message}</span>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function AdminDashboard({ reports, onClose, addToast }: { reports: any[], onClose: () => void, addToast: (m: string, t?: any) => void }) {
+  const handleDeletePost = async (postId: string, reportId: string) => {
+    try {
+      const { error: postErr } = await supabase.from('posts').delete().eq('id', postId);
+      if (postErr) throw postErr;
+      const { error: repErr } = await supabase.from('reports').update({ status: 'resolved' }).eq('id', reportId);
+      if (repErr) throw repErr;
+      addToast('تم حذف المنشور بنجاح.', 'success');
+    } catch (e: any) {
+      console.error(e);
+      addToast('فشل حذف المنشور: ' + e.message, 'error');
+    }
+  };
+
+  const handleDismissReport = async (reportId: string) => {
+    try {
+      await supabase.from('reports').update({ status: 'dismissed' }).eq('id', reportId);
+    } catch (e) { console.error(e); }
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[150] bg-slate-900/80 backdrop-blur-xl flex items-center justify-center p-6"
+    >
+      <div className="w-full max-w-4xl bg-white rounded-[3rem] shadow-2xl flex flex-col max-h-[85vh] overflow-hidden">
+        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <div>
+            <h2 className="text-2xl font-black text-slate-800 tracking-tighter">مركز الرقابة والتحكم</h2>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">إدارة البلاغات والتقارير الميدانية</p>
+          </div>
+          <button onClick={onClose} className="p-3 hover:bg-white rounded-2xl transition-all shadow-sm border border-slate-100">
+            <Plus size={24} className="rotate-45 text-slate-400" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-8 space-y-4">
+          {reports.filter(r => r.status === 'pending').length === 0 ? (
+            <div className="text-center py-20">
+              <Shield size={64} className="mx-auto text-blue-100 mb-6" />
+              <p className="text-slate-400 font-bold">لا توجد بلاغات معلقة حالياً. الشبكة آمنة.</p>
+            </div>
+          ) : (
+            reports.filter(r => r.status === 'pending').map(r => (
+              <div key={r.id} className="p-6 bg-slate-50 rounded-3xl border border-slate-100 flex flex-col md:flex-row gap-6 items-start">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="px-2 py-0.5 bg-red-100 text-red-600 rounded-md text-[8px] font-black uppercase tracking-widest">بلاغ محتوى مسيء</span>
+                    <span className="text-[10px] text-slate-400 font-bold">
+                      {r.timestamp ? new Date(r.timestamp?.toDate()).toLocaleString('ar-EG') : 'جاري التحميل...'}
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-700 font-medium mb-4 bg-white p-4 rounded-2xl border border-slate-100 italic">"{r.content}"</p>
+                  <div className="flex gap-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                    <span>المبلغ: {r.reporterUid}</span>
+                    <span>الكاتب: {r.authorUid}</span>
+                  </div>
+                </div>
+                <div className="flex md:flex-col gap-2 shrink-0">
+                  <button onClick={() => handleDeletePost(r.postId, r.id)} className="px-6 py-3 bg-red-600 text-white rounded-2xl text-xs font-bold hover:bg-red-700 transition-all shadow-lg shadow-red-600/20">حذف نهائي</button>
+                  <button onClick={() => handleDismissReport(r.id)} className="px-6 py-3 bg-white border border-slate-200 text-slate-500 rounded-2xl text-xs font-bold hover:bg-slate-50">تجاهل</button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// --- Specific UI Sub-components ---
+
+function NavbarItem({ icon, label, active, onClick, badge }: any) {
+  return (
+    <div
+      onClick={onClick}
+      className={`flex flex-col items-center justify-center px-4 cursor-pointer relative h-full transition-all group ${active ? 'text-[#0a66c2]' : 'text-slate-400 hover:text-slate-800'}`}
+    >
+      <div className="relative group-hover:scale-110 transition-transform">
+        {icon}
+        {badge > 0 && (
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-bounce pointer-events-none z-20" />
+        )}
+      </div>
+      <span className="text-[10px] mt-1 hidden lg:block font-bold whitespace-nowrap">{label}</span>
+      {active && <motion.div layoutId="navline" className="absolute bottom-0 left-2 right-2 h-[2px] bg-[#0a66c2] rounded-t-full shadow-[0_0_8px_rgba(10,102,194,0.4)]" />}
+    </div>
+  );
+}
+
+function SidebarLink({ label, onClick }: { label: string, onClick?: () => void }) {
+  return (
+    <div onClick={onClick} className="flex items-center gap-3 text-xs font-bold text-slate-500 hover:bg-[#0a66c2]/5 p-1.5 rounded-lg cursor-pointer transition-all group">
+      <Users size={14} className="text-slate-400 group-hover:text-[#0a66c2]" />
+      <span className="truncate">{label}</span>
+      <Plus size={14} className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+    </div>
+  );
+}
+
+function PostBox({ avatar, appUser, addToast }: { avatar: string | undefined, appUser: any, addToast: (m: string, t?: any) => void }) {
+  const [content, setContent] = useState('');
+  const [isPosting, setIsPosting] = useState(false);
+  const [uploadType, setUploadType] = useState<null | 'photo' | 'video' | 'event' | 'article'>(null);
+  const [attachment, setAttachment] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState('');
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handlePost = async () => {
+    if (!content.trim() && !attachment && !videoUrl) return;
+    if (!appUser?.id) { addToast('يجب تسجيل الدخول أولاً', 'error'); return; }
+    setIsPosting(true);
+    try {
+      const { error } = await supabase
+        .from('posts')
+        .insert([
+          {
+            author_id: appUser.id,
+            author_name: appUser.name || 'مستخدم برو لينك',
+            author_avatar: appUser.avatar || 'https://ui-avatars.com/api/?background=random',
+            author_title: appUser.role === 'employer' ? (appUser.companyName || 'صاحب عمل') : 'باحث عن عمل',
+            content: content,
+            image_url: uploadType === 'photo' ? attachment : null,
+            video_url: uploadType === 'video' ? attachment : videoUrl || null,
+            likes_count: 0
+          }
+        ]);
+
+      if (error) {
+        console.error("Supabase Error:", error.message);
+        addToast("خطأ في الربط مع سوبابيس: " + error.message, "error");
+      } else {
+        addToast("تم النشر بنجاح عبر سوبابيس!");
+        setContent('');
+        setAttachment(null);
+        setVideoUrl('');
+        setUploadType(null);
+        broadcastNetworkRefresh('refreshData');
+      }
+    } catch (e: any) {
+      console.error(e);
+      addToast("فشل الإرسال: " + e.message, "error");
+    }
+    setIsPosting(false);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setAttachment(reader.result as string);
+        setUploadType(file.type.startsWith('image/') ? 'photo' : 'video');
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const triggerUpload = () => {
+    fileInputRef.current?.click();
+  };
+
+  return (
+    <GlassCard className="rounded-xl p-4">
+      <div className="flex gap-4">
+        <img src={avatar || 'https://ui-avatars.com/api/?name=User&background=random'} className="w-12 h-12 rounded-full border border-slate-100" alt="Me" referrerPolicy="no-referrer" />
+        <button
+          onClick={() => setUploadType('article')}
+          className="flex-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-full text-right px-5 py-3 text-sm font-medium text-slate-500 transition-colors"
+        >
+          بدء إرسال توجيه جديد...
+        </button>
+      </div>
+      <div className="flex justify-around items-center mt-3 pt-2">
+        <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileChange} />
+        <ActionBtn onClick={triggerUpload} icon={<ImageIcon className="text-blue-500" size={20} />} label="صورة" />
+        <ActionBtn onClick={triggerUpload} icon={<Video className="text-green-600" size={20} />} label="فيديو" />
+        <ActionBtn onClick={() => setUploadType('event')} icon={<Calendar className="text-amber-600" size={20} />} label="فعالية" />
+        <ActionBtn onClick={() => setUploadType('article')} icon={<FileText className="text-red-500" size={20} />} label="مقال" />
+      </div>
+
+      <AnimatePresence>
+        {(content !== '' || uploadType !== null) && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            className="mt-4 pt-4 border-t border-slate-100 overflow-hidden"
+          >
+            {attachment && (
+              <div className="relative mb-4 rounded-xl overflow-hidden group">
+                {attachment.includes('video') ? (
+                  <video src={attachment} className="w-full h-64 object-cover" controls />
+                ) : (
+                  <img src={attachment} className="w-full h-48 object-cover" alt="Attachment" />
+                )}
+                <button onClick={() => setAttachment(null)} className="absolute top-2 left-2 p-1 bg-black/50 text-white rounded-full"><Plus className="rotate-45" size={16} /></button>
+                <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Sparkles className="text-white animate-pulse" />
+                </div>
+              </div>
+            )}
+            {uploadType === 'video' && (
+              <div className="mb-4 space-y-2 px-1">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center gap-2">
+                  <Video size={12} className="text-green-600" />
+                  رابط الفيديو (YouTube / Direct)
+                </label>
+                <input
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2 text-xs outline-none focus:ring-4 focus:ring-blue-50 transition-all shadow-sm"
+                  placeholder="قم بلصق الرابط هنا للمشاركة فوراً..."
+                  value={videoUrl}
+                  onChange={e => setVideoUrl(e.target.value)}
+                />
+              </div>
+            )}
+            <textarea
+              className="w-full bg-slate-50 rounded-xl p-4 text-sm text-slate-700 h-24 focus:outline-none focus:ring-1 focus:ring-blue-200 transition-all font-sans"
+              placeholder={uploadType === 'event' ? "أدخل تفاصيل الفعالية..." : (uploadType === 'article' ? "اكتب مقالك الاحترافي هنا..." : "بماذا تفكر الآن؟")}
+              value={content}
+              onChange={e => setContent(e.target.value)}
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={() => { setContent(''); setAttachment(null); setUploadType(null); }} className="px-4 py-2 text-sm font-bold text-slate-500 hover:bg-slate-100 rounded-lg">إلغاء</button>
+              <GlassButton onClick={handlePost} disabled={(!content.trim() && !attachment && !videoUrl) || isPosting} className="py-2 px-6">
+                {isPosting ? 'جاري الإطلاق...' : 'نشر التوجيه'}
+              </GlassButton>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </GlassCard>
+  );
+}
+
+
+function ActionBtn({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick?: () => void }) {
+  return (
+    <div onClick={onClick} className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100 cursor-pointer transition-colors group">
+      {icon}
+      <span className="text-[11px] font-bold text-slate-500 group-hover:text-slate-800">{label}</span>
+    </div>
+  );
+}
+
+function PostTransmissionCard({ post, delay, user, onUserClick, handleRelocatePost, setRelocatingPost, addToast, onLike, onAddComment, onShareToGroup }: { post: Post; delay: number; user: any; key?: string; onUserClick?: () => void; handleRelocatePost: (p: Post) => void; setRelocatingPost: (p: Post) => void, addToast: (m: string, t?: any) => void, onLike: (id: string) => void, onAddComment: (id: string, c: string) => void, onShareToGroup?: (p: Post) => void }) {
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [isCommenting, setIsCommenting] = useState(false);
+
+  useEffect(() => {
+    const fetchComments = async () => {
+      const { data } = await supabase
+        .from('comments')
+        .select('*')
+        .eq('post_id', post.id)
+        .order('created_at', { ascending: true });
+      
+      if (data) setComments(data);
+    };
+
+    fetchComments();
+
+    const channel = supabase.channel(`comments-${post.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments', filter: `post_id=eq.${post.id}` }, () => fetchComments())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [post.id]);
+
+  const handleReportPost = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirm('هل تريد الإبلاغ عن هذا التوجيه كفعل مسيء؟')) {
+      try {
+        const { error } = await supabase.from('reports').insert([{
+          post_id: post.id,
+          reporter_id: user?.id,
+          author_id: post.authorId,
+          content: post.content,
+          status: 'pending'
+        }]);
+        if (error) throw error;
+        addToast('تم ترحيل إبلاغك إلى الدعم الفني بنجاح.', 'success');
+      } catch (err: any) {
+        console.error(err);
+        addToast('فشل إرسال البلاغ: ' + err.message, 'error');
+      }
+    }
+  };
+
+  const handleLike = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onLike(post.id);
+  };
+
+  const handleAddComment = async () => {
+    if (!newComment.trim()) return;
+    setIsCommenting(true);
+    await onAddComment(post.id, newComment);
+    setNewComment('');
+    setIsCommenting(false);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay }}
+      className="bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-all overflow-hidden"
+    >
+      <div className="p-4 flex justify-between items-start">
+        <div className="flex gap-2 cursor-pointer group" onClick={onUserClick}>
+          <img
+            src={post.authorAvatar}
+            className="w-10 h-10 rounded-full border border-slate-100 group-hover:border-blue-400 transition-colors"
+            alt="Author"
+            referrerPolicy="no-referrer"
+          />
+          <div>
+            <h4 className="text-sm font-bold text-slate-800 group-hover:text-blue-600 transition-colors">{post.authorName}</h4>
+            <p className="text-[10px] text-slate-400 font-medium leading-none mt-1">{post.authorTitle}</p>
+            <p className="text-[9px] text-slate-400 mt-1 uppercase tracking-tighter">Brodcasted Signal • Alpha</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          {post.authorId === user?.id ? (
+            <div className="flex gap-1 border-l border-slate-100 pl-2 ml-1">
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  const n = prompt('تعديل التوجيه:', post.content);
+                  if (n !== null) {
+                    const { error } = await supabase.from('posts').update({ content: n }).eq('id', post.id);
+                    if (error) addToast("فشل تعديل التوجيه", "error");
+                  }
+                }}
+                className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+              >
+                <Edit2 size={14} />
+              </button>
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (confirm('هل أنت متأكد من سحب التوجيه؟')) {
+                    const { error } = await supabase.from('posts').delete().eq('id', post.id);
+                    if (error) addToast("فشل سحب التوجيه", "error");
+                  }
+                }}
+                className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={handleReportPost}
+              className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-all"
+              title="إبلاغ"
+            >
+              <Flag size={14} />
+            </button>
+          )}
+          <button className="p-1.5 hover:bg-slate-50 rounded-full transition-colors"><MoreHorizontal size={18} /></button>
+        </div>
+      </div>
+
+      <div className="px-4 py-2">
+        <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{post.content}</p>
+        {post.imageUrl && (
+          <img src={post.imageUrl} className="mt-4 rounded-xl border border-slate-100 w-full object-cover max-h-96" alt="Post content" />
+        )}
+        {post.videoUrl && (
+          <div className="mt-4 rounded-xl overflow-hidden border border-slate-100 bg-black aspect-video flex items-center justify-center">
+            {post.videoUrl.includes('youtube.com') || post.videoUrl.includes('youtu.be') ? (
+              <iframe
+                src={`https://www.youtube.com/embed/${post.videoUrl.split('v=')[1] || post.videoUrl.split('/').pop()}`}
+                className="w-full h-full"
+                allowFullScreen
+              />
+            ) : (
+              <video src={post.videoUrl} controls className="w-full h-full" />
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="px-4 py-2 flex items-center justify-between border-t border-slate-50 mt-4">
+        <div className="flex items-center gap-1.5 cursor-pointer" onClick={handleLike}>
+          <div className="p-1 bg-blue-100 rounded-full"><ThumbsUp size={10} className="text-blue-600 fill-blue-600" /></div>
+          <span className="text-[10px] font-bold text-slate-400 hover:text-blue-600 transition-colors">{post.likesCount || 0} إشارة تم تأكيدها</span>
+        </div>
+        <div className="text-[10px] font-bold text-slate-400 cursor-pointer hover:underline" onClick={() => setShowComments(!showComments)}>
+          {comments.length || 0} ردود
+        </div>
+      </div>
+
+      <div className="flex justify-around items-center px-4 py-1 border-t border-slate-50">
+        <TransmissionAction icon={<ThumbsUp size={18} />} label="إشارة" onClick={handleLike} />
+        <TransmissionAction icon={<MessageCircle size={18} />} label="رد" onClick={() => setShowComments(!showComments)} />
+        <TransmissionAction
+          icon={<Repeat2 size={18} />}
+          label="صدى"
+          onClick={() => handleRelocatePost(post)} // This is now Echo (Repost) logic
+        />
+        <TransmissionAction
+          icon={<Share size={18} />}
+          label="مجموعة"
+          onClick={() => onShareToGroup && onShareToGroup(post)}
+        />
+        <TransmissionAction
+          icon={<Send size={18} />}
+          label="ترحيل"
+          onClick={() => setRelocatingPost(post)}
+        />
+      </div>
+
+      <AnimatePresence>
+        {showComments && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="border-t border-slate-50 bg-slate-50/50 p-4"
+          >
+            <div className="flex gap-3 mb-4">
+              <img src={user?.user_metadata?.avatar_url || 'https://ui-avatars.com/api/?name=User&background=random'} className="w-8 h-8 rounded-full border border-slate-100" referrerPolicy="no-referrer" />
+              <div className="flex-1 flex gap-2">
+                <input
+                  className="flex-1 bg-white border border-slate-200 rounded-full px-4 py-1.5 text-xs outline-none focus:border-blue-200"
+                  placeholder="اكتب رداً..."
+                  value={newComment}
+                  onChange={e => setNewComment(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAddComment()}
+                />
+                <button onClick={handleAddComment} disabled={isCommenting} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-full"><Send size={16} /></button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {comments.map(c => {
+                const isAuthor = c.author_id === user?.id;
+                return (
+                  <CommentItem
+                    key={c.id}
+                    comment={c}
+                    isAuthor={isAuthor}
+                    addToast={addToast}
+                  />
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
+// مكوّن التعليق مع تعديل inline احترافي
+function CommentItem({ comment: c, isAuthor, addToast }: { key?: any, comment: any, isAuthor: boolean, addToast: (m: string, t?: any) => void }) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(c.content);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!editText.trim() || editText === c.content) { setIsEditing(false); return; }
+    setIsSaving(true);
+    const { error } = await supabase.from('comments').update({ content: editText }).eq('id', c.id);
+    if (error) {
+      addToast('فشل تعديل الرد', 'error');
+    } else {
+      c.content = editText;
+      addToast('تم تعديل الرد ✅');
+    }
+    setIsSaving(false);
+    setIsEditing(false);
+  };
+
+  const handleDelete = async () => {
+    const { error } = await supabase.from('comments').delete().eq('id', c.id);
+    if (error) addToast('فشل حذف الرد', 'error');
+  };
+
+  return (
+    <div className="flex gap-3 group">
+      <img
+        src={c.author_avatar || 'https://ui-avatars.com/api/?background=random'}
+        className="w-8 h-8 rounded-full border border-slate-100 shrink-0"
+        referrerPolicy="no-referrer"
+      />
+      <div className="flex-1">
+        <div className="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm group-hover:border-blue-100 transition-all">
+          <div className="flex justify-between items-center mb-1">
+            <div className="flex items-center gap-1.5">
+              <h5 className="text-[11px] font-bold text-slate-800">{c.author_name || 'مستخدم'}</h5>
+              {isAuthor && <span className="text-[8px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-full font-black">أنا</span>}
+            </div>
+            {isAuthor && !isEditing && (
+              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button
+                  onClick={() => { setEditText(c.content); setIsEditing(true); }}
+                  className="p-1.5 hover:bg-blue-50 text-slate-400 hover:text-blue-500 rounded-lg transition-colors"
+                  title="تعديل"
+                >
+                  <Edit2 size={11} />
+                </button>
+                <button
+                  onClick={handleDelete}
+                  className="p-1.5 hover:bg-red-50 text-slate-400 hover:text-red-500 rounded-lg transition-colors"
+                  title="حذف"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {isEditing ? (
+            <div className="mt-2 space-y-2">
+              <textarea
+                className="w-full bg-slate-50 border border-blue-200 rounded-xl px-3 py-2 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 resize-none leading-relaxed"
+                rows={2}
+                value={editText}
+                onChange={e => setEditText(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSave())}
+                autoFocus
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setIsEditing(false)}
+                  className="px-3 py-1 text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  إلغاء
+                </button>
+                <button
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="px-4 py-1 bg-blue-600 text-white text-[10px] font-bold rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+                >
+                  {isSaving ? 'جاري...' : 'حفظ'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-slate-600 leading-relaxed whitespace-pre-wrap">{c.content}</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TransmissionAction({ icon, label, onClick }: any) {
+  return (
+    <button onClick={onClick} className="flex-1 flex items-center justify-center gap-2 py-2 hover:bg-slate-50 rounded-lg text-slate-500 font-bold transition-all hover:text-[#0a66c2] group">
+      <span className="group-hover:scale-110 transition-transform">{icon}</span>
+      <span className="text-xs hidden md:block">{label}</span>
+    </button>
+  );
+}
+
+function RelocateModal({ post, connections, allUsers, currentId, onClose, onRelocate }: { post: Post; connections: AppConnection[]; allUsers: AppUser[]; currentId: string; onClose: () => void; onRelocate: (u: AppUser) => void }) {
+  const connectedUserIds = connections
+    .filter(c => c.status === 'accepted')
+    .map(c => c.requesterId === currentId ? c.recipientId : c.requesterId);
+
+  const connectedUsers = allUsers.filter(u => connectedUserIds.includes(u.id));
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+        className="w-full max-w-md bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+          <h3 className="font-black text-slate-800 text-lg tracking-tighter">ترحيل الإشارة إلى الموالين</h3>
+          <button onClick={onClose} className="p-2 hover:bg-slate-50 rounded-full transition-colors"><Plus size={20} className="rotate-45 text-slate-400" /></button>
+        </div>
+
+        <div className="p-4 bg-slate-50/50">
+          <div className="bg-white p-3 rounded-xl border border-slate-100 text-[11px] text-slate-500 italic line-clamp-2">
+            "{post.content}"
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          {connectedUsers.length === 0 ? (
+            <div className="text-center py-10">
+              <Users size={40} className="mx-auto text-slate-200 mb-4" />
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">لا يوجد موالين متزامنين حالياً</p>
+            </div>
+          ) : (
+            connectedUsers.map(u => (
+              <div
+                key={u.id}
+                onClick={() => onRelocate(u)}
+                className="flex items-center gap-3 p-3 hover:bg-blue-50 rounded-2xl cursor-pointer transition-all group"
+              >
+                <img src={u.avatar} className="w-10 h-10 rounded-full border border-slate-100" />
+                <div className="flex-1">
+                  <h4 className="text-sm font-bold text-slate-800 group-hover:text-blue-600 transition-colors">{u.name}</h4>
+                  <p className="text-[10px] text-slate-400 uppercase font-bold">{u.companyName || 'عميل نخبة'}</p>
+                </div>
+                <Send size={16} className="text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+              </div>
+            ))
+          )}
+        </div>
+
+        <div className="p-4 bg-slate-50 border-t border-slate-100 text-center">
+          <p className="text-[10px] text-slate-400 font-medium">سيتم إرسال هذا التوجيه كرسالة خاصة للمستلم.</p>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function NewsUpdate({ title, time, stats }: any) {
+  return (
+    <li className="flex gap-2 group cursor-pointer">
+      <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mt-1.5 group-hover:bg-[#0a66c2]" />
+      <div>
+        <h4 className="text-xs font-bold text-slate-700 leading-tight group-hover:underline">{title}</h4>
+        <p className="text-[10px] text-slate-400 font-medium">{time} • {stats}</p>
+      </div>
+    </li>
+  );
+}
+
+function MissionsView({ jobs, appUser, addToast }: { jobs: Job[], appUser: AppUser | null, addToast: (m: string, t?: any) => void }) {
+  const [isPosting, setIsPosting] = useState(false);
+  const [formData, setFormData] = useState({ title: '', company: '', description: '', location: '', salary: '' });
+
+  const handlePostJob = async () => {
+    if (!formData.title || !formData.company) return;
+    setIsPosting(true);
+    try {
+      const { error } = await supabase.from('jobs').insert([{
+        ...formData,
+        employer_id: appUser?.id,
+        employer_name: appUser?.name
+      }]);
+      if (error) throw error;
+      setFormData({ title: '', company: '', description: '', location: '', salary: '' });
+      addToast('تم نشر التوجيه المهني بنجاح');
+    } catch (e: any) { 
+      console.error(e);
+      addToast('فشل النشر: ' + e.message, 'error');
+    }
+    setIsPosting(false);
+  };
+
+  const handleApply = async (job: Job) => {
+    if (!appUser) { addToast('يرجى تسجيل الدخول أولاً للتقديم على المهام', 'error'); return; }
+    if (appUser.role !== 'seeker') { addToast('هذه الميزة متاحة فقط للباحثين عن عمل (Seekers)', 'error'); return; }
+
+    const cvMessage = `📄 **طلب تقديم وظيفة (برو لينك)**
+---
+الاسم: ${appUser.name}
+المسمى: ${appUser.companyName || 'باحث عن عمل'}
+الصناعة: ${appUser.industry || 'عام'}
+الموقع: ${appUser.location || 'غير محدد'}
+المهارات: ${appUser.skills?.join('، ') || 'غير محددة'}
+
+نبذة السيرة:
+${appUser.bio || 'لا توجد نبذة تعريفية مضافة لهذا الحساب.'}
+---
+تم ال�    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {users.map(u => {
+        const status = getStatus(u.id);
+        const isOutgoing = getIsOutgoing(u.id);
+
+        return (
+          <GlassCard
+            key={u.id}
+            className="rounded-2xl p-6 text-center group hover:bg-white transition-all cursor-pointer flex flex-col items-center"
+            onClick={() => onUserClick(u)}
+          >
+            <div className="w-20 h-20 rounded-full mb-4 border-4 border-slate-100 shadow-inner overflow-hidden">
+              <img src={u.avatar} className="w-full h-full object-cover group-hover:scale-110 transition-transform" alt={u.name} referrerPolicy="no-referrer" />
+            </div>
+            <h4 className="font-bold text-slate-800 mb-1 line-clamp-1">{u.name}</h4>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mb-6">
+              {u.role === 'employer' ? u.companyName || 'مركز القيادة' : 'عميل نخبة'}
+            </p>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!status) onSyncSignal(u);
+              }}
+              disabled={!!status}
+              className={`w-full py-2 font-bold text-xs rounded-xl transition-all duration-300 ${status === 'accepted' ? 'bg-green-50 text-green-600' :
+                  status === 'pending' ? 'bg-amber-50 text-amber-600' :
+                    'bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white'
+                }`}
+            >
+              {status === 'accepted' ? 'متزامن (Accepted)' :
+                status === 'pending' ? (isOutgoing ? 'بانتظار التأكيد' : 'تأكيد المزامنة') :
+                  'مزامنة الإشارة'}
+            </button>
+          </GlassCard>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProfileInfoItem({ icon: Icon, label, value, isLink }: any) {
+  return (
+    <div className="flex items-center gap-3 p-3.5 bg-white/60 rounded-2xl border border-slate-100 shadow-sm transition-all hover:shadow-md hover:translate-y-[-1px] group/item">
+      <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500 shadow-inner group-hover/item:bg-blue-600 group-hover/item:text-white transition-all"><Icon size={16} /></div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[7px] font-black text-slate-400 uppercase tracking-tighter mb-0.5">{label}</p>
+        {isLink ? (
+          <a href={value} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-blue-600 truncate block hover:underline">{value}</a>
+        ) : (
+          <p className="text-[10px] font-bold text-slate-700 truncate">{value || 'غير محدد'}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProfileModal({ profile, isMe, isEditing, user, onClose, onSave, onSyncSignal, isConnected, handleRelocatePost, setRelocatingPost, addToast, onLike, onAddComment }: { profile: AppUser; isMe: boolean; isEditing: boolean; user: any; onClose: () => void; onSave: (updates: any) => Promise<void>; onSyncSignal?: () => void; isConnected?: boolean; handleRelocatePost: (p: Post) => void; setRelocatingPost: (p: Post) => void, addToast: (m: string, t?: any) => void, onLike: (id: string) => void, onAddComment: (id: string, c: string) => void }) {
+  const [formData, setFormData] = useState({
+    name: profile.name,
+    bio: profile.bio || '',
+    companyName: profile.companyName || '',
+    location: profile.location || '',
+    website: profile.website || '',
+    industry: profile.industry || '',
+    avatar: profile.avatar || 'https://ui-avatars.com/api/?name=User&background=random'
+  });
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [activeTab, setActiveTab] = useState<'posts' | 'activity' | 'settings' | 'edit'>(isEditing ? 'edit' : 'posts');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [userPosts, setUserPosts] = useState<any[]>([]);
+
+  useEffect(() => {
+    const fetchUserPosts = async () => {
+      const { data } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('author_id', profile.id)
+        .order('created_at', { ascending: false });
+      
+      if (data) setUserPosts(data.map(p => ({
+        id: p.id,
+        authorId: p.author_id,
+        authorName: profile.name,
+        authorAvatar: profile.avatar,
+        authorTitle: profile.role === 'employer' ? 'صاحب عمل' : 'باحث عن عمل',
+        content: p.content,
+        imageUrl: p.image_url,
+        videoUrl: p.video_url,
+        timestamp: { toDate: () => new Date(p.created_at) },
+        likesCount: p.likes_count
+      })));
+    };
+
+    fetchUserPosts();
+
+    const channel = supabase.channel(`user-posts-${profile.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts', filter: `author_id=eq.${profile.id}` }, () => fetchUserPosts())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile.id]);
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData({ ...formData, avatar: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSave = async () => {
+    setIsUpdating(true);
+    try {
+      await onSave(formData);
+      addToast('تم تحديث الهوية الرقمية بنجاح');
+      if (isEditing) setActiveTab('posts');
+    } catch (e) {
+      console.error(e);
+      addToast("حدث خطأ في الحفظ. يرجى التأكد من الصلاحيات.", "error");
+    }
+    setIsUpdating(false);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 bg-slate-900/70 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, y: 50, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        exit={{ scale: 0.95, y: 50, opacity: 0 }}
+        className="w-full max-w-4xl bg-white/95 rounded-[3.5rem] shadow-[0_48px_96px_-24px_rgba(0,0,0,0.3)] overflow-hidden flex flex-col h-[90vh] border border-white"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Cover Header Section */}
+        <div className="h-44 w-full bg-gradient-to-r from-[#0a66c2] via-[#004182] to-slate-900 relative shrink-0">
+           <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '24px 24px' }} />
+           <div className="absolute bottom-[-60px] right-10 flex items-end gap-6">
+              <div className="relative group">
+                <div className="absolute inset-0 bg-blue-500/20 blur-2xl rounded-full scale-110 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <img 
+                  src={formData.avatar} 
+                  className="w-40 h-40 rounded-[2.8rem] object-cover relative border-[6px] border-white shadow-2xl transition-all duration-500 group-hover:scale-[1.02]" 
+                  alt={formData.name} 
+                  referrerPolicy="no-referrer"
+                />
+                {isMe && activeTab === 'edit' && (
+                  <div 
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute bottom-2 left-2 p-3 bg-white text-[#0a66c2] rounded-2xl shadow-xl border-2 border-blue-50 cursor-pointer hover:scale-110 transition-all z-10"
+                  >
+                    <Camera size={18} />
+                    <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} />
+                  </div>
+                )}
+              </div>
+              <div className="mb-6">
+                 <div className="flex items-center gap-3">
+                   <h3 className="text-3xl font-black text-white drop-shadow-lg tracking-tighter">{formData.name}</h3>
+                   {profile.isPro && <span className="bg-amber-400 text-amber-900 text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">PRO</span>}
+                 </div>
+                 <p className="text-blue-100/80 font-bold uppercase tracking-[0.2em] text-[10px] mt-1">{profile.role === 'employer' ? 'مركز قيادة استراتيجي (Employer)' : 'عميل نخبة تقني (Seeker)'}</p>
+              </div>
+           </div>
+           <button onClick={onClose} className="absolute top-6 left-6 p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl backdrop-blur-md transition-all border border-white/10 group"><Plus size={24} className="rotate-45 group-hover:scale-110 transition-transform" /></button>
+        </div>
+
+        <div className="flex-1 flex flex-col md:flex-row min-h-0 pt-16">
+          {/* Sidebar Panel */}
+          <div className="w-full md:w-80 border-l border-slate-50 p-8 pt-4 flex flex-col shrink-0 overflow-y-auto custom-profile-scroll">
+            <div className="space-y-6">
+              <div className="space-y-4">
+                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">التفاصيل المهنية</h4>
+                 <div className="space-y-3">
+                   <ProfileInfoItem icon={MapPin} label="الموقع الحالي" value={formData.location} />
+                   <ProfileInfoItem icon={Globe} label="قطاع الصناعة" value={formData.industry} />
+                   <ProfileInfoItem icon={Briefcase} label="جهة العمل" value={formData.companyName} />
+                   {formData.website && <ProfileInfoItem icon={ExternalLink} label="الموقع الإلكتروني" value={formData.website} isLink />}
+                 </div>
+              </div>
+
+              <div className="pt-6 border-t border-slate-50">
+                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">إحصائيات الإشارة</h4>
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-50 p-4 rounded-2xl text-center border border-slate-100">
+                       <p className="text-2xl font-black text-slate-800 tracking-tighter">{userPosts.length}</p>
+                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">توجيه</p>
+                    </div>
+                    <div className="bg-slate-50 p-4 rounded-2xl text-center border border-slate-100">
+                       <p className="text-2xl font-black text-slate-800 tracking-tighter">0</p>
+                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">تزامن</p>
+                    </div>
+                 </div>
+              </div>
+
+              {!isMe && onSyncSignal && (
+                <GlassButton 
+                  onClick={onSyncSignal} 
+                  variant={isConnected ? 'outline' : 'primary'} 
+                  className="w-full py-4 text-xs font-black tracking-widest uppercase mt-4"
+                  icon={isConnected ? Shield : Zap}
+                >
+                  {isConnected ? 'متزامن بالفعل' : 'بدء المزامنة'}
+                </GlassButton>
+              )}
+            </div>
+          </div>
+
+          {/* Content Area */}
+          <div className="flex-1 flex flex-col min-w-0 bg-white">
+            <div className="px-8 py-6 border-b border-slate-50 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
+              <div className="flex gap-2 p-1.5 bg-slate-100/50 rounded-2xl overflow-x-auto no-scrollbar border border-slate-100">
+                {[
+                  { id: 'posts', label: 'التوجيهات', icon: Briefcase },
+                  { id: 'activity', label: 'القدرات', icon: Sparkles },
+                  { id: 'settings', label: 'الأمان', icon: Shield },
+                  ...(isMe ? [{ id: 'edit', label: 'التعزيز', icon: Zap }] : [])
+                ].map(tab => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={`px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2.5 transition-all duration-300 shrink-0 ${activeTab === tab.id ? 'bg-white text-[#0a66c2] shadow-md' : 'text-slate-400 hover:text-slate-600'}`}
+                  >
+                    <tab.icon size={14} /> {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-8 custom-profile-scroll">
+              <AnimatePresence mode="wait">
+                {activeTab === 'edit' ? (
+                  <motion.div
+                    key="edit"
+                    initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }}
+                    className="space-y-10"
+                  >
+                    <div className="grid md:grid-cols-2 gap-8">
+                      <div className="space-y-6">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-1 h-5 bg-[#0a66c2] rounded-full" />
+                          <h4 className="text-[10px] font-black text-slate-800 uppercase tracking-widest">المعلومات الأساسية</h4>
+                        </div>
+                        <ProfileEditField label="الاسم الكامل" value={formData.name} onChange={v => setFormData({ ...formData, name: v })} />
+                        <ProfileEditField label="الموقع الجغرافي" value={formData.location} onChange={v => setFormData({ ...formData, location: v })} />
+                      </div>
+                      <div className="space-y-6">
+                        <div className="flex items-center gap-3 mb-2">
+                          <div className="w-1 h-5 bg-[#0a66c2] rounded-full" />
+                          <h4 className="text-[10px] font-black text-slate-800 uppercase tracking-widest">المسار المهني</h4>
+                        </div>
+                        <ProfileEditField label={profile.role === 'employer' ? 'مركز العمل' : 'المسمى الوظيفي'} value={formData.companyName} onChange={v => setFormData({ ...formData, companyName: v })} />
+                        <ProfileEditField label="تخصص الصناعة" value={formData.industry} onChange={v => setFormData({ ...formData, industry: v })} />
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">نبذة السيرة (Storyline)</label>
+                      <textarea
+                        className="w-full bg-slate-50 border border-slate-100 rounded-3xl px-6 py-5 text-xs font-bold h-32 focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all outline-none resize-none shadow-inner"
+                        value={formData.bio}
+                        onChange={e => setFormData({ ...formData, bio: e.target.value })}
+                      />
+                    </div>
+                    <div className="pt-8 flex justify-end gap-4 border-t border-slate-50">
+                      <GlassButton onClick={handleSave} disabled={isUpdating} className="px-12 py-4 text-xs tracking-widest uppercase font-black">
+                        {isUpdating ? 'جاري الحفظ...' : 'تأكيد التعزيز'}
+                      </GlassButton>
+                    </div>
+                  </motion.div>
+                ) : activeTab === 'posts' ? (
+                  <motion.div
+                    key="posts"
+                    initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+                    className="space-y-6"
+                  >
+                    {userPosts.length > 0 ? (
+                      userPosts.map((p, idx) => (
+                        <PostTransmissionCard key={p.id} post={p} delay={idx * 0.05} user={user} onUserClick={() => { }} handleRelocatePost={handleRelocatePost} setRelocatingPost={setRelocatingPost} addToast={addToast} onLike={onLike} onAddComment={onAddComment} />
+                      ))
+                    ) : (
+                      <div className="py-20 text-center bg-slate-50/50 rounded-[2.5rem] border-2 border-dashed border-slate-100 flex flex-col items-center">
+                        <Briefcase className="text-slate-200 mb-4" size={40} />
+                        <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">لا توجد إشارات بث مسجلة</p>
+                      </div>
+                    )}
+                  </motion.div>
+                ) : activeTab === 'activity' ? (
+                  <motion.div
+                    key="activity"
+                    initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}
+                    className="grid grid-cols-1 md:grid-cols-2 gap-8"
+                  >
+                    <div className="p-8 bg-slate-50/50 rounded-[2.5rem] border border-slate-100">
+                       <h4 className="text-[9px] font-black uppercase tracking-widest text-[#0a66c2] mb-4">النبذة الرسمية</h4>
+                       <p className="text-xs text-slate-600 leading-relaxed italic font-bold">"{profile.bio || "لم يتم تحديد نبذة لهذا العميل."}"</p>
+                    </div>
+                    <div className="p-8 bg-blue-50/30 rounded-[2.5rem] border border-blue-100">
+                       <h4 className="text-[9px] font-black uppercase tracking-widest text-[#0a66c2] mb-4">النبض التقني</h4>
+                       <div className="flex flex-wrap gap-2">
+                          {(profile.skills || ['تحليل البيانات', 'استشراف المستقبل', 'توجيه الفرق']).map(s => (
+                            <span key={s} className="px-4 py-2 bg-white text-[#0a66c2] rounded-xl text-[9px] font-black uppercase shadow-sm border border-blue-50">{s}</span>
+                          ))}
+                       </div>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <Shield size={48} className="text-[#0a66c2] mb-6 opacity-20" />
+                    <h4 className="text-slate-800 font-black uppercase tracking-widest text-xs mb-2">تشفير القنوات النشط</h4>
+                    <p className="text-[10px] text-slate-400 max-w-xs leading-relaxed font-bold">بث إشاراتك المهنية محمي بالكامل بتقنيات التشفير المتقدمة لضمان سرية هويتك الرقمية.</p>
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function ProfileEditField({ label, value, onChange }: { label: string, value: string, onChange: (v: string) => void }) {
+  return (
+    <div className="space-y-2">
+      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{label}</label>
+      <input
+        className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-3.5 text-xs font-bold focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all outline-none shadow-sm"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+      />
+    </div>
+  );
+}
+
+function ProfileModalOld({ profile, isMe, isEditing, user, onClose, onSave, onSyncSignal, isConnected, handleRelocatePost, setRelocatingPost, addToast, onLike, onAddComment }: { profile: AppUser; isMe: boolean; isEditing: boolean; user: any; onClose: () => void; onSave: (updates: any) => Promise<void>; onSyncSignal?: () => void; isConnected?: boolean; handleRelocatePost: (p: Post) => void; setRelocatingPost: (p: Post) => void, addToast: (m: string, t?: any) => void, onLike: (id: string) => void, onAddComment: (id: string, c: string) => void }) {
+  // Placeholder to remove old code properly without breaking the rest of the fileon>
+              )}
+            </div>
+          </div>lic', table: 'posts', filter: `author_id=eq.${profile.id}` }, () => fetchUserPosts())
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [profile.id]);
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData({ ...formData, avatar: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSave = async () => {
+    setIsUpdating(true);
+    try {
+      await onSave(formData);
+      addToast('تم تحديث الهوية الرقمية بنجاح');
+      if (isEditing) setActiveTab('posts');
+    } catch (e) {
+      console.error(e);
+      addToast("حدث خطأ في الحفظ. يرجى التأكد من الصلاحيات.", "error");
+    }
+    setIsUpdating(false);
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-8 bg-slate-900/70 backdrop-blur-md"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.95, y: 50, opacity: 0 }}
+        animate={{ scale: 1, y: 0, opacity: 1 }}
+        exit={{ scale: 0.95, y: 50, opacity: 0 }}
+        className="w-full max-w-3xl bg-white/95 rounded-[3.5rem] shadow-[0_48px_96px_-24px_rgba(0,0,0,0.3)] overflow-hidden flex flex-col md:flex-row h-[88vh] border border-white"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Sidebar Panel - More top padding */}
+        <div className="w-full md:w-72 bg-slate-50/50 border-b md:border-b-0 md:border-l border-slate-100 p-10 pt-16 flex flex-col items-center shrink-0 overflow-y-auto custom-profile-scroll">
+          <div className="relative group mb-8 scale-90">
+            <div className="absolute inset-0 bg-[#0a66c2]/10 blur-3xl rounded-full scale-125" />
+            <img 
+              src={formData.avatar} 
+              className="w-32 h-32 rounded-[2.5rem] object-cover relative border-4 border-white shadow-2xl transition-transform duration-500 group-hover:scale-105" 
+              alt={formData.name} 
+              referrerPolicy="no-referrer"
+            />
+            {isMe && activeTab === 'edit' && (
+              <div 
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute -bottom-2 -right-2 p-3 bg-[#0a66c2] text-white rounded-2xl shadow-xl border-4 border-white cursor-pointer hover:scale-110 transition-all"
+              >
+                <Camera size={18} />
+                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleAvatarChange} />
+              </div>
+            )}
+          </div>
+          
+          <div className="text-center w-full px-2">
+            <h3 className="text-xl font-black text-slate-800 mb-1 tracking-tight truncate">{formData.name}</h3>
+            <p className="text-[9px] font-black text-[#0a66c2] uppercase tracking-[0.2em] mb-10">{profile.role === 'employer' ? 'مركز قيادة استراتيجي' : 'عميل نخبة تقني'}</p>
+          </div>
+          
+          <div className="w-full space-y-4 px-2">
+             <div className="flex items-center gap-4 p-4 bg-white/80 rounded-2xl border border-slate-100 shadow-sm transition-all hover:shadow-md hover:translate-y-[-2px]">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500 shadow-inner"><MapPin size={16} /></div>
+                <div>
+                  <p className="text-[7px] font-black text-slate-400 uppercase tracking-tighter mb-0.5">الموقع الحالي</p>
+                  <p className="text-[10px] font-bold text-slate-700">{formData.location || 'غير محدد'}</p>
+                </div>
+             </div>
+             <div className="flex items-center gap-4 p-4 bg-white/80 rounded-2xl border border-slate-100 shadow-sm transition-all hover:shadow-md hover:translate-y-[-2px]">
+                <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500 shadow-inner"><Globe size={16} /></div>
+                <div>
+                  <p className="text-[7px] font-black text-slate-400 uppercase tracking-tighter mb-0.5">قطاع العمل</p>
+                  <p className="text-[10px] font-bold text-slate-700">{formData.industry || 'عام'}</p>
+                </div>
+             </div>
+          </div>
+
+          <div className="mt-auto w-full pt-10 border-t border-slate-100/50">
+             <div className="grid grid-cols-2 gap-6 px-2">
+                <div className="text-center">
+                   <p className="text-xl font-black text-slate-800 tracking-tighter">{userPosts.length}</p>
+                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">توجيه</p>
+                </div>
+                <div className="text-center">
+                   <p className="text-xl font-black text-slate-800 tracking-tighter">0</p>
+                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">تزامن</p>
+                </div>
+             </div>
+          </div>
+        </div>
+
+        {/* Content Area */}
+        <div className="flex-1 flex flex-col min-w-0 bg-white">
+          <div className="px-10 py-10 pt-14 border-b border-slate-50 flex items-center justify-between sticky top-0 bg-white/95 backdrop-blur-md z-10">
+            <div className="flex gap-2 p-1.5 bg-slate-100/50 rounded-[1.2rem] overflow-x-auto no-scrollbar border border-slate-100">
+              {[
+                { id: 'posts', label: 'التوجيهات', icon: Briefcase },
+                { id: 'activity', label: 'القدرات', icon: Sparkles },
+                { id: 'settings', label: 'الأمان', icon: Shield },
+                ...(isMe ? [{ id: 'edit', label: 'التعزيز', icon: Zap }] : [])
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`px-6 py-2.5 rounded-[0.9rem] text-[9px] font-black uppercase tracking-widest flex items-center gap-2.5 transition-all duration-300 shrink-0 ${activeTab === tab.id ? 'bg-white text-[#0a66c2] shadow-md shadow-blue-500/5' : 'text-slate-400 hover:text-slate-600'}`}
+                >
+                  <tab.icon size={14} /> {tab.label}
+                </button>
+              ))}
+            </div>
+            <button onClick={onClose} className="p-3 hover:bg-slate-100 rounded-2xl transition-all shadow-sm border border-slate-100 shrink-0 ml-4 group"><Plus size={20} className="rotate-45 text-slate-400 group-hover:text-slate-600 transition-colors" /></button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-10 lg:p-14 pt-12 custom-profile-scroll">
+            <AnimatePresence mode="wait">
+              {activeTab === 'edit' ? (
+                <motion.div
+                  key="edit"
+                  initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.98 }}
+                  className="space-y-12 max-w-2xl mx-auto"
+                >
+                  <div className="grid md:grid-cols-2 gap-12">
+                    <div className="space-y-7">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-1.5 h-6 bg-[#0a66c2] rounded-full" />
+                        <h4 className="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em]">المعلومات الأساسية</h4>
+                      </div>
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">الاسم الكامل</label>
+                          <input
+                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-xs font-bold focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all outline-none shadow-sm"
+                            value={formData.name}
+                            onChange={e => setFormData({ ...formData, name: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">الموقع الجغرافي</label>
+                          <input
+                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-xs font-bold focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all outline-none shadow-sm"
+                            value={formData.location}
+                            onChange={e => setFormData({ ...formData, location: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-7">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-1.5 h-6 bg-[#0a66c2] rounded-full" />
+                        <h4 className="text-[10px] font-black text-slate-800 uppercase tracking-[0.2em]">المسار المهني</h4>
+                      </div>
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">{profile.role === 'employer' ? 'مركز العمل' : 'المسمى الوظيفي'}</label>
+                          <input
+                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-xs font-bold focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all outline-none shadow-sm"
+                            value={formData.companyName}
+                            onChange={e => setFormData({ ...formData, companyName: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">تخصص الصناعة</label>
+                          <input
+                            className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-6 py-4 text-xs font-bold focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all outline-none shadow-sm"
+                            value={formData.industry}
+                            onChange={e => setFormData({ ...formData, industry: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest ml-1">نبذة السيرة (Storyline)</label>
+                    <textarea
+                      className="w-full bg-slate-50 border border-slate-100 rounded-[2.5rem] px-8 py-7 text-xs font-bold h-40 focus:bg-white focus:ring-4 focus:ring-blue-50 transition-all outline-none resize-none shadow-inner leading-relaxed"
+                      placeholder="ابدأ في تدوين قصتك المهنية الفريدة..."
+                      value={formData.bio}
+                      onChange={e => setFormData({ ...formData, bio: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="pt-12 flex justify-end gap-4 border-t border-slate-100/50">
+                    <button onClick={() => setActiveTab('posts')} className="px-8 py-3 text-[10px] font-black text-slate-400 hover:text-slate-600 transition-all uppercase tracking-widest">إلغاء</button>
+                    <GlassButton
+                      onClick={handleSave}
+                      disabled={isUpdating}
+                      className="px-14 py-4 shadow-2xl shadow-blue-600/20 text-xs tracking-widest uppercase font-black"
+                    >
+                      {isUpdating ? 'جاري المزامنة...' : 'تأكيد التعزيز'}
+                    </GlassButton>
+                  </div>
+                </motion.div>
+              ) : activeTab === 'posts' ? (
+                <motion.div
+                  key="posts"
+                  initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+                  className="space-y-8 pb-24 max-w-2xl mx-auto"
+                >
+                  {userPosts.length > 0 ? (
+                    userPosts.map((p, idx) => (
+                      <PostTransmissionCard key={p.id} post={p} delay={idx * 0.05} user={user} onUserClick={() => { }} handleRelocatePost={handleRelocatePost} setRelocatingPost={setRelocatingPost} addToast={addToast} onLike={onLike} onAddComment={onAddComment} />
+                    ))
+                  ) : (
+                    <div className="py-24 text-center bg-slate-50/50 rounded-[3.5rem] border-2 border-dashed border-slate-100 flex flex-col items-center">
+                      <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-sm mb-5 border border-slate-50"><Briefcase className="text-slate-200" size={30} /></div>
+                      <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest max-w-[180px] leading-relaxed">لا توجد إشارات بث مسجلة لهذا الحساب حالياً</p>
+                    </div>
+                  )}
+                </motion.div>
+              ) : activeTab === 'activity' ? (
+                <motion.div
+                  key="activity"
+                  initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }}
+                  className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-2xl mx-auto"
+                >
+                  <div className="p-10 bg-slate-50/50 rounded-[3rem] border border-slate-100 relative overflow-hidden group">
+                     <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full -mr-16 -mt-16 transition-transform group-hover:scale-150 duration-700" />
+                     <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-[#0a66c2] mb-6">النبذة الرسمية</h4>
+                     <p className="text-xs text-slate-600 leading-relaxed italic font-bold">"{profile.bio || "لم يتم تحديد نبذة لهذا العميل."}"</p>
+                  </div>
+                  <div className="p-10 bg-blue-50/30 rounded-[3rem] border border-blue-100 group">
+                     <h4 className="text-[9px] font-black uppercase tracking-[0.2em] text-[#0a66c2] mb-6">النبض التقني</h4>
+                     <div className="flex flex-wrap gap-2.5">
+                        {(profile.skills || ['تحليل البيانات', 'استشراف المستقبل', 'توجيه الفرق']).map(s => (
+                          <span key={s} className="px-5 py-2.5 bg-white text-[#0a66c2] rounded-2xl text-[9px] font-black uppercase shadow-sm border border-blue-50 hover:scale-105 transition-transform cursor-default">{s}</span>
+                        ))}
+                     </div>
+                  </div>
+                </motion.div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-24 text-center max-w-2xl mx-auto">
+                  <div className="w-28 h-28 bg-blue-50/50 rounded-[3rem] flex items-center justify-center mb-8 border border-blue-100/50 shadow-inner animate-pulse"><Shield size={44} className="text-[#0a66c2]" /></div>
+                  <h4 className="text-slate-800 font-black uppercase tracking-[0.3em] text-xs mb-3">تشفير القنوات النشط</h4>
+                  <p className="text-[10px] text-slate-400 max-w-xs leading-relaxed font-bold opacity-80">بث إشاراتك المهنية محمي بالكامل بتقنيات التشفير المتقدمة لضمان سرية هويتك الرقمية وأمان بياناتك عبر الشبكة.</p>
+                </div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function MessagingView({ messages, currentUser, allUsers, connections, selectedChat, onSelectChat }: { messages: any[], currentUser: AppUser | null, allUsers: AppUser[], connections: AppConnection[], selectedChat: AppUser | null, onSelectChat: (u: AppUser) => void }) {
+  const [content, setContent] = useState('');
+  const messagesEndRef = React.useRef<HTMLDivElement>(null);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [showEmojis, setShowEmojis] = useState(false);
+  const [searchContact, setSearchContact] = useState('');
+  const emojis = ['👍','❤️','🔥','😂','💯','🚀','💼','🤝','✅','✨','🎯','💡','👏','🙌','🤔','😅','😎','🙏','🎉','💻','📊','📈','🏆','🛠️'];
+
+  const chatMessages = messages.filter(m =>
+    (m.senderId === currentUser?.id && m.receiverId === selectedChat?.id) ||
+    (m.senderId === selectedChat?.id && m.receiverId === currentUser?.id)
+  );
+
+  const syncedUsers = allUsers.filter(u => {
+    if (u.id === currentUser?.id) return false;
+    return connections.some(c =>
+      c.status === 'accepted' &&
+      ((c.requesterId === currentUser?.id && c.recipientId === u.id) ||
+        (c.requesterId === u.id && c.recipientId === currentUser?.id))
+    );
+  }).filter(u => (u.name || '').toLowerCase().includes(searchContact.toLowerCase()));
+
+  // آخر رسالة لكل مستخدم
+  const getLastMessage = (userId: string) => {
+    return messages.filter(m =>
+      (m.senderId === currentUser?.id && m.receiverId === userId) ||
+      (m.senderId === userId && m.receiverId === currentUser?.id)
+    ).slice(-1)[0];
+  };
+
+  const getUnreadCount = (userId: string) => {
+    return messages.filter(m => m.senderId === userId && m.receiverId === currentUser?.id).length;
+  };
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const handleAttachment = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser || !selectedChat) return;
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const prefix = file.type.startsWith('video/') ? '[MEDIA:video]' : '[MEDIA:photo]';
+      await supabase.from('messages').insert([{ sender_id: currentUser.id, receiver_id: selectedChat.id, content: prefix + reader.result }]);
+      broadcastNetworkRefresh('refreshMessages');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const sendMessage = async () => {
+    if (!content.trim() || !selectedChat || !currentUser) return;
+    const msg = content;
+    setContent('');
+    setShowEmojis(false);
+    await supabase.from('messages').insert([{ sender_id: currentUser.id, receiver_id: selectedChat.id, content: msg }]);
+    broadcastNetworkRefresh('refreshMessages');
+  };
+
+  const renderMessageContent = (text: string) => {
+    if (text.startsWith('[MEDIA:photo]')) return <img src={text.replace('[MEDIA:photo]', '')} className="rounded-[1.5rem] w-full h-auto max-h-[500px] object-cover mt-2 shadow-lg border border-white/20" />;
+    if (text.startsWith('[MEDIA:video]')) return <video src={text.replace('[MEDIA:video]', '')} controls className="rounded-[1.5rem] w-full h-auto max-h-[500px] mt-2 shadow-lg border border-white/20" />;
+    if (text.startsWith('📄 **طلب تقديم')) {
+      return (
+        <div className="bg-white/10 rounded-xl p-3 text-xs leading-relaxed border border-white/20">
+          <div className="flex items-center gap-2 mb-2 font-black"><Briefcase size={14} /> طلب تقديم وظيفة</div>
+          <pre className="whitespace-pre-wrap text-[11px] opacity-90 font-medium">{text.replace('📄 **طلب تقديم وظيفة (برو لينك)**\n---\n', '')}</pre>
+        </div>
+      );
+    }
+    return <span className="whitespace-pre-wrap leading-relaxed">{text}</span>;
+  };
+
+  const formatTime = (ts: any) => {
+    if (!ts) return '';
+    const d = ts.toDate ? ts.toDate() : new Date(ts);
+    return d.toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' });
+  };
+
+  return (
+    <div className="flex rounded-[2rem] overflow-hidden shadow-2xl border border-white/60" style={{ height: '680px' }} dir="rtl">
+      {/* ===== قائمة المحادثات ===== */}
+      <div className="w-[220px] md:w-[240px] bg-white flex flex-col border-l border-slate-100 shrink-0">
+        {/* Header */}
+        <div className="p-4 border-b border-slate-100">
+          <div className="flex items-center gap-3 mb-4">
+            <img src={currentUser?.avatar || `https://ui-avatars.com/api/?name=${currentUser?.name}`} className="w-10 h-10 rounded-full border-2 border-blue-100" referrerPolicy="no-referrer" />
+            <div className="flex-1">
+              <p className="font-black text-slate-800 text-sm">{currentUser?.name}</p>
+              <div className="flex items-center gap-1"><div className="w-2 h-2 bg-green-500 rounded-full" /><p className="text-[10px] text-green-600 font-bold">متصل الآن</p></div>
+            </div>
+            <button className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"><Plus size={18} className="text-slate-400" /></button>
+          </div>
+          {/* Search */}
+          <div className="relative">
+            <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              placeholder="ابحث في المحادثات..."
+              value={searchContact}
+              onChange={e => setSearchContact(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-100 rounded-xl py-2 pr-9 pl-3 text-xs font-medium outline-none focus:border-blue-200 transition-colors"
+            />
+          </div>
+        </div>
+
+        {/* Contacts List */}
+        <div className="flex-1 overflow-y-auto">
+          {syncedUsers.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full p-6 text-center">
+              <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center mb-4"><MessageSquare size={28} className="text-slate-200" /></div>
+              <p className="text-xs font-bold text-slate-400">لا توجد محادثات</p>
+              <p className="text-[10px] text-slate-300 mt-1">قم بمزامنة إشارة مع أحد لبدء المراسلة</p>
+            </div>
+          ) : syncedUsers.map(u => {
+            const lastMsg = getLastMessage(u.id);
+            const isSelected = selectedChat?.id === u.id;
+            return (
+              <div key={u.id} onClick={() => onSelectChat(u)} className={`p-3 flex items-center gap-3 cursor-pointer transition-all border-b border-slate-50/60 group ${isSelected ? 'bg-blue-50 border-r-2 border-r-blue-500' : 'hover:bg-slate-50/80'}`}>
+                <div className="relative shrink-0">
+                  <img src={u.avatar || `https://ui-avatars.com/api/?name=${u.name}&background=random`} className="w-11 h-11 rounded-2xl object-cover shadow-sm border border-slate-100" referrerPolicy="no-referrer" />
+                  <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-white shadow-sm" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start">
+                    <p className={`font-black text-sm truncate ${isSelected ? 'text-blue-700' : 'text-slate-800'}`}>{u.name}</p>
+                    {lastMsg && <span className="text-[9px] text-slate-400 shrink-0 mt-0.5">{formatTime(lastMsg.timestamp)}</span>}
+                  </div>
+                  <p className="text-[11px] text-slate-400 truncate font-medium mt-0.5">
+                    {lastMsg ? (lastMsg.senderId === currentUser?.id ? '✓ ' : '') + (lastMsg.content.startsWith('[MEDIA') ? '📎 مرفق' : lastMsg.content.startsWith('📄') ? '📋 سيرة ذاتية' : lastMsg.content.slice(0, 32)) : u.role === 'employer' ? '👔 صاحب عمل' : '👤 باحث عن عمل'}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ===== منطقة الدردشة ===== */}
+      <div className="flex-1 flex flex-col bg-gradient-to-b from-slate-50 to-white overflow-hidden">
+        {selectedChat ? (
+          <>
+            {/* Chat Header */}
+            <div className="px-5 py-3.5 bg-white border-b border-slate-100 flex items-center gap-4 shadow-sm">
+              <div className="relative">
+                <img src={selectedChat.avatar || `https://ui-avatars.com/api/?name=${selectedChat.name}&background=random`} className="w-10 h-10 rounded-2xl border border-slate-100 shadow-sm" referrerPolicy="no-referrer" />
+                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-400 rounded-full border-2 border-white" />
+              </div>
+              <div className="flex-1">
+                <p className="font-black text-slate-800 text-sm">{selectedChat.name}</p>
+                <p className="text-[10px] text-green-600 font-bold flex items-center gap-1"><span className="w-1.5 h-1.5 bg-green-500 rounded-full inline-block" />متصل الآن</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <button className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400"><Search size={16} /></button>
+                <button className="p-2 hover:bg-slate-100 rounded-xl transition-colors text-slate-400"><MoreHorizontal size={16} /></button>
+              </div>
+            </div>
+
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-3" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(148,163,184,0.08) 1px, transparent 0)', backgroundSize: '24px 24px' }}>
+              {chatMessages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center gap-4 opacity-50">
+                  <div className="w-20 h-20 bg-blue-50 rounded-[2rem] flex items-center justify-center"><MessageSquare size={36} className="text-blue-300" /></div>
+                  <div className="text-center"><p className="font-black text-slate-500 text-sm">ابدأ محادثة مع {selectedChat.name}</p><p className="text-[11px] text-slate-400 mt-1">رسائلك خاصة وآمنة</p></div>
+                </div>
+              ) : chatMessages.map((m, i) => {
+                const isMine = m.senderId === currentUser?.id;
+                const showAvatar = i === 0 || chatMessages[i - 1]?.senderId !== m.senderId;
+                return (
+                  <div key={m.id} className={`flex items-end gap-2 ${isMine ? 'flex-row-reverse' : ''}`}>
+                    {!isMine && showAvatar && <img src={selectedChat.avatar || `https://ui-avatars.com/api/?name=${selectedChat.name}`} className="w-7 h-7 rounded-full border border-slate-100 mb-1 shrink-0" referrerPolicy="no-referrer" />}
+                    {!isMine && !showAvatar && <div className="w-7 shrink-0" />}
+                    <div className={`max-w-[70%] group ${isMine ? 'items-end' : 'items-start'} flex flex-col`}>
+                      <div className={`px-4 py-2.5 text-sm shadow-sm ${isMine
+                        ? 'bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white rounded-[1.2rem] rounded-tr-sm'
+                        : 'bg-white text-slate-800 border border-slate-100 rounded-[1.2rem] rounded-tl-sm'}`}>
+                        {renderMessageContent(m.content)}
+                      </div>
+                      <div className={`flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity ${isMine ? 'flex-row-reverse' : ''}`}>
+                        <span className="text-[9px] text-slate-400 font-medium">{formatTime(m.timestamp)}</span>
+                        {isMine && <span className="text-[9px] text-blue-400">✓✓</span>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+
+            {/* Emoji Picker */}
+            {showEmojis && (
+              <div className="px-4 py-2 bg-white border-t border-slate-100 flex gap-2 flex-wrap">
+              {emojis.map(e => <button key={e} onClick={() => setContent(p => p + e)} className="text-xl hover:scale-125 transition-transform p-1">{e}</button>)}
+              </div>
+            )}
+
+            {/* Input Bar */}
+            <div className="p-3 bg-white border-t border-slate-100">
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-2 py-1.5 focus-within:border-blue-300 focus-within:bg-white transition-all">
+                <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*" onChange={handleAttachment} />
+                <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all shrink-0" title="استوديو">
+                  <ImageIcon size={18} />
+                </button>
+                <button onClick={() => setShowEmojis(!showEmojis)} className={`p-2 rounded-xl transition-all shrink-0 ${showEmojis ? 'text-blue-500 bg-blue-50' : 'text-slate-400 hover:text-blue-500 hover:bg-blue-50'}`}>
+                  <Smile size={18} />
+                </button>
+                <input
+                  type="text"
+                  placeholder="اكتب رسالة..."
+                  className="flex-1 bg-transparent border-none outline-none text-sm font-medium text-slate-700 placeholder:text-slate-400"
+                  value={content}
+                  onChange={e => setContent(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendMessage()}
+                />
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  onClick={sendMessage}
+                  disabled={!content.trim()}
+                  className={`p-2.5 rounded-xl transition-all shrink-0 ${content.trim() ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-200' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+                >
+                  <Send size={16} className="rotate-180" />
+                </motion.button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center gap-6">
+            <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative">
+              <div className="w-32 h-32 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-[3rem] flex items-center justify-center shadow-inner">
+                <MessageSquare size={52} className="text-blue-300" />
+              </div>
+              <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-green-400 rounded-xl flex items-center justify-center shadow-lg">
+                <Zap size={16} className="text-white" />
+              </div>
+            </motion.div>
+            <div className="text-center">
+              <h3 className="font-black text-slate-700 text-lg mb-2">الرسائل الخاصة</h3>
+              <p className="text-sm text-slate-400 font-medium max-w-xs leading-relaxed">اختر محادثة من القائمة على اليمين لبدء التواصل المهني</p>
+            </div>
+            <div className="flex gap-4 text-center">
+              <div className="px-4 py-3 bg-blue-50 rounded-2xl"><p className="font-black text-blue-600 text-lg">{syncedUsers.length}</p><p className="text-[10px] text-blue-400 font-bold">متصل</p></div>
+              <div className="px-4 py-3 bg-green-50 rounded-2xl"><p className="font-black text-green-600 text-lg">{messages.length}</p><p className="text-[10px] text-green-400 font-bold">رسالة</p></div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GroupsView({ addToast, appUser, sharedPost, onClearSharedPost }: { addToast: (m: string, t?: any) => void, appUser: any, sharedPost?: any, onClearSharedPost?: () => void }) {
+  const [activeTab, setActiveTab] = useState<'discover' | 'my' | 'create'>('discover');
+  const [groups, setGroups] = useState<any[]>([]);
+  const [myGroups, setMyGroups] = useState<any[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [createForm, setCreateForm] = useState({ name: '', description: '', category: 'عام', is_private: false });
+  const [creating, setCreating] = useState(false);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [connections, setConnections] = useState<any[]>([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+
+  const categories = ['عام', 'برمجة', 'تصميم', 'تسويق', 'ريادة أعمال', 'هندسة', 'طب', 'قانون', 'تعليم'];
+
+  useEffect(() => {
+    fetchGroups();
+    if (appUser) {
+      fetchMyGroups();
+      fetchConnections();
+    }
+  }, [appUser]);
+
+  const fetchGroups = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('groups').select('*').eq('is_private', false).order('created_at', { ascending: false });
+    if (data && data.length > 0) setGroups(data);
+    else setGroups([
+      { id: 'mock-1', name: 'مجتمع مطوري الذكاء الاصطناعي', description: 'تجمع نخبة المطورين في مجالات AI & ML', category: 'برمجة', member_count: 124, is_private: false },
+      { id: 'mock-2', name: 'رواد الأعمال والشركات الناشئة', description: 'نقاشات حول الاستثمار، الإدارة وتطوير المشاريع', category: 'ريادة أعمال', member_count: 85, is_private: false }
+    ]);
+    setLoading(false);
+  };
+
+  const fetchMyGroups = async () => {
+    const { data } = await supabase.from('group_members').select('*, groups(*)').eq('user_id', appUser.id).eq('status', 'accepted');
+    if (data) setMyGroups(data.map((d: any) => d.groups).filter(Boolean));
+  };
+
+  const fetchConnections = async () => {
+    const { data: conns } = await supabase.from('connections').select('*').or(`requester_id.eq.${appUser.id},recipient_id.eq.${appUser.id}`).eq('status', 'accepted');
+    if (conns) setConnections(conns);
+    const { data: users } = await supabase.from('profiles').select('*');
+    if (users) setAllUsers(users);
+  };
+
+  const fetchPendingRequests = async (groupId: string) => {
+    const { data } = await supabase.from('group_members').select('*, profiles(*)').eq('group_id', groupId).eq('status', 'pending');
+    if (data) setPendingRequests(data);
+  };
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!createForm.name.trim()) { addToast('أدخل اسم المجموعة', 'error'); return; }
+    if (!appUser) return;
+    setCreating(true);
+    try {
+      const { data: group, error } = await supabase.from('groups').insert([{ ...createForm, created_by: appUser.id }]).select().single();
+      if (error) throw error;
+      // أضف المنشئ كعضو ومالك
+      await supabase.from('group_members').insert([{ group_id: group.id, user_id: appUser.id, role: 'owner', status: 'accepted' }]);
+      addToast('تم إنشاء المجموعة بنجاح! 🎉');
+      setCreateForm({ name: '', description: '', category: 'عام', is_private: false });
+      setActiveTab('my');
+      fetchGroups();
+      fetchMyGroups();
+    } catch (e: any) { addToast('خطأ: ' + e.message, 'error'); }
+    setCreating(false);
+  };
+
+  const handleJoinRequest = async (group: any) => {
+    if (!appUser) return;
+    const { data: existing } = await supabase.from('group_members').select('id,status').eq('group_id', group.id).eq('user_id', appUser.id).maybeSingle();
+    if (existing) { addToast(existing.status === 'pending' ? 'طلبك قيد الانتظار' : 'أنت عضو بالفعل', 'error'); return; }
+    await supabase.from('group_members').insert([{ group_id: group.id, user_id: appUser.id, role: 'member', status: group.is_private ? 'pending' : 'accepted' }]);
+    addToast(group.is_private ? 'تم إرسال طلب الانضمام ✅' : 'تم الانضمام للمجموعة! 🎉');
+    fetchGroups(); fetchMyGroups();
+  };
+
+  const handleApprove = async (memberId: string, approve: boolean) => {
+    await supabase.from('group_members').update({ status: approve ? 'accepted' : 'rejected' }).eq('id', memberId);
+    addToast(approve ? 'تم قبول الطلب ✅' : 'تم رفض الطلب');
+    if (selectedGroup) fetchPendingRequests(selectedGroup.id);
+  };
+
+  const inviteConnectedUser = async (group: any, userId: string) => {
+    const { data: existing } = await supabase.from('group_members').select('id').eq('group_id', group.id).eq('user_id', userId).maybeSingle();
+    if (existing) { addToast('هذا المستخدم مُضاف بالفعل', 'error'); return; }
+    await supabase.from('group_members').insert([{ group_id: group.id, user_id: userId, role: 'member', status: 'accepted' }]);
+    addToast('تمت الدعوة بنجاح ✅');
+  };
+
+  if (selectedGroup) return <GroupDetailView group={selectedGroup} appUser={appUser} addToast={addToast} onBack={() => { setSelectedGroup(null); fetchPendingRequests(selectedGroup.id); }} onApprove={handleApprove} pendingRequests={pendingRequests} connections={connections} allUsers={allUsers} onInvite={inviteConnectedUser} fetchPending={fetchPendingRequests} sharedPost={sharedPost} onClearSharedPost={onClearSharedPost} />;
+
+  return (
+    <div className="space-y-4" dir="rtl">
+      {/* Tabs */}
+      <div className="flex items-center justify-between bg-white p-3 rounded-2xl border border-slate-100 shadow-sm">
+        <div className="flex gap-2">
+          {([['discover', 'اكتشاف'], ['my', 'مجموعاتي'], ['create', '+ إنشاء']] as const).map(([key, label]) => (
+            <button key={key} onClick={() => setActiveTab(key)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === key ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-50'}`}>{label}</button>
+          ))}
+        </div>
+      </div>
+
+      {activeTab === 'create' && (
+        <GlassCard className="rounded-2xl p-6">
+          <h3 className="font-black text-slate-800 text-lg mb-6">إنشاء مجموعة احترافية جديدة</h3>
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div><label className="text-xs font-bold text-slate-400 uppercase tracking-wider">اسم المجموعة *</label>
+              <input className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:border-blue-400" value={createForm.name} onChange={e => setCreateForm({...createForm, name: e.target.value})} placeholder="مثال: مهندسو البرمجيات العراق" /></div>
+            <div><label className="text-xs font-bold text-slate-400 uppercase tracking-wider">الوصف</label>
+              <textarea className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none focus:border-blue-400 resize-none" rows={3} value={createForm.description} onChange={e => setCreateForm({...createForm, description: e.target.value})} placeholder="ما هدف هذه المجموعة؟" /></div>
+            <div><label className="text-xs font-bold text-slate-400 uppercase tracking-wider">التصنيف</label>
+              <select className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold outline-none" value={createForm.category} onChange={e => setCreateForm({...createForm, category: e.target.value})}>
+                {categories.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+            <div className="flex items-center gap-3 bg-slate-50 p-4 rounded-xl">
+              <input type="checkbox" id="private" checked={createForm.is_private} onChange={e => setCreateForm({...createForm, is_private: e.target.checked})} className="w-4 h-4 accent-blue-600" />
+              <div><label htmlFor="private" className="font-bold text-sm text-slate-700">مجموعة خاصة</label>
+                <p className="text-xs text-slate-400">يتطلب الانضمام موافقة المالك</p></div>
+            </div>
+            <GlassButton className="w-full py-3" icon={Plus} disabled={creating}>{creating ? 'جاري الإنشاء...' : 'إنشاء المجموعة'}</GlassButton>
+          </form>
+        </GlassCard>
+      )}
+
+      {activeTab === 'my' && (
+        <div className="grid md:grid-cols-2 gap-4">
+          {myGroups.length === 0 ? (
+            <div className="col-span-2 py-20 text-center bg-white rounded-3xl border border-slate-100">
+              <Users size={48} className="mx-auto text-slate-200 mb-4" /><p className="text-slate-400 font-bold">لم تنضم لأي مجموعة بعد</p>
+              <button onClick={() => setActiveTab('discover')} className="mt-4 text-blue-600 text-sm font-bold hover:underline">اكتشف المجموعات</button>
+            </div>
+          ) : myGroups.map(g => (
+            <GlassCard key={g.id} className="rounded-2xl p-5 cursor-pointer hover:shadow-lg transition-all" onClick={() => { setSelectedGroup(g); fetchPendingRequests(g.id); }}>
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black text-lg shrink-0">{g.name[0]}</div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-black text-slate-800 truncate">{g.name}</h4>
+                  <p className="text-xs text-blue-600 font-bold">{g.category}</p>
+                  <p className="text-xs text-slate-400 line-clamp-2 mt-1">{g.description}</p>
+                </div>
+                <span className="text-xs bg-slate-100 px-2 py-1 rounded-lg font-bold text-slate-500">{g.is_private ? '🔒' : '🌐'}</span>
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
+
+      {activeTab === 'discover' && (
+        <div className="grid md:grid-cols-2 gap-4">
+          {loading ? <div className="col-span-2 text-center py-10"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto" /></div>
+          : groups.length === 0 ? (
+            <div className="col-span-2 py-20 text-center bg-white rounded-3xl border border-slate-100">
+              <Briefcase size={48} className="mx-auto text-slate-200 mb-4" /><p className="text-slate-400 font-bold">لا توجد مجموعات عامة بعد</p>
+              <button onClick={() => setActiveTab('create')} className="mt-4 text-blue-600 text-sm font-bold hover:underline">كن الأول وأنشئ مجموعة!</button>
+            </div>
+          ) : groups.map(g => (
+            <GlassCard key={g.id} className="rounded-2xl overflow-hidden group hover:shadow-xl transition-all">
+              <div className="h-24 bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                <span className="text-4xl font-black text-white/80">{g.name[0]}</span>
+              </div>
+              <div className="p-5">
+                <div className="flex justify-between items-start mb-2">
+                  <h4 className="font-black text-slate-800">{g.name}</h4>
+                  <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-lg font-bold">{g.category}</span>
+                </div>
+                <p className="text-xs text-slate-500 line-clamp-2 mb-4">{g.description || 'مجموعة احترافية على منصة برو لينك'}</p>
+                <div className="flex gap-2">
+                  <GlassButton onClick={() => { setSelectedGroup(g); fetchPendingRequests(g.id); }} variant="glass" className="flex-1 py-2 text-xs">عرض</GlassButton>
+                  <GlassButton onClick={() => handleJoinRequest(g)} className="flex-1 py-2 text-xs">{g.is_private ? 'طلب انضمام' : 'انضمام'}</GlassButton>
+                </div>
+              </div>
+            </GlassCard>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GroupDetailView({ group, appUser, addToast, onBack, onApprove, pendingRequests, connections, allUsers, onInvite, fetchPending, sharedPost, onClearSharedPost }: any) {
+  const [tab, setTab] = useState<'posts' | 'chat' | 'members' | 'invite'>('posts');
+  const [posts, setPosts] = useState<any[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [newPost, setNewPost] = useState(sharedPost ? `📢 منشور مشارك:\n\n${sharedPost.content}` : '');
+  const [newMsg, setNewMsg] = useState('');
+  const [members, setMembers] = useState<any[]>([]);
+  const chatEndRef = React.useRef<HTMLDivElement>(null);
+  const mediaInputRef = React.useRef<HTMLInputElement>(null);
+  const isOwner = group.created_by === appUser?.id;
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  useEffect(() => {
+    fetchPosts(); fetchMembers(); fetchMessages();
+    // update members_count in DB
+    supabase.from('group_members').select('id', { count: 'exact' }).eq('group_id', group.id).eq('status', 'accepted')
+      .then(({ count }) => { if (count !== null) supabase.from('groups').update({ members_count: count }).eq('id', group.id); });
+    const ch = supabase.channel(`group-${group.id}`)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_posts', filter: `group_id=eq.${group.id}` }, () => fetchPosts())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'group_messages', filter: `group_id=eq.${group.id}` }, () => fetchMessages())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [group.id]);
+
+  const fetchPosts = async () => {
+    const { data } = await supabase.from('group_posts').select('*').eq('group_id', group.id).order('created_at', { ascending: false });
+    if (data) setPosts(data);
+  };
+  const fetchMessages = async () => {
+    const { data } = await supabase.from('group_messages').select('*').eq('group_id', group.id).order('created_at', { ascending: true });
+    if (data) setMessages(data);
+  };
+  const fetchMembers = async () => {
+    const { data } = await supabase.from('group_members').select('*, profiles(name, avatar_url, role)').eq('group_id', group.id).eq('status', 'accepted');
+    if (data) setMembers(data);
+  };
+
+  const postInGroup = async () => {
+    if (!newPost.trim() || !appUser) return;
+    await supabase.from('group_posts').insert([{ group_id: group.id, author_id: appUser.id, author_name: appUser.name, author_avatar: appUser.avatar, content: newPost }]);
+    setNewPost('');
+    if (onClearSharedPost) onClearSharedPost();
+    addToast('تم النشر في المجموعة ✅');
+    fetchPosts();
+  };
+
+  const sendGroupMsg = async () => {
+    if (!newMsg.trim() || !appUser) return;
+    const msg = newMsg; setNewMsg('');
+    await supabase.from('group_messages').insert([{ group_id: group.id, sender_id: appUser.id, sender_name: appUser.name, sender_avatar: appUser.avatar, content: msg }]);
+    fetchMessages();
+  };
+
+  const handleMediaUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !appUser) return;
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const prefix = file.type.startsWith('video/') ? '[MEDIA:video]' : '[MEDIA:photo]';
+      await supabase.from('group_messages').insert([{ group_id: group.id, sender_id: appUser.id, sender_name: appUser.name, sender_avatar: appUser.avatar, content: prefix + reader.result }]);
+      fetchMessages(); addToast('تم إرسال الوسائط ✅');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const renderChatContent = (text: string) => {
+    if (text.startsWith('[MEDIA:photo]')) return <img src={text.replace('[MEDIA:photo]', '')} className="rounded-[1.5rem] w-full h-auto max-h-[500px] object-cover mt-2 shadow-lg border border-white/20" />;
+    if (text.startsWith('[MEDIA:video]')) return <video src={text.replace('[MEDIA:video]', '')} controls className="rounded-[1.5rem] w-full h-auto max-h-[500px] mt-2 shadow-lg border border-white/20" />;
+    return <span className="whitespace-pre-wrap">{text}</span>;
+  };
+
+  const connectedIds = connections.filter((c: any) => c.status === 'accepted').map((c: any) => c.requester_id === appUser?.id ? c.recipient_id : c.requester_id);
+  const connectedUsers = allUsers.filter((u: any) => connectedIds.includes(u.id) && !members.find((m: any) => m.user_id === u.id));
+
+  return (
+    <div className="space-y-4" dir="rtl">
+      <div className="flex items-center gap-3 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+        <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-xl transition-colors"><Plus size={20} className="rotate-45 text-slate-500" /></button>
+        <div className="relative group/avatar">
+          {group.avatar_url ? (
+            <img src={group.avatar_url} className="w-12 h-12 rounded-xl object-cover" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white font-black text-lg">{group.name[0]}</div>
+          )}
+          {isOwner && (
+            <div 
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.onchange = async (e: any) => {
+                  const file = e.target.files[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onloadend = async () => {
+                    await supabase.from('groups').update({ avatar_url: reader.result }).eq('id', group.id);
+                    addToast('تم تحديث صورة المجموعة بنجاح ✅');
+                  };
+                  reader.readAsDataURL(file);
+                };
+                input.click();
+              }}
+              className="absolute inset-0 bg-black/50 rounded-xl hidden group-hover/avatar:flex items-center justify-center cursor-pointer transition-all"
+            >
+              <Camera size={16} className="text-white" />
+            </div>
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h3 className="font-black text-slate-800">{group.name}</h3>
+          <p className="text-xs text-slate-400">{members.length > 0 ? members.length : (group.members_count || 1)} عضو • {group.category}</p>
+        </div>
+        {isOwner && pendingRequests.length > 0 && <span className="bg-red-500 text-white text-xs font-black px-2 py-1 rounded-full">{pendingRequests.length} طلب</span>}
+      </div>
+
+      <div className="flex gap-2 bg-slate-100/50 p-1 rounded-2xl">
+        {([['posts', 'المنشورات'], ['chat', 'الدردشة'], ['members', 'الأعضاء'], ...(isOwner ? [['invite', 'دعوة']] : [])] as const).map(([key, label]) => (
+          <button key={key} onClick={() => { setTab(key as any); if (key === 'members' && isOwner) fetchPending(group.id); }} className={`flex-1 py-2 rounded-xl text-xs font-bold transition-all ${tab === key ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}>{label}</button>
+        ))}
+      </div>
+
+      {tab === 'posts' && (
+        <div className="space-y-4">
+          <GlassCard className="rounded-xl p-4">
+            <div className="flex gap-4">
+              <img src={appUser?.avatar || 'https://ui-avatars.com/api/?name=User&background=random'} className="w-12 h-12 rounded-full border border-slate-100" referrerPolicy="no-referrer" />
+              <textarea className="w-full bg-slate-50 border border-slate-200 rounded-3xl p-4 text-sm resize-none outline-none focus:border-blue-400 focus:bg-white transition-all" rows={2} placeholder="شارك شيئاً مع المجموعة..." value={newPost} onChange={e => setNewPost(e.target.value)} />
+            </div>
+            {newPost.includes('[MEDIA:') && (
+               <div className="mt-3 mr-16 p-2 bg-blue-50/50 rounded-xl inline-block border border-blue-100">
+                 <p className="text-[10px] text-blue-600 font-bold flex items-center gap-1"><ImageIcon size={12}/> تم إرفاق وسائط (سيتم العرض بعد النشر)</p>
+               </div>
+            )}
+            <div className="flex justify-between items-center mt-3 pt-2">
+              <div className="flex gap-1 sm:gap-2 mr-16">
+                 <button onClick={() => {
+                   const input = document.createElement('input');
+                   input.type = 'file'; input.accept = 'image/*';
+                   input.onchange = (e: any) => {
+                     const file = e.target.files[0];
+                     if(file) {
+                       const reader = new FileReader();
+                       reader.onloadend = () => { setNewPost((prev) => prev.split('\n[MEDIA')[0] + '\n[MEDIA:photo]' + reader.result); };
+                       reader.readAsDataURL(file);
+                     }
+                   };
+                   input.click();
+                 }} className="flex items-center gap-2 p-2 sm:px-3 sm:py-2 text-slate-500 hover:text-blue-600 hover:bg-slate-100 rounded-xl transition-all font-bold text-xs" title="إرفاق صورة">
+                   <ImageIcon size={20} className="text-blue-500" /> <span className="hidden sm:inline">صورة</span>
+                 </button>
+                 <button onClick={() => {
+                   const input = document.createElement('input');
+                   input.type = 'file'; input.accept = 'video/*';
+                   input.onchange = (e: any) => {
+                     const file = e.target.files[0];
+                     if(file) {
+                       const reader = new FileReader();
+                       reader.onloadend = () => { setNewPost((prev) => prev.split('\n[MEDIA')[0] + '\n[MEDIA:video]' + reader.result); };
+                       reader.readAsDataURL(file);
+                     }
+                   };
+                   input.click();
+                 }} className="flex items-center gap-2 p-2 sm:px-3 sm:py-2 text-slate-500 hover:text-green-600 hover:bg-slate-100 rounded-xl transition-all font-bold text-xs" title="إرفاق فيديو">
+                   <Video size={20} className="text-green-600" /> <span className="hidden sm:inline">فيديو</span>
+                 </button>
+                 <button onClick={() => {
+                   setNewPost(p => p + '\n[حدث جديد: أدخل تفاصيل الحدث هنا...]');
+                 }} className="flex items-center gap-2 p-2 sm:px-3 sm:py-2 text-slate-500 hover:text-amber-600 hover:bg-slate-100 rounded-xl transition-all font-bold text-xs" title="إضافة حدث">
+                   <Calendar size={20} className="text-amber-500" /> <span className="hidden sm:inline">حدث</span>
+                 </button>
+                 <button onClick={() => {
+                   setNewPost(p => p + '\n[مقال: أدخل محتوى المقال هنا...]');
+                 }} className="flex items-center gap-2 p-2 sm:px-3 sm:py-2 text-slate-500 hover:text-red-600 hover:bg-slate-100 rounded-xl transition-all font-bold text-xs" title="كتابة مقال">
+                   <FileText size={20} className="text-red-500" /> <span className="hidden sm:inline">مقال</span>
+                 </button>
+              </div>
+              <GlassButton className="py-2.5 px-6 text-sm" onClick={postInGroup} disabled={!newPost.trim()}>نشر</GlassButton>
+            </div>
+          </GlassCard>
+          {posts.map(p => (
+            <GlassCard key={p.id} className="rounded-xl p-4">
+              <div className="flex gap-3 mb-3">
+                <img src={p.author_avatar || `https://ui-avatars.com/api/?name=${p.author_name}`} className="w-9 h-9 rounded-full border border-slate-100" referrerPolicy="no-referrer" />
+                <div><p className="font-bold text-sm text-slate-800">{p.author_name}</p><p className="text-[10px] text-slate-400">{new Date(p.created_at).toLocaleString('ar')}</p></div>
+              </div>
+              <p className="text-sm text-slate-600 leading-relaxed whitespace-pre-wrap">{p.content.split('[MEDIA')[0]}</p>
+              {p.content.includes('[MEDIA:photo]') && <img src={p.content.split('[MEDIA:photo]')[1]} className="mt-3 rounded-xl max-h-64 object-cover w-full" />}
+              <div className="mt-3 pt-3 border-t border-slate-50 flex gap-4 text-xs text-slate-400">
+                <button className="flex items-center gap-1 hover:text-blue-600 transition-colors" onClick={async () => { await supabase.from('group_posts').update({ likes_count: (p.likes_count || 0) + 1 }).eq('id', p.id); fetchPosts(); }}>
+                  <ThumbsUp size={14} /> {p.likes_count || 0} إعجاب
+                </button>
+              </div>
+            </GlassCard>
+          ))}
+          {posts.length === 0 && <div className="text-center py-12 text-slate-400"><Briefcase size={40} className="mx-auto text-slate-200 mb-3" /><p className="font-bold text-sm">لا توجد منشورات بعد</p></div>}
+        </div>
+      )}
+
+      {tab === 'chat' && (
+        <GlassCard className="rounded-xl overflow-hidden flex flex-col" style={{ height: '520px' }}>
+          <div className="flex-1 overflow-y-auto p-4 space-y-3" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(148,163,184,0.07) 1px, transparent 0)', backgroundSize: '20px 20px' }}>
+            {messages.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center gap-3 opacity-40">
+                <MessageSquare size={40} className="text-blue-300" />
+                <p className="text-sm font-bold text-slate-500">ابدأ الدردشة مع المجموعة!</p>
+              </div>
+            )}
+            {messages.map((m, i) => {
+              const isMine = m.sender_id === appUser?.id;
+              const showName = i === 0 || messages[i-1]?.sender_id !== m.sender_id;
+              return (
+                <div key={m.id} className={`flex gap-2 items-end ${isMine ? 'flex-row-reverse' : ''}`}>
+                  {showName && <img src={m.sender_avatar || `https://ui-avatars.com/api/?name=${m.sender_name}`} className="w-7 h-7 rounded-full shrink-0 border border-slate-100" referrerPolicy="no-referrer" />}
+                  {!showName && <div className="w-7 shrink-0" />}
+                  <div className={`max-w-[72%] flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                    {showName && !isMine && <p className="text-[10px] text-slate-400 mb-1 px-2 font-bold">{m.sender_name}</p>}
+                    <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm ${isMine ? 'bg-blue-600 text-white rounded-tr-sm' : 'bg-white text-slate-800 border border-slate-100 rounded-tl-sm'}`}>
+                      {renderChatContent(m.content)}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={chatEndRef} />
+          </div>
+          <div className="p-3 border-t border-slate-100 bg-white">
+            <input type="file" ref={mediaInputRef} className="hidden" accept="image/*,video/*" onChange={handleMediaUpload} />
+            <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2 focus-within:border-blue-300 focus-within:bg-white transition-all">
+              <button onClick={() => mediaInputRef.current?.click()} className="p-1.5 text-slate-400 hover:text-blue-500 hover:bg-blue-50 rounded-xl transition-all shrink-0" title="إرفاق"><Paperclip size={16} /></button>
+              <input className="flex-1 bg-transparent border-none outline-none text-sm font-medium placeholder:text-slate-400" placeholder="اكتب رسالة للمجموعة..." value={newMsg} onChange={e => setNewMsg(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendGroupMsg()} />
+              <button onClick={sendGroupMsg} disabled={!newMsg.trim()} className={`p-2 rounded-xl transition-all shrink-0 ${newMsg.trim() ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-slate-200 text-slate-400'}`}><Send size={15} className="rotate-180" /></button>
+            </div>
+          </div>
+        </GlassCard>
+      )}
+
+      {tab === 'members' && (
+        <div className="space-y-3">
+          {isOwner && pendingRequests.length > 0 && (
+            <GlassCard className="rounded-xl p-4">
+              <h4 className="font-black text-sm text-slate-700 mb-3">⏳ طلبات الانضمام ({pendingRequests.length})</h4>
+              {pendingRequests.map((req: any) => (
+                <div key={req.id} className="flex items-center gap-3 p-3 bg-amber-50 rounded-xl mb-2">
+                  <img src={req.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${req.profiles?.name}`} className="w-9 h-9 rounded-full" />
+                  <span className="flex-1 font-bold text-sm text-slate-800">{req.profiles?.name}</span>
+                  <button onClick={() => onApprove(req.id, true)} className="px-3 py-1.5 bg-green-500 text-white rounded-lg text-xs font-bold hover:bg-green-600">قبول</button>
+                  <button onClick={() => onApprove(req.id, false)} className="px-3 py-1.5 bg-red-100 text-red-600 rounded-lg text-xs font-bold hover:bg-red-200">رفض</button>
+                </div>
+              ))}
+            </GlassCard>
+          )}
+          <GlassCard className="rounded-xl p-4">
+            <h4 className="font-black text-sm text-slate-700 mb-3">الأعضاء ({members.length})</h4>
+            {members.map((m: any) => (
+              <div key={m.id} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
+                <img src={m.profiles?.avatar_url || `https://ui-avatars.com/api/?name=${m.profiles?.name}`} className="w-9 h-9 rounded-full border border-slate-100" />
+                <div className="flex-1"><p className="font-bold text-sm text-slate-800">{m.profiles?.name}</p><p className="text-[10px] text-slate-400">{m.role === 'owner' ? '👑 المالك' : 'عضو'}</p></div>
+              </div>
+            ))}
+          </GlassCard>
+        </div>
+      )}
+
+      {tab === 'invite' && isOwner && (
+        <GlassCard className="rounded-xl p-4">
+          <h4 className="font-black text-sm text-slate-700 mb-3">دعوة المتابعين ({connectedUsers.length})</h4>
+          {connectedUsers.length === 0 ? <p className="text-slate-400 text-sm text-center py-6">جميع متابعيك أعضاء بالفعل</p>
+          : connectedUsers.map((u: any) => (
+            <div key={u.id} className="flex items-center gap-3 py-2 border-b border-slate-50 last:border-0">
+              <img src={u.avatar_url || `https://ui-avatars.com/api/?name=${u.name}`} className="w-9 h-9 rounded-full border border-slate-100" />
+              <div className="flex-1"><p className="font-bold text-sm">{u.name}</p><p className="text-[10px] text-slate-400">{u.role === 'seeker' ? 'باحث عن عمل' : 'صاحب عمل'}</p></div>
+              <button onClick={() => onInvite(group, u.id)} className="px-3 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-xs font-bold hover:bg-blue-100 transition-colors">دعوة</button>
+            </div>
+          ))}
+        </GlassCard>
+      )}
+    </div>
+  );
+}

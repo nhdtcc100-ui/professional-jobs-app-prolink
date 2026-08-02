@@ -1,0 +1,198 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Phase 3: Primitives ---
+    function isSignedIn() { return request.auth != null; }
+    function isVerified() { return isSignedIn(); } 
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+    
+    // User is Admin based on email (from session metadata)
+    function isAdmin() { 
+      return isSignedIn() && request.auth.token.email == 'qwtm77562@gmail.com'; 
+    }
+
+    // --- Phase 4: Fortress Rules ---
+
+    // USERS COLLECTION
+    match /users/{userId} {
+      function isValidUser(data) {
+        return data.keys().hasAll(['uid', 'name', 'email', 'role']) &&
+               data.uid == userId &&
+               data.uid == request.auth.uid &&
+               data.name is string && data.name.size() <= 100 &&
+               data.email is string && data.email.size() <= 100 &&
+               data.email == request.auth.token.email &&
+               data.role in ['seeker', 'employer'];
+      }
+
+      function isValidMockUser(data) {
+        return data.keys().hasAll(['uid', 'name', 'email', 'role']) &&
+               data.uid is string && data.uid.size() <= 128 &&
+               data.name is string && data.name.size() <= 100 &&
+               data.email is string && data.email.size() <= 100 &&
+               data.role in ['seeker', 'employer'];
+      }
+
+      // Pillar 6: PII Isolation - Relaxed for professional networking visibility
+      allow get: if isSignedIn();
+      allow list: if isSignedIn(); 
+
+      allow create: if (isOwner(userId) && isValidUser(incoming()) && isValidId(userId)) || (isAdmin() && isValidMockUser(incoming()));
+      
+      allow update: if isOwner(userId) && isValidId(userId) && (
+        // Action: Profile Update
+        (incoming().diff(existing()).affectedKeys().hasOnly(['name', 'bio', 'avatar', 'isPro', 'experience', 'skills', 'companyName', 'location', 'website', 'industry', 'createdAt']) && 
+         incoming().uid == existing().uid &&
+         incoming().email == existing().email &&
+         incoming().role == existing().role)
+      ) || isAdmin();
+    }
+
+    // JOBS COLLECTION
+    match /jobs/{jobId} {
+      function isValidJob(data) {
+        return data.keys().hasAll(['title', 'company', 'employerId', 'postedAt']) &&
+               data.title is string && data.title.size() <= 150 &&
+               data.company is string && data.company.size() <= 100 &&
+               data.employerId == request.auth.uid &&
+               data.postedAt == request.time;
+      }
+      
+      function isEmployer() {
+        return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'employer';
+      }
+
+      allow read: if isSignedIn();
+      allow create: if (isVerified() && isEmployer() && isValidJob(incoming()) && isValidId(jobId)) || isAdmin();
+      allow update: if (isOwner(existing().employerId) && isValidJob(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['title', 'company', 'description', 'location', 'salary'])
+      )) || isAdmin();
+      allow delete: if isOwner(existing().employerId) || isAdmin();
+    }
+
+    // POSTS COLLECTION
+    match /posts/{postId} {
+      function isValidPost(data) {
+        return data.keys().hasAll(['authorUid', 'authorName', 'content', 'timestamp']) &&
+               data.authorUid == request.auth.uid &&
+               data.content is string && data.content.size() <= 5000 &&
+               data.timestamp == request.time;
+      }
+
+      allow read: if isSignedIn();
+      allow create: if (isVerified() && isValidPost(incoming()) && isValidId(postId)) || isAdmin();
+      
+      allow update: if isSignedIn() && isValidId(postId) && (
+        // Action: Edit Post
+        (isOwner(existing().authorUid) && isValidPost(incoming()) && 
+         incoming().diff(existing()).affectedKeys().hasOnly(['content', 'imageUrl', 'authorTitle'])) ||
+        // Action: Like Post (Pillar 4: Tiered Identity)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['likesCount']) && 
+         incoming().likesCount == existing().likesCount + 1)
+      ) || isAdmin();
+      
+      allow delete: if isOwner(existing().authorUid) || isAdmin();
+
+      // COMMENTS SUBCOLLECTION
+      match /comments/{commentId} {
+        function isValidComment(data) {
+          return data.keys().hasAll(['authorUid', 'authorName', 'content', 'timestamp']) &&
+                 data.authorUid == request.auth.uid &&
+                 data.content is string && data.content.size() <= 1000 &&
+                 data.timestamp == request.time;
+        }
+
+        allow read: if isSignedIn();
+        allow create: if (isVerified() && isValidComment(incoming()) && isValidId(commentId)) || isAdmin();
+        allow update: if isOwner(existing().authorUid) && isValidComment(incoming()) && 
+                      incoming().diff(existing()).affectedKeys().hasOnly(['content', 'timestamp']);
+        allow delete: if isOwner(existing().authorUid) || isAdmin();
+      }
+    }
+
+    // MESSAGES COLLECTION
+    match /messages/{messageId} {
+      function isValidMessage(data) {
+        return data.keys().hasAll(['senderId', 'receiverId', 'content', 'timestamp']) &&
+               data.senderId == request.auth.uid &&
+               data.receiverId is string && data.receiverId.size() <= 128 &&
+               data.content is string && data.content.size() <= 2000 &&
+               data.timestamp == request.time;
+      }
+
+      // Pillar 8: Secure List Queries
+      // Ensures the user can only query their own messages
+      allow list: if isSignedIn() && (
+        resource.data.senderId == request.auth.uid || 
+        resource.data.receiverId == request.auth.uid || 
+        isAdmin()
+      );
+      
+      allow get: if isSignedIn() && (
+        resource.data.senderId == request.auth.uid || 
+        resource.data.receiverId == request.auth.uid ||
+        isAdmin()
+      );
+
+      allow create: if (isVerified() && isValidMessage(incoming()) && isValidId(messageId)) || isAdmin();
+      
+      // Messages are immutable (Pillar 1)
+      allow update, delete: if isAdmin();
+    }
+
+    // CONNECTIONS COLLECTION
+    match /connections/{connectionId} {
+      function isValidConnection(data) {
+        return data.keys().hasAll(['requesterId', 'recipientId', 'status', 'timestamp']) &&
+               data.requesterId == request.auth.uid &&
+               data.recipientId is string && data.recipientId.size() <= 128 &&
+               data.status == 'pending' &&
+               data.timestamp == request.time;
+      }
+
+      allow read: if isSignedIn() && (
+        resource.data.requesterId == request.auth.uid || 
+        resource.data.recipientId == request.auth.uid
+      );
+
+      allow create: if isVerified() && isValidConnection(incoming()) && isValidId(connectionId);
+      
+      allow update: if isSignedIn() && (
+        // Recipient can accept
+        (resource.data.recipientId == request.auth.uid && 
+         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'timestamp']) &&
+         incoming().status == 'accepted') || isAdmin()
+      );
+
+      allow delete: if isSignedIn() && (
+        resource.data.requesterId == request.auth.uid || 
+        resource.data.recipientId == request.auth.uid || 
+        isAdmin()
+      );
+    }
+
+    // NOTIFICATIONS COLLECTION
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      
+      allow create: if isVerified() && 
+                    incoming().userId is string && 
+                    incoming().fromId == request.auth.uid;
+      
+      allow update: if isSignedIn() && 
+                    resource.data.userId == request.auth.uid && 
+                    incoming().diff(existing()).affectedKeys().hasOnly(['read']);
+      
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+  }
+}

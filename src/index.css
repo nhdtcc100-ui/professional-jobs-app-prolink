@@ -1,0 +1,433 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&display=swap');
+@import "tailwindcss";
+
+/* =========================================  
+   INSTAGRAM & FACEBOOK STYLE AUTHENTICATION
+   ========================================= */
+
+/* Floating Labels System */
+.floating-label-group {
+  position: relative;
+}
+
+.floating-label-input {
+  width: 100%;
+  padding: 18px 12px 6px 12px !important;
+  font-size: 14px !important;
+  line-height: 1.2 !important;
+}
+
+.floating-label {
+  position: absolute;
+  pointer-events: none;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  transition: all 0.15s ease-out;
+  color: #94a3b8;
+  font-size: 13px;
+  font-weight: 700;
+  transform-origin: right top;
+}
+
+.floating-label-input:focus ~ .floating-label,
+.floating-label-input:not(:placeholder-shown) ~ .floating-label {
+  top: 10px;
+  transform: translateY(0) scale(0.85);
+  color: #0a66c2;
+}
+
+.dark .floating-label-input:focus ~ .floating-label,
+.dark .floating-label-input:not(:placeholder-shown) ~ .floating-label {
+  color: #60a5fa;
+}
+
+/* Auth Pages Split & Phone Frame CSS */
+.phone-mockup-frame {
+  position: relative;
+  width: 250px;
+  height: 480px;
+  background: #000;
+  border: 10px solid #1e293b;
+  border-radius: 36px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 
+              inset 0 0 10px rgba(255, 255, 255, 0.2);
+  overflow: hidden;
+}
+
+.phone-mockup-frame::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 18px;
+  background: #1e293b;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+  z-index: 10;
+}
+
+
+/* stylelint-disable-next-line at-rule-no-unknown */
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --font-sans: "Cairo", ui-sans-serif, system-ui, sans-serif;
+  --pro-blue: #0a66c2;
+  --pro-blue-dark: #004182;
+  --pro-bg-soft: #f9fafb;
+  --anti-gravity-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
+  --anti-gravity-shadow-hover: 0 40px 80px rgba(0, 0, 0, 0.15);
+  --premium-blue: #0a66c2;
+  --premium-blue-dark: #004182;
+  --premium-bg: #f8fafc;
+  --glass-bg: rgba(255, 255, 255, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.4);
+}
+
+body {
+  font-family: "Cairo", sans-serif;
+  background-color: var(--pro-bg-soft);
+  color: #1e293b;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: background-color 0.4s ease, color 0.4s ease;
+}
+
+/* === Global Theme Mapping Strategy === */
+.dark body {
+  --pro-bg-soft: #020817; 
+  --glass-bg: rgba(15, 23, 42, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.05);
+  background-color: var(--pro-bg-soft);
+  color: #f8fafc;
+}
+
+/* Backgrounds */
+.dark .bg-white { background-color: #0f172a !important; }
+
+.dark .bg-slate-50 { background-color: #1e293b !important; }
+
+.dark .bg-slate-100 { background-color: #334155 !important; }
+
+/* Global fix for black bars */
+.dark .bg-black, .dark .bg-slate-900 { background-color: #020617 !important; }
+
+/* Text Colors */
+.dark .text-black, .dark .text-slate-900 { color: #f8fafc !important; }
+
+.dark .text-slate-800 { color: #f1f5f9 !important; }
+
+/* Borders */
+.dark .border-slate-50 { border-color: #1e293b !important; }
+
+.dark .border-slate-100 { border-color: #334155 !important; }
+
+.dark .border-white { border-color: rgba(255,255,255,0.1) !important; }
+
+/* Enhanced Profile Card Contrast in Dark Mode */
+.dark .profile-card-section {
+  background-color: #020817 !important;
+  border-color: #1e293b !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.5) !important;
+}
+
+.dark .skill-tag {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  border-color: #334155 !important;
+}
+
+/* Shadows for Dark Mode (softer, darker shadows) */
+.dark .shadow-sm, .dark .shadow, .dark .shadow-md, .dark .shadow-lg, .dark .shadow-xl, .dark .shadow-2xl {
+  box-shadow: 0 10px 40px -10px rgba(0,0,0,0.7), 0 8px 16px -8px rgba(0,0,0,0.7) !important;
+}
+
+/* Gradients text fixes */
+.dark .from-slate-800 { --tw-gradient-from: #f8fafc var(--tw-gradient-from-position); }
+.dark .to-slate-600 { --tw-gradient-to: #cbd5e1 var(--tw-gradient-to-position); }
+
+/* =========================================
+   PREMIUM GLOBAL SHADOWS & 3D AESTHETICS
+   ========================================= */
+
+/* Ultra Premium SVG Icons 3D Drop Shadow */
+svg {
+  filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.25));
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.dark svg {
+  filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.6));
+}
+
+/* 3D Avatars & Profile Images */
+img.rounded-full, img.rounded-xl, img.rounded-2xl, img.rounded-3xl {
+  box-shadow: 0 12px 30px -5px rgba(0,0,0,0.25), 0 8px 12px -6px rgba(0,0,0,0.15);
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease;
+}
+img.rounded-full:hover, img.rounded-xl:hover, img.rounded-2xl:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 25px 40px -5px rgba(0,0,0,0.35), 0 15px 20px -5px rgba(0,0,0,0.2);
+}
+.dark img.rounded-full, .dark img.rounded-xl, .dark img.rounded-2xl, .dark img.rounded-3xl {
+  box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5), 0 8px 10px -6px rgba(0,0,0,0.4);
+}
+.dark img.rounded-full:hover, .dark img.rounded-xl:hover, .dark img.rounded-2xl:hover {
+  box-shadow: 0 20px 35px -5px rgba(0,0,0,0.7), 0 15px 15px -5px rgba(0,0,0,0.5);
+}
+
+/* Global 3D Spring Button Hover Effects */
+button {
+  transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease, background-color 0.3s ease;
+}
+button:hover:not(:disabled) {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.25), 0 10px 15px -5px rgba(0, 0, 0, 0.15) !important;
+  z-index: 10;
+}
+.dark button:hover:not(:disabled) {
+  box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.6), 0 10px 15px -5px rgba(0, 0, 0, 0.5) !important;
+}
+button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+  box-shadow: 0 6px 10px -1px rgba(0, 0, 0, 0.2), 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* =========================================
+   GLASS THEME & ALL COMPONENTS AUTO-SHADOWS
+   ========================================= */
+
+/* Force extremely pronounced shadows on all Glass components */
+.backdrop-blur-sm, .backdrop-blur-md, .backdrop-blur-lg, .backdrop-blur-xl, .backdrop-blur-2xl, .anti-gravity-card {
+  box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.2), 0 10px 20px -5px rgba(0, 0, 0, 0.1) !important;
+}
+.dark .backdrop-blur-sm, .dark .backdrop-blur-md, .dark .backdrop-blur-lg, .dark .backdrop-blur-xl, .dark .backdrop-blur-2xl, .dark .anti-gravity-card {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 15px 25px -10px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Auto-Shadow for ANY Card Component (to ensure EVERYTHING stands out) */
+.rounded-xl, .rounded-2xl, .rounded-3xl, .rounded-\[2\.5rem\], .rounded-\[3rem\] {
+  box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.12), 0 8px 15px -5px rgba(0, 0, 0, 0.08);
+}
+.dark .rounded-xl, .dark .rounded-2xl, .dark .rounded-3xl, .dark .rounded-\[2\.5rem\], .dark .rounded-\[3rem\] {
+  box-shadow: 0 20px 40px -5px rgba(0, 0, 0, 0.6), 0 10px 20px -5px rgba(0, 0, 0, 0.4);
+}
+
+/* Extreme Layered Box Shadows for explicit Tailwind Utilities */
+.shadow-sm { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.15) !important; }
+.shadow { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.2) !important; }
+.shadow-md { box-shadow: 0 15px 25px -5px rgba(0,0,0,0.25) !important; }
+.shadow-lg { box-shadow: 0 20px 30px -10px rgba(0,0,0,0.3) !important; }
+.shadow-xl { box-shadow: 0 30px 50px -12px rgba(0,0,0,0.35) !important; }
+.shadow-2xl { box-shadow: 0 40px 60px -15px rgba(0,0,0,0.4) !important; }
+
+/* =========================================
+   INPUTS, SEARCH & COMMENT BOXES AESTHETICS
+   ========================================= */
+
+/* Natural Drop Shadows for Search and Comments (Removed Inner Shadow) */
+input[type="text"], input[type="search"], textarea {
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05) !important;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  border: 1px solid rgba(0,0,0,0.05);
+}
+input[type="text"]:focus, input[type="search"]:focus, textarea:focus {
+  box-shadow: 0 0 0 2px rgba(10, 102, 194, 0.2), 0 10px 20px -5px rgba(10, 102, 194, 0.15) !important;
+  border-color: #0a66c2;
+  transform: translateY(-1px);
+}
+
+.dark input[type="text"]:not(.bg-transparent), .dark input[type="search"]:not(.bg-transparent), .dark textarea:not(.bg-transparent) {
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2) !important;
+  border-color: rgba(255,255,255,0.05);
+}
+.dark input[type="text"]:focus:not(.bg-transparent), .dark input[type="search"]:focus:not(.bg-transparent), .dark textarea:focus:not(.bg-transparent) {
+  box-shadow: 0 0 0 2px rgba(10, 102, 194, 0.5), 0 10px 20px -5px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Explicit exception to keep search bars looking natural and bright in Dark Theme */
+.dark input[placeholder*="ابحث"] {
+  color: #1e293b !important;
+}
+.dark input[placeholder*="ابحث"]::placeholder {
+  color: #94a3b8 !important;
+}
+
+/* Specific Boost for Desktop Nav and Chat Icons */
+.lucide, svg {
+  filter: drop-shadow(0px 4px 8px rgba(0, 0, 0, 0.25));
+}
+.dark .lucide, .dark svg {
+  filter: drop-shadow(0px 5px 12px rgba(0, 0, 0, 0.7));
+}
+
+@layer utilities {
+  .anti-gravity-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--anti-gravity-shadow);
+    border-radius: 24px;
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  .anti-gravity-card:hover {
+    box-shadow: var(--anti-gravity-shadow-hover);
+    transform: translateY(-5px);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .snap-x-mandatory {
+    scroll-snap-type: x mandatory;
+  }
+  .snap-center {
+    scroll-snap-align: center;
+  }
+
+  .glass-effect {
+    background: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .premium-gradient-blue {
+    background: linear-gradient(135deg, #0a66c2 0%, #004182 100%);
+  }
+  
+  .card-3d {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 10px 20px -5px rgba(0, 0, 0, 0.1), inset 0 2px 4px rgba(255, 255, 255, 0.4);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  .dark .card-3d {
+    background: rgba(15, 23, 42, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8), inset 0 2px 4px rgba(255, 255, 255, 0.1), 0 0 20px rgba(10, 102, 194, 0.05);
+  }
+
+  .card-3d:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.2), inset 0 2px 4px rgba(255, 255, 255, 0.5);
+  }
+
+  .dark .card-3d:hover {
+    box-shadow: 0 35px 60px -15px rgba(0, 0, 0, 0.9), inset 0 2px 4px rgba(255, 255, 255, 0.15), 0 0 30px rgba(10, 102, 194, 0.1);
+  }
+
+  /* Safe area padding for mobile bottom bar */
+  .pb-safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 80px);
+  }
+
+  .spring-hover {
+    transition: all 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  .spring-hover:hover {
+    transform: translateY(-8px) scale(1.02);
+    box-shadow: var(--anti-gravity-shadow-hover);
+  }
+
+  .dark .spring-hover:hover {
+    box-shadow: 0 30px 60px -10px rgba(0, 0, 0, 0.8);
+  }
+
+  .glass-texture {
+    background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+}
+
+/* RTL Support for carousels */
+[dir="rtl"] .carousel-container {
+  flex-direction: row-reverse;
+}
+
+/* Animations */
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* =========================================
+   SKELETON LOADER ANIMATION
+   ========================================= */
+@keyframes skeleton-shimmer {
+  0% { background-position: -600px 0; }
+  100% { background-position: 600px 0; }
+}
+
+.skeleton-pulse {
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 600px 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+.dark .skeleton-pulse {
+  background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+  background-size: 600px 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+/* =========================================
+   CUSTOM CHAT SCROLLBAR (visible, slim, elegant)
+   ========================================= */
+.custom-chat-scroll::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.custom-chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-chat-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 99px;
+}
+.custom-chat-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.6);
+}
+.dark .custom-chat-scroll::-webkit-scrollbar-thumb {
+  background: rgba(71, 85, 105, 0.5);
+}
+.dark .custom-chat-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.7);
+}
+  
+/* =========================================  
+   PROFESSIONAL NOTIFICATION BADGE  
+   ========================================= */  
+.notif-badge-premium {  
+  background: linear-gradient(135deg, #ef4444 0% , #dc2626 100%);  
+  box-shadow: 0 4px 10px rgba(220, 38, 38, 0.4), inset 0 2px 4px rgba(255, 255, 255, 0.3);  
+  border: 1.5px solid white;  
+  color: white;  
+  font-weight: 900;  
+  display: flex;  
+  align-items: center;  
+  justify-content: center;  
+  z-index: 50;  
+}  
+.dark .notif-badge-premium {  
+  border-color: #020817;  
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);  
+} 

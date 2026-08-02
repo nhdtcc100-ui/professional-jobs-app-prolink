@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ProLink</string>
+    <string name="title_activity_main">ProLink</string>
+    <string name="package_name">com.prolink.app</string>
+    <string name="custom_url_scheme">com.prolink.app</string>
+</resources>

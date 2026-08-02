@@ -1,0 +1,71 @@
+# version: "3.8" # تم التعطيل لأنه أصبح قديماً
+
+# ===================================================
+# بيئة اختبار الحمل الكاملة لمنصة ProLink
+# تشغيل: docker-compose -f docker-compose.test.yml up
+# ===================================================
+
+services:
+
+  # ── قاعدة البيانات المحلية (PostgreSQL) ─────────────────────────
+  db:
+    image: supabase/postgres:15.1.1.78  # نسخة أكثر استقراراً وقابلة للسحب
+    container_name: prolink_test_db
+    restart: unless-stopped
+    ports:
+      - "54322:5432"    # منفذ محلي مختلف لتجنب التعارض
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./tests/load/seed.sql:/docker-entrypoint-initdb.d/seed.sql  # بيانات ابتدائية
+
+  # ── واجهة REST API لـ Postgres (PostgREST) ──────────────────────
+  rest:
+    image: postgrest/postgrest:latest  # استخدام أحدث نسخة مستقرة لضمان التوافق
+    container_name: prolink_test_rest
+    restart: unless-stopped
+    ports:
+      - "54321:3000"    # نفس منفذ Supabase الافتراضي
+    environment:
+      PGRST_DB_URI: postgres://postgres:postgres@db:5432/postgres
+      PGRST_DB_SCHEMA: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: "super-secret-jwt-token-with-at-least-32-characters"
+      PGRST_DB_POOL: 50   # عدد اتصالات مجمع DB Pool
+    depends_on:
+      - db
+
+  # ── k6 لأداء اختبار الحمل ───────────────────────────────────────
+  k6:
+    image: grafana/k6:latest  # تحديث k6
+    container_name: prolink_k6_runner
+    volumes:
+      - ./tests/load:/scripts        # توصيل مجلد الاختبارات
+      - ./tests/load/reports:/reports # حفظ التقارير
+    environment:
+      K6_OUT: json=/reports/result.json
+    command: run /scripts/docker-smoke-test.js
+    depends_on:
+      - rest
+    profiles:
+      - test   # لن يشتغل تلقائياً، يشتغل عبر: docker-compose --profile test up k6
+
+  # ── Grafana لعرض النتائج بصرياً ─────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: prolink_grafana
+    ports:
+      - "3001:3000"    # افتح المتصفح على http://localhost:3001
+    volumes:
+      - grafana_data:/var/lib/grafana
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    depends_on:
+      - db
+
+volumes:
+  pgdata:
+  grafana_data:
