@@ -446,7 +446,13 @@ export function ProfilePage({
   // ── CV: Instant Direct Upload & Database Persistence ──
   const handleCVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !user?.id) return;
+    if (!file) return;
+
+    const currentUserId = user?.id || appUser?.id || profile?.id || formData?.id;
+    if (!currentUserId) {
+      addToast('يرجى تسجيل الدخول أولاً لرفع السيرة الذاتية', 'error');
+      return;
+    }
 
     setSaveStatus('saving');
     addToast('جاري رفع وتثبيت السيرة الذاتية... ⏳');
@@ -457,9 +463,9 @@ export function ProfilePage({
         await cvService.deleteCV(formData.cvUrl);
       }
 
-      const { data: url, error: uploadErr } = await cvService.uploadCV(user.id, file, {
-        name: user.name,
-        email: user.email,
+      const { data: url, error: uploadErr } = await cvService.uploadCV(currentUserId, file, {
+        name: user?.name || appUser?.name || profile?.name,
+        email: user?.email || appUser?.email || profile?.email,
       });
 
       if (uploadErr || !url) {
@@ -469,7 +475,7 @@ export function ProfilePage({
       const updatedData = { ...formData, cvUrl: url, cv_url: url };
       setFormData(updatedData);
 
-      const { error } = await profileService.updateProfile(user.id, {
+      const { error } = await profileService.updateProfile(currentUserId, {
         cvUrl: url,
         cv_url: url
       });
@@ -490,7 +496,10 @@ export function ProfilePage({
     } catch (err: any) {
       setSaveStatus('error');
       addToast('فشل رفع السيرة الذاتية: ' + (err.message || ''), 'error');
-      setTimeout(() => setSaveStatus('idle'), 3000);
+      setTimeout(() => setSaveStatus('idle'), 3500);
+    } finally {
+      // Clear input so selecting the same or another file triggers onChange on mobile
+      if (e.target) e.target.value = '';
     }
   };
 

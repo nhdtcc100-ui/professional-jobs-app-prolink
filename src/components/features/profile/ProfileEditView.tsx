@@ -897,11 +897,19 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
           </div>
         </div>
 
-        <div className="relative group cursor-pointer">
+        <div 
+          className="relative group cursor-pointer"
+          onClick={() => {
+            const inputEl = document.getElementById('profile-cv-upload-input') as HTMLInputElement | null;
+            if (inputEl) inputEl.click();
+          }}
+        >
           <input
+            id="profile-cv-upload-input"
             type="file"
             onChange={handleCVUpload}
-            accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pdf,.doc,.docx"
+            onClick={(e) => e.stopPropagation()}
+            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
           />
           <div className="border-2 border-dashed border-slate-200 rounded-3xl p-8 flex flex-col items-center justify-center gap-3 group-hover:border-blue-400 group-hover:bg-blue-50/30 transition-all">
@@ -909,7 +917,7 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
               <CloudUpload className="text-blue-500" size={24} />
             </div>
             <p className="text-xs font-black text-slate-700">اضغط لرفع ملف السيرة الذاتية</p>
-            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">PDF, DOCX (Max 20MB)</p>
+            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">PDF, DOCX (Max 25MB)</p>
           </div>
         </div>
 

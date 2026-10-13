@@ -1142,7 +1142,7 @@ function App() {
                       profile={selectedProfile || appUser!}
                       isMe={(selectedProfile?.id || appUser?.id) === appUser?.id}
                       isEditing={isEditingProfile}
-                      user={user}
+                      user={user || appUser}
                       onBack={() => { setSelectedProfile(null); setActiveTab('home'); }}
                       isConnected={connections.some(c =>
                         c.status === 'accepted' &&

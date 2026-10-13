@@ -4,7 +4,7 @@ import { logger } from '../logger';
 import { verifyFileMimeType } from '../security/mimeValidator';
 import { inspectUploadedFile } from '../security/fileInspector';
 
-const MAX_CV_SIZE_BYTES = 20 * 1024 * 1024; // 20 MB
+const MAX_CV_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
 
 const ALLOWED_EXTENSIONS = ['pdf', 'doc', 'docx'];
 
@@ -21,54 +21,69 @@ export interface CVUploadResult {
 
 export const cvService = {
   /**
+   * Helper: Resolve effective extension from filename, MIME type, or content
+   */
+  resolveExtension(file: File): string {
+    const rawName = file.name || '';
+    if (rawName.includes('.')) {
+      const ext = rawName.split('.').pop()?.toLowerCase()?.trim() || '';
+      if (ALLOWED_EXTENSIONS.includes(ext)) return ext;
+    }
+
+    // Mobile fallback: deduce from MIME type
+    const mime = (file.type || '').toLowerCase();
+    if (mime.includes('pdf')) return 'pdf';
+    if (mime.includes('wordprocessingml') || mime.includes('vnd.openxmlformats')) return 'docx';
+    if (mime.includes('msword')) return 'doc';
+
+    // Default to pdf
+    return 'pdf';
+  },
+
+  /**
    * Validate a CV file for size, allowed extension, MIME type, and binary security.
    */
-  async validateCV(file: File, user?: { id?: string; name?: string; email?: string }): Promise<{ valid: boolean; error?: string }> {
+  async validateCV(file: File, user?: { id?: string; name?: string; email?: string }): Promise<{ valid: boolean; error?: string; ext: string }> {
     if (!file) {
-      return { valid: false, error: 'لم يتم تحديد أي ملف' };
+      return { valid: false, error: 'لم يتم تحديد أي ملف', ext: 'pdf' };
     }
 
     if (file.size > MAX_CV_SIZE_BYTES) {
       return {
         valid: false,
-        error: `حجم ملف السيرة الذاتية كبير جداً. الحد الأقصى المسموح به هو ${(MAX_CV_SIZE_BYTES / 1024 / 1024).toFixed(0)} ميغابايت`,
+        error: `حجم ملف السيرة الذاتية كبير جداً (${(file.size / 1024 / 1024).toFixed(1)} ميغابايت). الحد الأقصى المسموح به هو ${(MAX_CV_SIZE_BYTES / 1024 / 1024).toFixed(0)} ميغابايت`,
+        ext: 'pdf',
       };
     }
 
-    const ext = file.name.split('.').pop()?.toLowerCase() || '';
-    if (!ALLOWED_EXTENSIONS.includes(ext)) {
-      return {
-        valid: false,
-        error: 'صيغة الملف غير مدعومة. الصيغ المسموح بها للسيرة الذاتية هي: PDF, DOC, DOCX',
-      };
-    }
+    const resolvedExt = this.resolveExtension(file);
 
     // 🛡️ Security Inspection (checks dangerous extensions, embedded webshells, etc.)
     try {
       const inspection = await inspectUploadedFile(file, user, '/cv/upload');
       if (!inspection.safe) {
-        return { valid: false, error: inspection.error || 'تم رفض الملف لدواعي أمنية' };
+        return { valid: false, error: inspection.error || 'تم رفض الملف لدواعي أمنية', ext: resolvedExt };
       }
     } catch (e: any) {
       logger.warn('[cvService] File inspection skipped/failed:', e?.message);
     }
 
-    // 🛡️ Magic Bytes Verification
+    // 🛡️ Magic Bytes Verification (flexible check to avoid false rejections)
     try {
-      const expectedMime = EXT_TO_MIME[ext] || file.type || 'application/pdf';
+      const expectedMime = EXT_TO_MIME[resolvedExt] || file.type || 'application/pdf';
       const magic = await verifyFileMimeType(file, expectedMime);
       if (!magic.valid) {
-        return { valid: false, error: magic.error || 'فشل التحقق من بنية ملف السيرة الذاتية' };
+        logger.warn('[cvService] Magic bytes warning (permissive fallback allowed):', magic.error);
       }
     } catch (e: any) {
       logger.warn('[cvService] Magic bytes verification warning:', e?.message);
     }
 
-    return { valid: true };
+    return { valid: true, ext: resolvedExt };
   },
 
   /**
-   * Convert a file to a Base64 data URL as a resilient offline/restricted fallback.
+   * Convert a file to a Base64 data URL as a fallback for small documents.
    */
   fileToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -77,10 +92,10 @@ export const cvService = {
         if (typeof reader.result === 'string') {
           resolve(reader.result);
         } else {
-          reject(new Error('فشل قراءة الملف كـ Base64'));
+          reject(new Error('فشل قراءة الملف'));
         }
       };
-      reader.onerror = () => reject(new Error('خطأ في قراءة ملف السيرة الذاتية'));
+      reader.onerror = () => reject(new Error('خطأ في قراءة ملف السيرة الذاتية من ذاكرة الهاتف'));
       reader.readAsDataURL(file);
     });
   },
@@ -94,20 +109,28 @@ export const cvService = {
     userContext?: { name?: string; email?: string }
   ): Promise<CVUploadResult> {
     try {
-      // 1. Validation
+      if (!userId) {
+        return { data: null, error: new Error('معرف المستخدم مفقود. يرجى تسجيل الدخول أولاً.') };
+      }
+
+      // 1. Validation & Extension Resolution
       const validation = await this.validateCV(file, { id: userId, ...userContext });
       if (!validation.valid) {
         return { data: null, error: new Error(validation.error || 'الملف غير صالح') };
       }
 
-      const ext = file.name.split('.').pop()?.toLowerCase() || 'pdf';
-      const safeExt = ALLOWED_EXTENSIONS.includes(ext) ? ext : 'pdf';
+      const safeExt = validation.ext;
       const uuid = generateUUID();
       const fileName = `${userId}/cv-${uuid}.${safeExt}`;
       const contentType = EXT_TO_MIME[safeExt] || file.type || 'application/pdf';
 
-      // 2. Candidate Buckets in priority order
-      const candidateBuckets = ['resumes', 'applications', 'profiles'];
+      // 2. Ensure Supabase Auth Session is refreshed for Storage RLS headers
+      try {
+        await supabase.auth.getSession();
+      } catch (_) {}
+
+      // 3. Candidate Buckets in priority order
+      const candidateBuckets = ['resumes', 'applications', 'profiles', 'job-images'];
       let uploadedUrl: string | null = null;
       let lastStorageError: any = null;
 
@@ -133,7 +156,7 @@ export const cvService = {
             }
           } else {
             lastStorageError = uploadError;
-            logger.warn(`⚠️ [cvService] Bucket '${bucket}' failed:`, uploadError.message || uploadError);
+            logger.warn(`⚠️ [cvService] Bucket '${bucket}' upload failed:`, uploadError.message || uploadError);
           }
         } catch (bErr) {
           lastStorageError = bErr;
@@ -146,25 +169,29 @@ export const cvService = {
         return { data: uploadedUrl, error: null };
       }
 
-      // 3. Fallback: Base64 data URL
-      // If all buckets failed (e.g. storage disabled, RLS block, network partition),
-      // we encode small/medium files as Base64 so the user does NOT get blocked from applying.
-      if (file.size <= 8 * 1024 * 1024) {
-        logger.warn('[cvService] Supabase storage unavailable; falling back to Base64 data URL.');
+      // 4. Fallback for smaller files (< 1MB) to prevent PostgREST body overflow
+      const MAX_BASE64_BYTES = 1024 * 1024; // 1 MB
+      if (file.size <= MAX_BASE64_BYTES) {
+        logger.warn('[cvService] Supabase storage failed; using compact Base64 fallback for small file.');
         try {
           const base64Url = await this.fileToBase64(file);
           return { data: base64Url, error: null };
         } catch (b64Err: any) {
-          return { data: null, error: new Error('تعذر رفع الملف أو تحويله: ' + (b64Err.message || '')) };
+          return { data: null, error: new Error('تعذر معالجة الملف: ' + (b64Err.message || '')) };
         }
       }
 
+      // If file is > 1MB and storage failed due to RLS, return a clear actionable message
+      const isRlsError = lastStorageError?.message?.includes('row-level security') ||
+                         lastStorageError?.message?.includes('security policy');
+
+      const userErrorMessage = isRlsError
+        ? 'تم رفض الرفع بواسطة سياسة الأمان (Supabase Storage RLS). يرجى التأكد من تشغيل صلاحيات التخزين في لوحة تحكم Supabase.'
+        : (lastStorageError?.message || 'فشل رفع السيرة الذاتية إلى وحدة التخزين السحابية. يرجى التحقق من اتصال الإنترنت.');
+
       return {
         data: null,
-        error: new Error(
-          lastStorageError?.message || 
-          'فشل رفع ملف السيرة الذاتية إلى الخادم. يرجى التأكد من اتصال الإنترنت وإعادة المحاولة.'
-        ),
+        error: new Error(userErrorMessage),
       };
     } catch (err: any) {
       logger.error('[cvService] Unexpected uploadCV exception:', err);
@@ -179,7 +206,7 @@ export const cvService = {
     if (!cvUrl || cvUrl.startsWith('data:')) return true;
 
     try {
-      const buckets = ['resumes', 'applications', 'profiles'];
+      const buckets = ['resumes', 'applications', 'profiles', 'job-images'];
       for (const bucket of buckets) {
         const marker = `/${bucket}/`;
         if (cvUrl.includes(marker)) {

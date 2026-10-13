@@ -468,12 +468,13 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
                 )}
                 <input
                   id="cv-upload-main" type="file" className="hidden"
-                  accept=".pdf,.doc,.docx"
+                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   onChange={e => {
                     const file = e.target.files?.[0];
                     if (!file) return;
-                    if (file.size > 5 * 1024 * 1024) { addToast('حجم الملف يجب أن لا يتجاوز 5 ميجابايت', 'error'); return; }
+                    if (file.size > 20 * 1024 * 1024) { addToast('حجم الملف يجب أن لا يتجاوز 20 ميجابايت', 'error'); return; }
                     setCvFileObj(file);
+                    e.target.value = '';
                   }}
                 />
               </div>
