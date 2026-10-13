@@ -437,9 +437,9 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
             {/* CV Upload */}
             <div>
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">السيرة الذاتية (PDF / Word)</label>
-              <div
-                onClick={() => document.getElementById('cv-upload-main')?.click()}
-                className={`w-full border-2 border-dashed rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all ${
+              <label
+                htmlFor="cv-upload-main"
+                className={`w-full border-2 border-dashed rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all block ${
                   cvFileObj || (appUser as any).cv_url || (appUser as any).cvUrl ? 'bg-blue-50 border-blue-300' : 'bg-slate-50 border-slate-200 hover:border-blue-200 hover:bg-blue-50/30'
                 }`}
               >
@@ -452,7 +452,8 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
                     </div>
                     {cvFileObj && (
                       <button
-                        onClick={e => { e.stopPropagation(); setCvFileObj(null); }}
+                        type="button"
+                        onClick={e => { e.preventDefault(); e.stopPropagation(); setCvFileObj(null); }}
                         className="p-2 hover:bg-red-50 text-red-400 rounded-xl transition-colors"
                       >
                         <Trash2 size={15} />
@@ -463,7 +464,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
                   <>
                     <div className="p-3 bg-white rounded-2xl shadow-sm text-slate-300 mb-3"><Paperclip size={24} /></div>
                     <p className="text-xs font-bold text-slate-600">اضغط لرفع السيرة الذاتية</p>
-                    <p className="text-[10px] text-slate-400 font-medium mt-1">PDF, DOC, DOCX — الحد الأقصى 5 ميجابايت</p>
+                    <p className="text-[10px] text-slate-400 font-medium mt-1">PDF, DOC, DOCX — الحد الأقصى 20 ميجابايت</p>
                   </>
                 )}
                 <input
@@ -477,7 +478,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
                     e.target.value = '';
                   }}
                 />
-              </div>
+              </label>
             </div>
           </div>
         </div>

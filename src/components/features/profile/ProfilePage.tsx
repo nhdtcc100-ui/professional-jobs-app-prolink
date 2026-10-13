@@ -368,7 +368,11 @@ export function ProfilePage({
   };
 
   const handleManualSave = useCallback(async () => {
-    if (!user?.id) return;
+    const targetUserId = user?.id || appUser?.id || profile?.id || formData?.id;
+    if (!targetUserId) {
+      addToast('يرجى تسجيل الدخول أولاً لحفظ التعديلات', 'error');
+      return;
+    }
     setSaveStatus('saving');
     try {
       let updatedFormData = { ...formData };
@@ -376,20 +380,22 @@ export function ProfilePage({
       // Upload pending CV (always replaces existing one)
       if (pendingCV) {
         if (updatedFormData.cvUrl) {
-          try {
-            const oldPath = updatedFormData.cvUrl.split('/profiles/').pop();
-            if (oldPath) await (supabase.storage.from('profiles') as any).remove([oldPath]);
-          } catch { /* ignore delete error */ }
+          await cvService.deleteCV(updatedFormData.cvUrl);
         }
-        const url = await imageService.processAndUpload(pendingCV, user.id, 'profiles');
-        updatedFormData = { ...updatedFormData, cvUrl: url };
+        const { data: url, error: uploadErr } = await cvService.uploadCV(targetUserId, pendingCV, {
+          name: user?.name || appUser?.name || profile?.name,
+          email: user?.email || appUser?.email || profile?.email,
+        });
+        if (uploadErr || !url) throw uploadErr || new Error('فشل رفع ملف السيرة الذاتية');
+
+        updatedFormData = { ...updatedFormData, cvUrl: url, cv_url: url };
         setPendingCV(null);
         setPendingCVName(null);
       }
 
       setFormData(updatedFormData);
 
-      const { error } = await profileService.updateProfile(user.id, {
+      const { error } = await profileService.updateProfile(targetUserId, {
         ...updatedFormData,
         // Sync both field names so DB always has both updated
         title: updatedFormData.industry || updatedFormData.title || '',
@@ -415,17 +421,18 @@ export function ProfilePage({
       addToast('فشل الحفظ: ' + (err.message || ''), 'error');
       setTimeout(() => setSaveStatus('idle'), 3000);
     }
-  }, [user?.id, isMe, setAppUser, onSave, addToast, profile, formData, pendingCV]);
+  }, [user?.id, appUser?.id, profile?.id, isMe, setAppUser, onSave, addToast, profile, formData, pendingCV]);
 
   const handleFieldChange = useCallback(async (field: string, value: any) => {
     const newData = { ...formData, [field]: value };
     setFormData(newData);
 
+    const targetUserId = user?.id || appUser?.id || profile?.id || formData?.id;
     // If changing 'open_to' (status), persist immediately to database and global context
-    if (field === 'open_to' && user?.id) {
+    if (field === 'open_to' && targetUserId) {
       setSaveStatus('saving');
       try {
-        await profileService.updateProfile(user.id, { open_to: value });
+        await profileService.updateProfile(targetUserId, { open_to: value });
         if (isMe && setAppUser) {
           setAppUser((prev: any) => prev ? { ...prev, open_to: value } : null);
         }
@@ -441,7 +448,7 @@ export function ProfilePage({
     } else {
       setSaveStatus('idle');
     }
-  }, [formData, user?.id, isMe, setAppUser, onSave, addToast]);
+  }, [formData, user?.id, appUser?.id, profile?.id, isMe, setAppUser, onSave, addToast]);
 
   // ── CV: Instant Direct Upload & Database Persistence ──
   const handleCVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
