@@ -219,7 +219,7 @@ export function ProfilePage({
       console.warn("⚠️ [AvatarUpload] لم يتم اختيار أي ملف من المتصفح.");
       return;
     }
-    const targetUserId = user?.id || appUser?.id;
+    const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
     if (!targetUserId) {
       console.error("❌ [AvatarUpload] فشل التبديل: تعذر العثور على معرّف المستخدم (User ID is missing).");
       addToast('تعذر تحديد حساب المستخدم لتحديث الصورة', 'error');
@@ -235,7 +235,7 @@ export function ProfilePage({
 
     try {
       const { inspectUploadedFile } = await import('../../../lib/security/fileInspector');
-      const check = await inspectUploadedFile(file, user || appUser, '/profile/avatar-upload');
+      const check = await inspectUploadedFile(file, user || appUser || profile, '/profile/avatar-upload');
       if (!check.safe) {
         console.error("❌ [AvatarUpload] فشل الفحص الأمني للصورة:", check);
         addToast(check.error || 'تم حظر الصورة لدواعي أمنية', 'error');
@@ -245,9 +245,13 @@ export function ProfilePage({
       console.warn("⚠️ [AvatarUpload] تنبيه أثناء فحص الأمان:", secErr);
     }
 
-    // Instant local preview for immediate visual feedback
-    const localUrl = URL.createObjectURL(file);
-    setFormData(prev => ({ ...prev, avatar: localUrl }));
+    // Instant local preview for immediate visual feedback (safe for mobile)
+    try {
+      const localUrl = URL.createObjectURL(file);
+      setFormData(prev => ({ ...prev, avatar: localUrl }));
+    } catch (previewErr) {
+      console.warn("⚠️ [AvatarUpload] تعذر إنشاء معاينة محلية:", previewErr);
+    }
     setSaveStatus('saving');
     addToast('جاري رفع وتثبيت الصورة الشخصية... ⏳');
 
@@ -297,7 +301,7 @@ export function ProfilePage({
       console.warn("⚠️ [CoverUpload] لم يتم اختيار أي ملف غلاف من المتصفح.");
       return;
     }
-    const targetUserId = user?.id || appUser?.id;
+    const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
     if (!targetUserId) {
       console.error("❌ [CoverUpload] فشل التبديل: تعذر العثور على معرّف المستخدم (User ID is missing).");
       addToast('تعذر تحديد حساب المستخدم لتحديث الغلاف', 'error');
@@ -313,7 +317,7 @@ export function ProfilePage({
 
     try {
       const { inspectUploadedFile } = await import('../../../lib/security/fileInspector');
-      const check = await inspectUploadedFile(file, user || appUser, '/profile/cover-upload');
+      const check = await inspectUploadedFile(file, user || appUser || profile, '/profile/cover-upload');
       if (!check.safe) {
         console.error("❌ [CoverUpload] فشل الفحص الأمني لصورة الغلاف:", check);
         addToast(check.error || 'تم حظر صورة الغلاف لدواعي أمنية', 'error');
@@ -323,9 +327,13 @@ export function ProfilePage({
       console.warn("⚠️ [CoverUpload] تنبيه أثناء فحص الأمان:", secErr);
     }
 
-    // Instant local preview
-    const localUrl = URL.createObjectURL(file);
-    setFormData(prev => ({ ...prev, coverUrl: localUrl }));
+    // Instant local preview (safe for mobile)
+    try {
+      const localUrl = URL.createObjectURL(file);
+      setFormData(prev => ({ ...prev, coverUrl: localUrl, cover_url: localUrl }));
+    } catch (previewErr) {
+      console.warn("⚠️ [CoverUpload] تعذر إنشاء معاينة محلية للغلاف:", previewErr);
+    }
     setSaveStatus('saving');
     addToast('جاري رفع وتثبيت صورة الغلاف... ⏳');
 

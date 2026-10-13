@@ -204,14 +204,15 @@ export function ProfileModal({
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !user?.id) return;
+    const targetUserId = user?.id || (profile as any)?.id;
+    if (!file || !targetUserId) return;
     setSaveStatus('saving');
     addToast('جاري معالجة ورفع الصورة... ⏳');
     try {
       let url: string;
       try {
         // Use the professional centralized service
-        url = await imageService.processAndUpload(file, user.id, 'profiles');
+        url = await imageService.processAndUpload(file, targetUserId, 'profiles');
       } catch (err: any) {
         console.error("DEBUG: Upload failed, using fallback:", err);
         url = await new Promise(resolve => {
@@ -228,18 +229,21 @@ export function ProfileModal({
     } catch (err: any) {
       addToast(`خطأ: ${err.message}`, 'error');
       setSaveStatus('error');
+    } finally {
+      if (e.target) e.target.value = '';
     }
   };
 
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !user?.id) return;
+    const targetUserId = user?.id || (profile as any)?.id;
+    if (!file || !targetUserId) return;
     setSaveStatus('saving');
     addToast('جاري معالجة ورفع الغلاف... ⏳');
     try {
       let url: string;
       try {
-        url = await imageService.processAndUpload(file, user.id, 'profiles');
+        url = await imageService.processAndUpload(file, targetUserId, 'profiles');
       } catch (err) {
         console.warn("DEBUG: Cover upload fallback:", err);
         url = await new Promise(resolve => {
@@ -255,6 +259,8 @@ export function ProfileModal({
     } catch (err: any) {
       addToast(`خطأ: ${err.message}`, 'error');
       setSaveStatus('error');
+    } finally {
+      if (e.target) e.target.value = '';
     }
   };
 

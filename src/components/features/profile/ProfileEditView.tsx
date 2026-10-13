@@ -570,16 +570,23 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
             </div>
 
             {handleAvatarChange && (
-              <label className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black cursor-pointer shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-1.5 shrink-0">
-                <Camera size={13} />
-                <span>تغيير الصورة</span>
+              <>
+                <label 
+                  htmlFor="avatar-file-input-edit" 
+                  className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black cursor-pointer shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-1.5 shrink-0"
+                >
+                  <Camera size={13} />
+                  <span>تغيير الصورة</span>
+                </label>
                 <input
+                  id="avatar-file-input-edit"
                   type="file"
                   className="hidden"
-                  accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif"
+                  accept="image/*"
+                  onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
                   onChange={handleAvatarChange}
                 />
-              </label>
+              </>
             )}
           </div>
 
@@ -604,16 +611,23 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
             </div>
 
             {handleCoverChange && (
-              <label className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black cursor-pointer shadow-md shadow-indigo-500/20 active:scale-95 transition-all flex items-center gap-1.5 shrink-0">
-                <ImageIcon size={13} />
-                <span>تغيير الغلاف</span>
+              <>
+                <label 
+                  htmlFor="cover-file-input-edit" 
+                  className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black cursor-pointer shadow-md shadow-indigo-500/20 active:scale-95 transition-all flex items-center gap-1.5 shrink-0"
+                >
+                  <ImageIcon size={13} />
+                  <span>تغيير الغلاف</span>
+                </label>
                 <input
+                  id="cover-file-input-edit"
                   type="file"
                   className="hidden"
-                  accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif"
+                  accept="image/*"
+                  onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
                   onChange={handleCoverChange}
                 />
-              </label>
+              </>
             )}
           </div>
         </div>

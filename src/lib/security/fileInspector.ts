@@ -145,8 +145,12 @@ export async function inspectUploadedFile(
                   // Mobile: no name but type hints at document
                   (!lowerName && (file.type.includes('pdf') || file.type.includes('word') || file.type.includes('document')));
 
+    const isImage = file.type.startsWith('image/') || 
+                    /\.(jpg|jpeg|png|webp|gif|bmp|heic|heif)$/i.test(lowerName) ||
+                    (!isDoc && (!file.type || file.type === 'application/octet-stream'));
+
     // Check magic bytes for images/PDF/DOC
-    if (file.type.startsWith('image/') || isDoc) {
+    if (isImage || isDoc) {
       let magicMatched = false;
 
       // Special check for PDF: %PDF can appear in the first 512 bytes (common on mobile)
@@ -185,7 +189,7 @@ export async function inspectUploadedFile(
       }
 
       // If it claims to be an image but lacks standard header, check if it's a known mobile format before blocking
-      if (!magicMatched && file.type.startsWith('image/')) {
+      if (!magicMatched && isImage) {
         // Double check for JPEG SOI FF D8
         if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
           magicMatched = true;
@@ -193,12 +197,12 @@ export async function inspectUploadedFile(
       }
     }
 
-    // 4. Scan binary sample text for embedded WebShell signatures (skip broad text patterns for documents)
+    // 4. Scan binary sample text for embedded WebShell signatures (skip broad text patterns for images & documents)
     const decoder = new TextDecoder('utf-8', { fatal: false });
     const textSample = decoder.decode(bytes);
 
-    // For documents (PDF, DOCX), only look for explicit server-side script tags, not generic system/eval phrases
-    const activePatterns = isDoc 
+    // For documents and images (e.g. photos from albums/camera with EXIF), only look for explicit server-side script tags
+    const activePatterns = (isDoc || isImage)
       ? [/<\?php/i, /<\?=/i, /<script[^>]*language=["']php["']/i]
       : WEBSHELL_BINARY_PATTERNS;
 

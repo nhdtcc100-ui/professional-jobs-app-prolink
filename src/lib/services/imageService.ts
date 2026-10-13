@@ -71,63 +71,85 @@ export const imageService = {
   async compressImage(file: File): Promise<Blob | File> {
     return new Promise((resolve) => {
       try {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
+        let objectUrl = '';
+        try {
+          if (typeof URL !== 'undefined' && URL.createObjectURL) {
+            objectUrl = URL.createObjectURL(file);
+          }
+        } catch {
+          // fallback to FileReader if createObjectURL fails on mobile
+        }
+
+        const img = new Image();
+        const cleanup = () => {
+          if (objectUrl) {
+            try { URL.revokeObjectURL(objectUrl); } catch {}
+          }
+        };
+
+        img.onload = () => {
           try {
-            const img = new Image();
-            img.src = event.target?.result as string;
-            img.onload = () => {
-              try {
-                const canvas = document.createElement('canvas');
-                let width = img.naturalWidth  || img.width  || 800;
-                let height = img.naturalHeight || img.height || 600;
+            cleanup();
+            const canvas = document.createElement('canvas');
+            let width = img.naturalWidth  || img.width  || 800;
+            let height = img.naturalHeight || img.height || 600;
 
-                const MAX_DIM = 1200;
+            const MAX_DIM = 1200;
 
-                if (width >= height) {
-                  if (width > MAX_DIM) {
-                    height = Math.round((height * MAX_DIM) / width);
-                    width = MAX_DIM;
-                  }
-                } else {
-                  if (height > MAX_DIM) {
-                    width = Math.round((width * MAX_DIM) / height);
-                    height = MAX_DIM;
-                  }
-                }
+            if (width >= height) {
+              if (width > MAX_DIM) {
+                height = Math.round((height * MAX_DIM) / width);
+                width = MAX_DIM;
+              }
+            } else {
+              if (height > MAX_DIM) {
+                width = Math.round((width * MAX_DIM) / height);
+                height = MAX_DIM;
+              }
+            }
 
-                // Guard against invalid dimensions (can happen on some Android browsers)
-                if (!width || !height || width < 1 || height < 1) {
-                  resolve(file);
-                  return;
-                }
+            // Guard against invalid dimensions (can happen on some Android browsers)
+            if (!width || !height || width < 1 || height < 1) {
+              resolve(file);
+              return;
+            }
 
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                if (!ctx) { resolve(file); return; }
-                ctx.drawImage(img, 0, 0, width, height);
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { resolve(file); return; }
+            ctx.drawImage(img, 0, 0, width, height);
 
-                canvas.toBlob((blob) => {
-                  // toBlob can return null on restricted Android WebViews
-                  if (blob && blob.size > 0) {
-                    resolve(blob);
-                  } else {
-                    console.warn('[imageService] canvas.toBlob returned null/empty on mobile — using original file');
-                    resolve(file);
-                  }
-                }, 'image/jpeg', 0.82);
-              } catch {
+            canvas.toBlob((blob) => {
+              // toBlob can return null on restricted Android WebViews
+              if (blob && blob.size > 0) {
+                resolve(blob);
+              } else {
+                console.warn('[imageService] canvas.toBlob returned null/empty on mobile — using original file');
                 resolve(file);
               }
-            };
-            img.onerror = () => resolve(file);
+            }, 'image/jpeg', 0.82);
           } catch {
             resolve(file);
           }
         };
-        reader.onerror = () => resolve(file);
+
+        img.onerror = () => {
+          cleanup();
+          // If decoding fails (e.g. HEIC / RAW from album), use original file
+          resolve(file);
+        };
+
+        if (objectUrl) {
+          img.src = objectUrl;
+        } else {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            img.src = e.target?.result as string;
+          };
+          reader.onerror = () => resolve(file);
+          reader.readAsDataURL(file);
+        }
       } catch {
         resolve(file);
       }
