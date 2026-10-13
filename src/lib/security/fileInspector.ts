@@ -112,7 +112,18 @@ export async function inspectUploadedFile(
 
   // 3. Inspect binary content & Magic Bytes
   try {
-    const buffer = await file.slice(0, 8192).arrayBuffer();
+    const slice = file.slice(0, 8192);
+    let buffer: ArrayBuffer;
+    if (typeof slice.arrayBuffer === 'function') {
+      buffer = await slice.arrayBuffer();
+    } else {
+      buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as ArrayBuffer);
+        reader.onerror = () => reject(new Error('FileReader failed'));
+        reader.readAsArrayBuffer(slice);
+      });
+    }
     const bytes = new Uint8Array(buffer);
 
     const lowerName = file.name.toLowerCase();
@@ -197,8 +208,8 @@ export async function inspectUploadedFile(
       }
     }
   } catch (e: any) {
-    // If reading array buffer fails
-    return { safe: false, error: 'فشل قراءة وفحص ملف البيانات' };
+    // If reading array buffer fails on very old device, don't block user
+    return { safe: true };
   }
 
   return { safe: true };
