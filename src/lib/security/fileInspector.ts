@@ -64,31 +64,40 @@ export async function inspectUploadedFile(
     return { safe: false, error: 'الملف غير موجود' };
   }
 
-  // 1. Check size boundaries (max 15MB)
-  if (file.size > 15 * 1024 * 1024) {
-    return { safe: false, error: '🚨 حجم الملف كبير جداً (الحد الأقصى 15 ميجابايت)' };
+  // 1. Check size boundaries (max 25MB — matches cvService limit)
+  if (file.size > 25 * 1024 * 1024) {
+    return { safe: false, error: '🚨 حجم الملف كبير جداً (الحد الأقصى 25 ميجابايت)' };
   }
 
   // 2. Check extension & double extension tricks (e.g. avatar.php.png)
-  const filename = file.name.toLowerCase();
-  const parts = filename.split('.');
-  if (parts.length > 2) {
-    for (let i = 1; i < parts.length - 1; i++) {
-      if (['php', 'exe', 'sh', 'bat', 'vbs', 'cgi', 'pl', 'jsp', 'asp', 'py'].includes(parts[i])) {
-        threatEngine.logThreat({
-          user_id: user?.id,
-          user_name: user?.name || file.name,
-          user_email: user?.email,
-          attack_type: 'CODE_INJECTION',
-          severity: 'CRITICAL',
-          endpoint: `${endpoint} [File Upload Double Extension]`,
-          payload_sample: `[MALICIOUS FILE UPLOAD] Double Extension Trick: ${file.name} (Type: ${file.type})`,
-        });
-        return {
-          safe: false,
-          error: '🚨 محاولة رفع ملف مشبوه باختراق الامتداد المزدوج (Double Extension). تم حظر العملية وتبليغ الأمن.',
-          threatType: 'Double Extension Webshell',
-        };
+  // Mobile devices sometimes send files with no name or blob: prefix — treat these as safe documents
+  const rawFilename = file.name || '';
+  const filename = rawFilename.toLowerCase();
+  const SAFE_FINAL_EXTENSIONS = ['pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'heic', 'heif'];
+  const DANGEROUS_MIDDLE_EXTENSIONS = ['php', 'exe', 'sh', 'bat', 'vbs', 'cgi', 'pl', 'jsp', 'asp', 'py'];
+
+  if (filename && !filename.startsWith('blob:')) {
+    const parts = filename.split('.');
+    const lastExt = parts[parts.length - 1];
+    // Only flag double-extension trick when the FINAL extension is NOT a safe document/image format
+    if (parts.length > 2 && !SAFE_FINAL_EXTENSIONS.includes(lastExt)) {
+      for (let i = 1; i < parts.length - 1; i++) {
+        if (DANGEROUS_MIDDLE_EXTENSIONS.includes(parts[i])) {
+          threatEngine.logThreat({
+            user_id: user?.id,
+            user_name: user?.name || file.name,
+            user_email: user?.email,
+            attack_type: 'CODE_INJECTION',
+            severity: 'CRITICAL',
+            endpoint: `${endpoint} [File Upload Double Extension]`,
+            payload_sample: `[MALICIOUS FILE UPLOAD] Double Extension Trick: ${file.name} (Type: ${file.type})`,
+          });
+          return {
+            safe: false,
+            error: '🚨 محاولة رفع ملف مشبوه باختراق الامتداد المزدوج (Double Extension). تم حظر العملية وتبليغ الأمن.',
+            threatType: 'Double Extension Webshell',
+          };
+        }
       }
     }
   }
@@ -126,11 +135,15 @@ export async function inspectUploadedFile(
     }
     const bytes = new Uint8Array(buffer);
 
-    const lowerName = file.name.toLowerCase();
+    const lowerName = filename; // already lowercased & mobile-safe from rawFilename
     const isDoc = file.type === 'application/pdf' || 
                   file.type === 'application/msword' || 
                   file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-                  /\.(pdf|doc|docx)$/i.test(lowerName);
+                  // Mobile file pickers often send octet-stream for documents
+                  (file.type === 'application/octet-stream' && /\.(pdf|doc|docx)$/i.test(lowerName)) ||
+                  /\.(pdf|doc|docx)$/i.test(lowerName) ||
+                  // Mobile: no name but type hints at document
+                  (!lowerName && (file.type.includes('pdf') || file.type.includes('word') || file.type.includes('document')));
 
     // Check magic bytes for images/PDF/DOC
     if (file.type.startsWith('image/') || isDoc) {

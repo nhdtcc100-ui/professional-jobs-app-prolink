@@ -169,10 +169,10 @@ export const cvService = {
         return { data: uploadedUrl, error: null };
       }
 
-      // 4. Fallback for smaller files (< 1MB) to prevent PostgREST body overflow
-      const MAX_BASE64_BYTES = 1024 * 1024; // 1 MB
+      // 4. Fallback for smaller files (< 5MB) — covers most real CV files on mobile
+      const MAX_BASE64_BYTES = 5 * 1024 * 1024; // 5 MB (up from 1MB — most mobile CVs are under 5MB)
       if (file.size <= MAX_BASE64_BYTES) {
-        logger.warn('[cvService] Supabase storage failed; using compact Base64 fallback for small file.');
+        logger.warn('[cvService] Supabase storage failed; using Base64 fallback for file <= 5MB.');
         try {
           const base64Url = await this.fileToBase64(file);
           return { data: base64Url, error: null };
