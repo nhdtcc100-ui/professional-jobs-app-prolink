@@ -8,6 +8,7 @@ import { idempotencyEngine, withIdempotency } from './idempotencyEngine';
 import { withCollisionRetry } from './collisionHandler';
 import { generateUUID } from '../security/distributedId';
 import { getJobCategory, encodeCategoryInDescription } from '../utils/jobCategoryUtils';
+import { cvService } from './cvService';
 
 // ✅ Whitelist of allowed job types to prevent injection
 const ALLOWED_JOB_TYPES = ['دوام كامل', 'دوام جزئي', 'عن بُعد', 'عقد', 'تدريب', 'مؤقت'];
@@ -257,45 +258,7 @@ export const jobService = {
   },
   
   async uploadCV(userId: string, file: File) {
-    const val = validateFile(file, 'document');
-    if (!val.valid) return { data: null, error: new Error(val.error) };
-
-    // ✅ Accept PDF and Word documents
-    const allowedCvTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ];
-    const fileMime = file.type || 'application/pdf';
-    const mimeToVerify = allowedCvTypes.includes(fileMime) ? fileMime : 'application/pdf';
-
-    const magic = await verifyFileMimeType(file, mimeToVerify);
-    if (!magic.valid) return { data: null, error: new Error(magic.error) };
-
-    try {
-      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'pdf';
-      const safeExt = ['pdf', 'doc', 'docx'].includes(fileExt) ? fileExt : 'pdf';
-      const fileName = `cv-${userId}-${generateUUID()}.${safeExt}`;
-      
-      const { error } = await supabase.storage
-        .from('applications')
-        .upload(fileName, file, { cacheControl: '3600', upsert: false });
-
-      if (error) {
-        logger.warn("[jobService] Primary CV bucket failed, using profiles fallback");
-        const { error: fbError } = await supabase.storage.from('profiles').upload(fileName, file);
-        if (fbError) return { data: null, error: fbError };
-        
-        const { data: pub1 } = supabase.storage.from('profiles').getPublicUrl(fileName);
-        return { data: pub1.publicUrl, error: null };
-      }
-
-      const { data: publicData } = supabase.storage.from('applications').getPublicUrl(fileName);
-      return { data: publicData.publicUrl, error: null };
-    } catch (err: any) {
-      logger.error("[jobService] uploadCV exception:", err);
-      return { data: null, error: err };
-    }
+    return cvService.uploadCV(userId, file);
   },
 
 

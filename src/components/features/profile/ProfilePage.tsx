@@ -4,6 +4,7 @@ import { Briefcase, ArrowRight, Lock, Send, Loader2, CheckCircle2, AlertCircle, 
 import { supabase } from '../../../lib/supabase';
 import { profileService } from '../../../lib/services/profileService';
 import { imageService } from '../../../lib/services/imageService';
+import { cvService } from '../../../lib/services/cvService';
 import { PostTransmissionCard } from '../index';
 import { AppUser, Post } from '../../../types';
 import { ProfileHeader, ProfileTabs, ProfileEditView, ProfileActivityView } from './index';
@@ -447,25 +448,24 @@ export function ProfilePage({
     const file = e.target.files?.[0];
     if (!file || !user?.id) return;
 
-    try {
-      const { inspectUploadedFile } = await import('../../../lib/security/fileInspector');
-      const check = await inspectUploadedFile(file, user, '/profile/cv-upload');
-      if (!check.safe) { addToast(check.error || 'تم حظر الملف لدواعي أمنية', 'error'); return; }
-    } catch (_) {}
-
     setSaveStatus('saving');
     addToast('جاري رفع وتثبيت السيرة الذاتية... ⏳');
 
     try {
       // Remove old CV if exists
       if (formData.cvUrl) {
-        try {
-          const oldPath = formData.cvUrl.split('/profiles/').pop();
-          if (oldPath) await (supabase.storage.from('profiles') as any).remove([oldPath]);
-        } catch {}
+        await cvService.deleteCV(formData.cvUrl);
       }
 
-      const url = await imageService.processAndUpload(file, user.id, 'profiles');
+      const { data: url, error: uploadErr } = await cvService.uploadCV(user.id, file, {
+        name: user.name,
+        email: user.email,
+      });
+
+      if (uploadErr || !url) {
+        throw uploadErr || new Error('فشل رفع ملف السيرة الذاتية');
+      }
+
       const updatedData = { ...formData, cvUrl: url, cv_url: url };
       setFormData(updatedData);
 

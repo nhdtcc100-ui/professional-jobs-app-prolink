@@ -61,10 +61,15 @@ export const ApplyCourseModal: React.FC<ApplyCourseModalProps> = ({
       let uploadedCvUrl = (appUser as any)?.cv_url || (appUser as any)?.cvUrl || '';
       if (cvFileObj) {
         try {
-          const { imageService } = await import('../../../lib/services/imageService');
-          uploadedCvUrl = await imageService.processAndUpload(cvFileObj, appUser.id, 'profiles');
+          const { cvService } = await import('../../../lib/services/cvService');
+          const { data: uploadedUrl, error: cvErr } = await cvService.uploadCV(appUser.id, cvFileObj);
+          if (uploadedUrl) {
+            uploadedCvUrl = uploadedUrl;
+          } else if (cvErr) {
+            console.warn('[ApplyCourseModal] File upload warning:', cvErr);
+          }
         } catch (uploadErr) {
-          console.warn('[ApplyCourseModal] File upload warning:', uploadErr);
+          console.warn('[ApplyCourseModal] File upload exception:', uploadErr);
         }
       }
 

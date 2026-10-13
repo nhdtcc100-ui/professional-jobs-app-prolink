@@ -129,7 +129,7 @@ export const imageService = {
         ? (file.name.split('.').pop()?.toLowerCase() || 'jpg')
         : 'jpg';
       // Sanitize extension — only allow safe image/doc extensions
-      const safeExt = /^(jpg|jpeg|png|webp|gif|heic|heif|bmp|pdf)$/.test(fileExt) ? fileExt : 'jpg';
+      const safeExt = /^(jpg|jpeg|png|webp|gif|heic|heif|bmp|pdf|doc|docx)$/.test(fileExt) ? fileExt : 'jpg';
       const fileName = `${userId}/${uuid}.${safeExt}`;
       const contentType = file instanceof File
         ? (file.type || 'image/jpeg')

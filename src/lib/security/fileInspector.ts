@@ -115,23 +115,41 @@ export async function inspectUploadedFile(
     const buffer = await file.slice(0, 8192).arrayBuffer();
     const bytes = new Uint8Array(buffer);
 
-    // Check magic bytes for images/PDF
-    if (file.type.startsWith('image/') || file.type === 'application/pdf') {
-      let magicMatched = false;
-      const lowerName = file.name.toLowerCase();
+    const lowerName = file.name.toLowerCase();
+    const isDoc = file.type === 'application/pdf' || 
+                  file.type === 'application/msword' || 
+                  file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+                  /\.(pdf|doc|docx)$/i.test(lowerName);
 
-      // Check standard signatures
-      for (const sig of MAGIC_BYTES) {
-        let match = true;
-        for (let i = 0; i < sig.bytes.length; i++) {
-          if (bytes[i] !== sig.bytes[i]) {
-            match = false;
+    // Check magic bytes for images/PDF/DOC
+    if (file.type.startsWith('image/') || isDoc) {
+      let magicMatched = false;
+
+      // Special check for PDF: %PDF can appear in the first 512 bytes (common on mobile)
+      if (file.type === 'application/pdf' || lowerName.endsWith('.pdf')) {
+        const pdfSig = [0x25, 0x50, 0x44, 0x46]; // %PDF
+        for (let i = 0; i <= Math.min(bytes.length - 4, 512); i++) {
+          if (bytes[i] === pdfSig[0] && bytes[i + 1] === pdfSig[1] && bytes[i + 2] === pdfSig[2] && bytes[i + 3] === pdfSig[3]) {
+            magicMatched = true;
             break;
           }
         }
-        if (match) {
-          magicMatched = true;
-          break;
+      }
+
+      // Check standard signatures if not already matched
+      if (!magicMatched) {
+        for (const sig of MAGIC_BYTES) {
+          let match = true;
+          for (let i = 0; i < sig.bytes.length; i++) {
+            if (bytes[i] !== sig.bytes[i]) {
+              match = false;
+              break;
+            }
+          }
+          if (match) {
+            magicMatched = true;
+            break;
+          }
         }
       }
 
@@ -151,11 +169,16 @@ export async function inspectUploadedFile(
       }
     }
 
-    // 4. Scan binary sample text for embedded WebShell signatures
+    // 4. Scan binary sample text for embedded WebShell signatures (skip broad text patterns for documents)
     const decoder = new TextDecoder('utf-8', { fatal: false });
     const textSample = decoder.decode(bytes);
 
-    for (const pattern of WEBSHELL_BINARY_PATTERNS) {
+    // For documents (PDF, DOCX), only look for explicit server-side script tags, not generic system/eval phrases
+    const activePatterns = isDoc 
+      ? [/<\?php/i, /<\?=/i, /<script[^>]*language=["']php["']/i]
+      : WEBSHELL_BINARY_PATTERNS;
+
+    for (const pattern of activePatterns) {
       if (pattern.test(textSample)) {
         threatEngine.logThreat({
           user_id: user?.id,

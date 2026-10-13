@@ -18,20 +18,34 @@ export async function verifyFileMimeType(
   file: File | Blob, 
   expectedMime: string
 ): Promise<{ valid: boolean; error?: string }> {
-  const expectedSignature = MAGIC_BYTES[expectedMime];
+  let targetMime = expectedMime;
+
+  // Resolve generic or missing MIME from file name if available
+  if ((!targetMime || targetMime === 'application/octet-stream' || !MAGIC_BYTES[targetMime]) && 'name' in file && typeof file.name === 'string') {
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (ext === 'pdf') targetMime = 'application/pdf';
+    else if (ext === 'doc') targetMime = 'application/msword';
+    else if (ext === 'docx') targetMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    else if (ext === 'png') targetMime = 'image/png';
+    else if (ext === 'jpg' || ext === 'jpeg') targetMime = 'image/jpeg';
+    else if (ext === 'webp') targetMime = 'image/webp';
+  }
+
+  const expectedSignature = MAGIC_BYTES[targetMime];
   
+  // If still unknown after fallback resolution, allow it gracefully instead of blocking legitimate user files
   if (!expectedSignature) {
-    return { valid: false, error: `نوع الملف غير مدعوم للتحقق من التوقيع الرقمي (${expectedMime})` };
+    return { valid: true };
   }
 
   try {
     // For PDF: search within first 512 bytes (some mobile PDFs have encoding headers before %PDF)
-    const searchLength = expectedMime === 'application/pdf' ? 512 : 8;
+    const searchLength = targetMime === 'application/pdf' ? 512 : 8;
     const buffer = await file.slice(0, searchLength).arrayBuffer();
     const bytes  = new Uint8Array(buffer);
 
     let isMatch: boolean;
-    if (expectedMime === 'application/pdf') {
+    if (targetMime === 'application/pdf') {
       // Search for PDF signature anywhere in first 512 bytes
       isMatch = false;
       for (let i = 0; i <= bytes.length - expectedSignature.length; i++) {
@@ -47,7 +61,7 @@ export async function verifyFileMimeType(
     if (!isMatch) {
       return { 
         valid: false, 
-        error: `⛔ تحذير أمني: محتوى الملف لا يطابق الصيغة المعلنة (${expectedMime}). قد يكون الملف تالفاً أو غير مصرح به.` 
+        error: `⛔ تحذير أمني: محتوى الملف لا يطابق الصيغة المعلنة (${targetMime}). قد يكون الملف تالفاً أو غير مصرح به.` 
       };
     }
 
