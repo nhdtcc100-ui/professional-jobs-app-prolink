@@ -6,11 +6,25 @@ const ALLOWED_DOC_TYPES   = ['application/pdf'];
 const MAX_IMAGE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB (compressed automatically before upload)
 const MAX_DOC_SIZE_BYTES   = 20 * 1024 * 1024; // 20 MB
 
+/** Resolve effective MIME type — handles mobile album photos where type is empty */
+const resolveMimeType = (file: File): string => {
+  if (file.type && file.type !== 'application/octet-stream') return file.type;
+  const ext = (file.name || '').split('.').pop()?.toLowerCase() || '';
+  const extMap: Record<string, string> = {
+    jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+    webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp',
+    heic: 'image/heic', heif: 'image/heif',
+    pdf: 'application/pdf', doc: 'application/msword',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  };
+  return extMap[ext] || 'image/jpeg'; // default to jpeg for camera/album photos
+};
+
 export const validateFile = (
   file: File,
   type: 'image' | 'document'
 ): { valid: boolean; error?: string } => {
-  const isImg = type === 'image' || file.type.startsWith('image/');
+  const isImg = type === 'image' || resolveMimeType(file).startsWith('image/');
   const maxSize = isImg ? MAX_IMAGE_SIZE_BYTES : MAX_DOC_SIZE_BYTES;
 
   if (file.size > maxSize) {
@@ -125,15 +139,22 @@ export const imageService = {
     try {
       // Always use a fresh UUID so upsert never hits a stale cached path
       const uuid = generateUUID();
-      const fileExt = file instanceof File
-        ? (file.name.split('.').pop()?.toLowerCase() || 'jpg')
-        : 'jpg';
-      // Sanitize extension — only allow safe image/doc extensions
+      // Resolve MIME first — mobile album photos often have empty type
+      const effectiveMime = file instanceof File ? resolveMimeType(file) : (file.type || 'image/jpeg');
+      const mimeToExt: Record<string, string> = {
+        'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png',
+        'image/webp': 'webp', 'image/gif': 'gif', 'image/bmp': 'bmp',
+        'image/heic': 'heic', 'image/heif': 'heif',
+        'application/pdf': 'pdf',
+      };
+      // Try extension from name first, then from MIME type
+      const rawExt = file instanceof File ? (file.name || '').split('.').pop()?.toLowerCase() : '';
+      const fileExt = (rawExt && /^(jpg|jpeg|png|webp|gif|heic|heif|bmp|pdf|doc|docx)$/.test(rawExt))
+        ? rawExt
+        : (mimeToExt[effectiveMime] || 'jpg');
       const safeExt = /^(jpg|jpeg|png|webp|gif|heic|heif|bmp|pdf|doc|docx)$/.test(fileExt) ? fileExt : 'jpg';
-      const fileName = `${userId}/${uuid}.${safeExt}`;
-      const contentType = file instanceof File
-        ? (file.type || 'image/jpeg')
-        : (file.type || 'image/jpeg');
+      const fileName    = `${userId}/${uuid}.${safeExt}`;
+      const contentType = effectiveMime;
 
       // Verify user session is active before attempting upload
       const { data: sessionData } = await supabase.auth.getSession();
@@ -233,11 +254,13 @@ export const imageService = {
   },
 
   async processAndUpload(file: File, userId: string, bucket = 'profiles'): Promise<string> {
-    const fileType = file.type.startsWith('image/') ? 'image' : 'document';
+    // Use resolveMimeType so album photos with empty file.type are treated as images
+    const effectiveMime = resolveMimeType(file);
+    const fileType = effectiveMime.startsWith('image/') ? 'image' : 'document';
     const validation = validateFile(file, fileType);
     if (!validation.valid) throw new Error(validation.error);
 
-    if (file.type.startsWith('image/')) {
+    if (effectiveMime.startsWith('image/')) {
       try {
         // Compress first, then upload
         const compressed = await this.compressImage(file);
