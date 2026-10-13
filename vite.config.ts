@@ -16,6 +16,7 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, 'src'),
       },
     },
+    base: '/professional-jobs-app-prolink/',
     build: {
       outDir: path.resolve(__dirname, 'dist'),
       emptyOutDir: true,
