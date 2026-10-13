@@ -571,19 +571,26 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
 
             {handleAvatarChange && (
               <>
-                <label 
-                  htmlFor="avatar-file-input-edit" 
+                <button 
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('avatar-file-input-edit') as HTMLInputElement;
+                    if (el) {
+                      el.value = '';
+                      el.click();
+                    }
+                  }}
                   className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-black cursor-pointer shadow-md shadow-blue-500/20 active:scale-95 transition-all flex items-center gap-1.5 shrink-0"
                 >
                   <Camera size={13} />
                   <span>تغيير الصورة</span>
-                </label>
+                </button>
                 <input
                   id="avatar-file-input-edit"
                   type="file"
-                  className="hidden"
                   accept="image/*"
-                  onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+                  style={{ position: 'fixed', left: '-9999px', top: '-9999px', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
+                  tabIndex={-1}
                   onChange={handleAvatarChange}
                 />
               </>
@@ -612,19 +619,26 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
 
             {handleCoverChange && (
               <>
-                <label 
-                  htmlFor="cover-file-input-edit" 
+                <button 
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('cover-file-input-edit') as HTMLInputElement;
+                    if (el) {
+                      el.value = '';
+                      el.click();
+                    }
+                  }}
                   className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black cursor-pointer shadow-md shadow-indigo-500/20 active:scale-95 transition-all flex items-center gap-1.5 shrink-0"
                 >
                   <ImageIcon size={13} />
                   <span>تغيير الغلاف</span>
-                </label>
+                </button>
                 <input
                   id="cover-file-input-edit"
                   type="file"
-                  className="hidden"
                   accept="image/*"
-                  onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+                  style={{ position: 'fixed', left: '-9999px', top: '-9999px', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
+                  tabIndex={-1}
                   onChange={handleCoverChange}
                 />
               </>

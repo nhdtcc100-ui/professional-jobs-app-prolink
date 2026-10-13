@@ -3,7 +3,7 @@ import { generateUUID } from '../security/distributedId';
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/jpg', 'image/heic', 'image/heif', 'image/bmp'];
 const ALLOWED_DOC_TYPES   = ['application/pdf'];
-const MAX_IMAGE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB (compressed automatically before upload)
+const MAX_IMAGE_SIZE_BYTES = 50 * 1024 * 1024; // 50 MB (auto-compressed before upload)
 const MAX_DOC_SIZE_BYTES   = 20 * 1024 * 1024; // 20 MB
 
 /** Resolve effective MIME type — handles mobile album photos where type is empty */
@@ -276,6 +276,26 @@ export const imageService = {
   },
 
   async processAndUpload(file: File, userId: string, bucket = 'profiles'): Promise<string> {
+    // 1. Convert HEIC/HEIF (common on Galaxy S21 / iPhone) to standard JPEG
+    const isHeic = (file.type && (file.type.includes('heic') || file.type.includes('heif'))) ||
+                   (file.name && /\.(heic|heif)$/i.test(file.name));
+    if (isHeic) {
+      try {
+        const heic2anyModule = await import('heic2any');
+        const heic2any = heic2anyModule.default || heic2anyModule;
+        const converted = await heic2any({
+          blob: file,
+          toType: 'image/jpeg',
+          quality: 0.85
+        });
+        const blob = Array.isArray(converted) ? converted[0] : converted;
+        const newName = (file.name || 'photo').replace(/\.(heic|heif)$/i, '.jpg');
+        file = new File([blob], newName, { type: 'image/jpeg' });
+      } catch (heicErr) {
+        console.warn('[imageService] HEIC conversion warning:', heicErr);
+      }
+    }
+
     // Use resolveMimeType so album photos with empty file.type are treated as images
     const effectiveMime = resolveMimeType(file);
     const fileType = effectiveMime.startsWith('image/') ? 'image' : 'document';

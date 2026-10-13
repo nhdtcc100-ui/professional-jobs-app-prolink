@@ -213,8 +213,13 @@ export function ProfilePage({
 
   // ── Avatar: Instant Direct Upload & Database Persistence ──
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    let file = e.target.files?.[0];
     const targetInput = e.target;
+    if (!file) {
+      // Small pause for Samsung One UI / Scoped Storage FileList population
+      await new Promise(r => setTimeout(r, 80));
+      file = targetInput?.files?.[0];
+    }
     if (!file) {
       console.warn("⚠️ [AvatarUpload] لم يتم اختيار أي ملف من المتصفح.");
       return;
@@ -233,12 +238,35 @@ export function ProfilePage({
       userId: targetUserId
     });
 
+    setSaveStatus('saving');
+    addToast('جاري تجهيز ورفع الصورة... ⏳');
+
+    // ── Handle HEIC/HEIF conversion for Samsung Galaxy S21 / iPhone ──
+    const isHeic = (file.type && (file.type.includes('heic') || file.type.includes('heif'))) ||
+                   (file.name && /\.(heic|heif)$/i.test(file.name));
+    if (isHeic) {
+      try {
+        const heic2anyModule = await import('heic2any');
+        const heic2any = heic2anyModule.default || heic2anyModule;
+        const converted = await heic2any({
+          blob: file,
+          toType: 'image/jpeg',
+          quality: 0.85
+        });
+        const blob = Array.isArray(converted) ? converted[0] : converted;
+        file = new File([blob], (file.name || 'photo').replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
+      } catch (heicErr) {
+        console.warn('⚠️ [AvatarUpload] تعذر تحويل HEIC محلياً، المتابعة بالملف الأصلي:', heicErr);
+      }
+    }
+
     try {
       const { inspectUploadedFile } = await import('../../../lib/security/fileInspector');
       const check = await inspectUploadedFile(file, user || appUser || profile, '/profile/avatar-upload');
       if (!check.safe) {
         console.error("❌ [AvatarUpload] فشل الفحص الأمني للصورة:", check);
         addToast(check.error || 'تم حظر الصورة لدواعي أمنية', 'error');
+        setSaveStatus('idle');
         return;
       }
     } catch (secErr) {
@@ -252,8 +280,6 @@ export function ProfilePage({
     } catch (previewErr) {
       console.warn("⚠️ [AvatarUpload] تعذر إنشاء معاينة محلية:", previewErr);
     }
-    setSaveStatus('saving');
-    addToast('جاري رفع وتثبيت الصورة الشخصية... ⏳');
 
     try {
       console.log("⏳ [AvatarUpload] جاري الرفع إلى Storage ومعالجة الصورة...");
@@ -295,8 +321,12 @@ export function ProfilePage({
 
   // ── Cover: Instant Direct Upload & Database Persistence ──
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    let file = e.target.files?.[0];
     const targetInput = e.target;
+    if (!file) {
+      await new Promise(r => setTimeout(r, 80));
+      file = targetInput?.files?.[0];
+    }
     if (!file) {
       console.warn("⚠️ [CoverUpload] لم يتم اختيار أي ملف غلاف من المتصفح.");
       return;
@@ -315,12 +345,35 @@ export function ProfilePage({
       userId: targetUserId
     });
 
+    setSaveStatus('saving');
+    addToast('جاري تجهيز ورفع صورة الغلاف... ⏳');
+
+    // ── Handle HEIC/HEIF conversion for Samsung Galaxy S21 / iPhone ──
+    const isHeic = (file.type && (file.type.includes('heic') || file.type.includes('heif'))) ||
+                   (file.name && /\.(heic|heif)$/i.test(file.name));
+    if (isHeic) {
+      try {
+        const heic2anyModule = await import('heic2any');
+        const heic2any = heic2anyModule.default || heic2anyModule;
+        const converted = await heic2any({
+          blob: file,
+          toType: 'image/jpeg',
+          quality: 0.85
+        });
+        const blob = Array.isArray(converted) ? converted[0] : converted;
+        file = new File([blob], (file.name || 'cover').replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
+      } catch (heicErr) {
+        console.warn('⚠️ [CoverUpload] تعذر تحويل HEIC للغلاف:', heicErr);
+      }
+    }
+
     try {
       const { inspectUploadedFile } = await import('../../../lib/security/fileInspector');
       const check = await inspectUploadedFile(file, user || appUser || profile, '/profile/cover-upload');
       if (!check.safe) {
         console.error("❌ [CoverUpload] فشل الفحص الأمني لصورة الغلاف:", check);
         addToast(check.error || 'تم حظر صورة الغلاف لدواعي أمنية', 'error');
+        setSaveStatus('idle');
         return;
       }
     } catch (secErr) {

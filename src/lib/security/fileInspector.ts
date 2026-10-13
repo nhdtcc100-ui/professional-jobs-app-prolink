@@ -64,9 +64,9 @@ export async function inspectUploadedFile(
     return { safe: false, error: 'الملف غير موجود' };
   }
 
-  // 1. Check size boundaries (max 25MB — matches cvService limit)
-  if (file.size > 25 * 1024 * 1024) {
-    return { safe: false, error: '🚨 حجم الملف كبير جداً (الحد الأقصى 25 ميجابايت)' };
+  // 1. Check size boundaries (max 50MB — allows high-res Galaxy S21 64MP camera photos)
+  if (file.size > 50 * 1024 * 1024) {
+    return { safe: false, error: '🚨 حجم الملف كبير جداً (الحد الأقصى 50 ميجابايت)' };
   }
 
   // 2. Check extension & double extension tricks (e.g. avatar.php.png)

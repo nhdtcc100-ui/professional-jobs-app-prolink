@@ -63,20 +63,27 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/30 to-transparent" />
         {isMe && (
           <>
-            <label 
-              htmlFor="cover-file-input-header" 
+            <button 
+              type="button"
+              onClick={() => {
+                const el = document.getElementById('cover-file-input-header') as HTMLInputElement;
+                if (el) {
+                  el.value = '';
+                  el.click();
+                }
+              }}
               className="absolute top-3 right-3 p-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-800 transition-all shadow-md flex items-center gap-1.5 group/btn border border-white/20 dark:border-slate-700 active:scale-95 z-10"
               title="تغيير صورة الغلاف"
             >
               <Camera size={13} className="text-[#0a66c2] dark:text-blue-400" />
               <span className="text-[9px] font-black text-slate-600 dark:text-slate-200 uppercase tracking-widest hidden group-hover/btn:block">تغيير</span>
-            </label>
+            </button>
             <input
               id="cover-file-input-header"
               type="file"
-              className="hidden"
               accept="image/*"
-              onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+              style={{ position: 'fixed', left: '-9999px', top: '-9999px', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
+              tabIndex={-1}
               onChange={handleCoverChange}
             />
           </>
@@ -97,19 +104,26 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             </div>
             {isMe && (
               <>
-                <label 
-                  htmlFor="avatar-file-input-header"
+                <button 
+                  type="button"
+                  onClick={() => {
+                    const el = document.getElementById('avatar-file-input-header') as HTMLInputElement;
+                    if (el) {
+                      el.value = '';
+                      el.click();
+                    }
+                  }}
                   className="absolute bottom-1 left-1 p-1.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-700 shadow-md transition-all border border-slate-100 dark:border-slate-700 active:scale-95 z-10"
                   title="تغيير الصورة الشخصية"
                 >
                   <Camera size={11} className="text-[#0a66c2] dark:text-blue-400" />
-                </label>
+                </button>
                 <input
                   id="avatar-file-input-header"
                   type="file"
-                  className="hidden"
                   accept="image/*"
-                  onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
+                  style={{ position: 'fixed', left: '-9999px', top: '-9999px', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
+                  tabIndex={-1}
                   onChange={handleAvatarChange}
                 />
               </>
