@@ -513,7 +513,14 @@ export function ProfilePage({
 
   // ── CV: Instant Direct Upload & Database Persistence ──
   const handleCVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    let file = e.target.files?.[0];
+    const targetInput = e.target;
+    // Android Scoped Storage: FileList may not be populated immediately after
+    // returning from an external Activity (Samsung Gallery / Downloads)
+    if (!file) {
+      await new Promise(r => setTimeout(r, 80));
+      file = targetInput?.files?.[0];
+    }
     if (!file) return;
 
     const currentUserId = user?.id || appUser?.id || profile?.id || formData?.id;

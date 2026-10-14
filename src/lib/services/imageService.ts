@@ -178,15 +178,13 @@ export const imageService = {
       const fileName    = `${userId}/${uuid}.${safeExt}`;
       const contentType = effectiveMime;
 
-      // Verify user session is active before attempting upload
-      const { data: sessionData } = await supabase.auth.getSession();
-      const hasSession = !!sessionData?.session?.access_token;
-      console.log(`[imageService] Upload attempt | bucket: ${bucket} | hasSession: ${hasSession} | file size: ${file.size} bytes`);
-
-      if (!hasSession) {
-        console.warn('[imageService] No active Supabase session — storage upload will fail RLS policy. Falling back to base64.');
-        throw new Error('No active session');
-      }
+      // Log upload attempt — no artificial session gate here.
+      // Supabase Storage RLS allows public/anon INSERT, so we always attempt
+      // the upload directly and surface real errors if they occur.
+      // (On mobile, getSession() can return null even with a valid cached
+      //  session, so blocking on it caused silent upload failures.)
+      try { await supabase.auth.getSession(); } catch (_) {}
+      console.log(`[imageService] Upload attempt | bucket: ${bucket} | file size: ${file.size} bytes | type: ${file.type || 'unknown'}`);
 
       // Actual existing buckets in Supabase (in priority order)
       const candidateBuckets = [bucket, 'profiles', 'applications', 'posts', 'job-images']

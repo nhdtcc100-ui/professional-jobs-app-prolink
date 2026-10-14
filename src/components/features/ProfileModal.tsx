@@ -168,22 +168,41 @@ export function ProfileModal({
   }, [persistToDatabase, isMe, setAppUser, profile, formData]);
 
   const handleCVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    let file = e.target.files?.[0];
+    const targetInput = e.target;
+    // Android Scoped Storage: FileList may not be populated immediately
+    if (!file) {
+      await new Promise(r => setTimeout(r, 80));
+      file = targetInput?.files?.[0];
+    }
     if (!file || !user?.id) return;
-    
-    // Validate file type (PDF, DOCX)
-    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
-    if (!allowedTypes.includes(file.type)) {
+
+    // Accept PDF, Word, and application/octet-stream (common on Android Downloads/SD card)
+    const ext = (file.name || '').split('.').pop()?.toLowerCase() || '';
+    const allowedExts = ['pdf', 'doc', 'docx'];
+    const allowedMimes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/octet-stream', // Android file pickers often return this
+    ];
+    const mimeOk = allowedMimes.includes(file.type) || file.type === '';
+    const extOk  = allowedExts.includes(ext);
+    if (!mimeOk && !extOk) {
       addToast('يرجى رفع ملف بصيغة PDF أو Word فقط', 'error');
       return;
     }
 
     setSaveStatus('saving');
     addToast('جاري رفع السيرة الذاتية... ⏳');
-    
+
     try {
-      // We use the existing 'profiles' bucket since 'documents' was not found
-      const url = await imageService.processAndUpload(file, user.id, 'profiles');
+      const { cvService } = await import('../../lib/services/cvService');
+      const { data: url, error: uploadErr } = await cvService.uploadCV(user.id, file, {
+        name: (user as any)?.name || (profile as any)?.name,
+        email: (user as any)?.email || (profile as any)?.email,
+      });
+      if (uploadErr || !url) throw uploadErr || new Error('فشل رفع ملف السيرة الذاتية');
       const newData = { ...formData, cvUrl: url };
       setFormData(newData);
       await persistToDatabase(newData);
@@ -192,6 +211,8 @@ export function ProfileModal({
       console.error('CV upload failed:', err);
       addToast(`فشل رفع الملف: ${err.message}`, 'error');
       setSaveStatus('error');
+    } finally {
+      if (targetInput) targetInput.value = '';
     }
   };
 
