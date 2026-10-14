@@ -260,19 +260,6 @@ export function ProfilePage({
       }
     }
 
-    try {
-      const { inspectUploadedFile } = await import('../../../lib/security/fileInspector');
-      const check = await inspectUploadedFile(file, user || appUser || profile, '/profile/avatar-upload');
-      if (!check.safe) {
-        console.error("❌ [AvatarUpload] فشل الفحص الأمني للصورة:", check);
-        addToast(check.error || 'تم حظر الصورة لدواعي أمنية', 'error');
-        setSaveStatus('idle');
-        return;
-      }
-    } catch (secErr) {
-      console.warn("⚠️ [AvatarUpload] تنبيه أثناء فحص الأمان:", secErr);
-    }
-
     // Instant local preview for immediate visual feedback (safe for mobile)
     try {
       const localUrl = URL.createObjectURL(file);
@@ -365,19 +352,6 @@ export function ProfilePage({
       } catch (heicErr) {
         console.warn('⚠️ [CoverUpload] تعذر تحويل HEIC للغلاف:', heicErr);
       }
-    }
-
-    try {
-      const { inspectUploadedFile } = await import('../../../lib/security/fileInspector');
-      const check = await inspectUploadedFile(file, user || appUser || profile, '/profile/cover-upload');
-      if (!check.safe) {
-        console.error("❌ [CoverUpload] فشل الفحص الأمني لصورة الغلاف:", check);
-        addToast(check.error || 'تم حظر صورة الغلاف لدواعي أمنية', 'error');
-        setSaveStatus('idle');
-        return;
-      }
-    } catch (secErr) {
-      console.warn("⚠️ [CoverUpload] تنبيه أثناء فحص الأمان:", secErr);
     }
 
     // Instant local preview (safe for mobile)

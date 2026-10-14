@@ -58,27 +58,6 @@ export const cvService = {
 
     const resolvedExt = this.resolveExtension(file);
 
-    // 🛡️ Security Inspection (checks dangerous extensions, embedded webshells, etc.)
-    try {
-      const inspection = await inspectUploadedFile(file, user, '/cv/upload');
-      if (!inspection.safe) {
-        return { valid: false, error: inspection.error || 'تم رفض الملف لدواعي أمنية', ext: resolvedExt };
-      }
-    } catch (e: any) {
-      logger.warn('[cvService] File inspection skipped/failed:', e?.message);
-    }
-
-    // 🛡️ Magic Bytes Verification (flexible check to avoid false rejections)
-    try {
-      const expectedMime = EXT_TO_MIME[resolvedExt] || file.type || 'application/pdf';
-      const magic = await verifyFileMimeType(file, expectedMime);
-      if (!magic.valid) {
-        logger.warn('[cvService] Magic bytes warning (permissive fallback allowed):', magic.error);
-      }
-    } catch (e: any) {
-      logger.warn('[cvService] Magic bytes verification warning:', e?.message);
-    }
-
     return { valid: true, ext: resolvedExt };
   },
 
