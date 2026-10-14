@@ -244,62 +244,6 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
       dir="rtl"
     >
 
-      {/* ─── حالة التوفر للعمل (Available for Work) — حصرياً في الملف الشخصي ─── */}
-      {currentRole !== 'employer' && (
-        <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/10 to-blue-500/10 border-2 border-emerald-500/30 rounded-[2.5rem] p-6 sm:p-7 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-5">
-          <div className="flex items-center gap-4 text-right">
-            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 shadow-lg ${
-              formData.open_to === 'work' || formData.is_available
-                ? 'bg-emerald-500 text-white shadow-emerald-500/30'
-                : 'bg-slate-200 dark:bg-slate-700 text-slate-500'
-            }`}>
-              <Briefcase size={26} />
-            </div>
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-[10px] font-black uppercase tracking-widest mb-1">
-                خاصية الملف الشخصي
-              </div>
-              <h3 className="text-base font-black text-slate-900 dark:text-white">
-                حالة التوفر للعمل (متاح للعمل 🟢 / غير متاح ⚪)
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-0.5">
-                تظهر هذه الشارة في ملفك الشخصي فقط لتنبيه أصحاب العمل بجاهزيتك للتوظيف والفرص
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 p-1.5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                handleFieldChange('open_to', 'work');
-                handleFieldChange('is_available', true);
-              }}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-                formData.open_to === 'work' || formData.is_available
-                  ? 'bg-emerald-500 text-white shadow-md'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
-            >
-              <span>🟢 متاح للعمل الآن</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                handleFieldChange('open_to', 'none');
-                handleFieldChange('is_available', false);
-              }}
-              className={`px-4 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-                formData.open_to === 'none' && !formData.is_available
-                  ? 'bg-slate-500 text-white shadow-md'
-                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-              }`}
-            >
-              <span>⚪ غير متاح للعمل</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* ─── Section 0: نوع الحساب والصلاحيات ───────────────── */}
       <div className="bg-gradient-to-br from-slate-50 to-blue-50/40 dark:from-slate-800/60 dark:to-blue-950/20 rounded-[2.5rem] border border-blue-100/60 dark:border-blue-900/40 p-6 md:p-8 space-y-6 shadow-sm">
@@ -538,8 +482,92 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
           </div>
         )}
       </AnimatePresence>
+      
+      {/* ─── Section 1: Personal & Contact ────────────────── */}
+      <GlassCard className="p-8 rounded-[2.5rem] space-y-6 border border-slate-100 shadow-xl bg-white/50">
+        <div className="flex items-center gap-4 mb-2">
+          <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-blue-200">
+            <UserIcon size={22} />
+          </div>
+          <div>
+            <h4 className="text-sm font-black text-slate-800 uppercase tracking-wider">المعلومات الشخصية والاتصال</h4>
+            <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">المعلومات الأساسية للوصول إليك</p>
+          </div>
+        </div>
 
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div className="md:col-span-2">
+            <label htmlFor="edit-name" className={labelClass}>الاسم الكامل</label>
+            <input
+              id="edit-name"
+              name="name"
+              className={`${inputClass} ${fieldErrors.name ? 'border-red-400 focus:border-red-500 focus:ring-red-100' : ''}`}
+              value={formData.name}
+              onChange={e => handleSecureFieldChange('name', 'الاسم', e.target.value)}
+              placeholder="اسمك الكامل"
+            />
+            {fieldErrors.name && (
+              <div className="mt-1.5 flex items-start gap-1.5 text-red-600 text-[11px] font-semibold">
+                <AlertCircle size={13} className="shrink-0 mt-0.5" />
+                <span>{fieldErrors.name}</span>
+              </div>
+            )}
+          </div>
+          <div>
+            <label htmlFor="edit-phone" className={labelClass}>رقم الهاتف</label>
+            <div className="relative">
+              <Phone size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+              <input
+                id="edit-phone"
+                name="phone"
+                className={`${inputClass} pr-10 ${fieldErrors.phone ? 'border-red-400 focus:border-red-500 focus:ring-red-100' : ''}`}
+                value={formData.phone || ''}
+                onChange={e => handleSecureFieldChange('phone', 'رقم الهاتف', e.target.value)}
+                placeholder="07XXXXXXXXX"
+                dir="ltr"
+              />
+            </div>
+            {fieldErrors.phone && (
+              <div className="mt-1.5 flex items-start gap-1.5 text-red-600 text-[11px] font-semibold">
+                <AlertCircle size={13} className="shrink-0 mt-0.5" />
+                <span>{fieldErrors.phone}</span>
+              </div>
+            )}
+          </div>
+          <div>
+            <label htmlFor="edit-location" className={labelClass}>المدينة / الموقع</label>
+            <input
+              id="edit-location"
+              name="location"
+              className={inputClass}
+              value={formData.location || ''}
+              onChange={e => handleFieldChange('location', e.target.value)}
+              placeholder="بغداد، العراق"
+            />
+          </div>
+          <div className="md:col-span-2">
+            <label htmlFor="edit-website" className={labelClass}>الموقع الإلكتروني / LinkedIn</label>
+            <div className="relative">
+              <Globe size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 pointer-events-none" />
+              <input
+                id="edit-website"
+                name="website"
+                className={`${inputClass} pr-10 ${fieldErrors.website ? 'border-red-400 focus:border-red-500 focus:ring-red-100' : ''}`}
+                value={formData.website || ''}
+                onChange={e => handleSecureFieldChange('website', 'الموقع الإلكتروني', e.target.value)}
+                placeholder="https://linkedin.com/in/..."
+                dir="ltr"
+              />
+            </div>
+            {fieldErrors.website && (
+              <div className="mt-1.5 flex items-start gap-1.5 text-red-600 text-[11px] font-semibold">
+                <AlertCircle size={13} className="shrink-0 mt-0.5" />
+                <span>{fieldErrors.website}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </GlassCard>
 
       {/* ─── Section 2: Professional Info ────────────────── */}
       <GlassCard className="p-8 rounded-[2.5rem] space-y-5 border border-slate-100 shadow-xl bg-white/50">
