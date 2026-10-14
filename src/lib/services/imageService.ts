@@ -87,7 +87,14 @@ export const imageService = {
           }
         };
 
+        // Safety timeout: if image decoding hangs on mobile, fallback to original file
+        const safetyTimer = setTimeout(() => {
+          cleanup();
+          resolve(file);
+        }, 3500);
+
         img.onload = () => {
+          clearTimeout(safetyTimer);
           try {
             cleanup();
             const canvas = document.createElement('canvas');
@@ -135,6 +142,7 @@ export const imageService = {
         };
 
         img.onerror = () => {
+          clearTimeout(safetyTimer);
           cleanup();
           // If decoding fails (e.g. HEIC / RAW from album), use original file
           resolve(file);
@@ -147,7 +155,10 @@ export const imageService = {
           reader.onload = (e) => {
             img.src = e.target?.result as string;
           };
-          reader.onerror = () => resolve(file);
+          reader.onerror = () => {
+            clearTimeout(safetyTimer);
+            resolve(file);
+          };
           reader.readAsDataURL(file);
         }
       } catch {
@@ -186,8 +197,8 @@ export const imageService = {
       try { await supabase.auth.getSession(); } catch (_) {}
       console.log(`[imageService] Upload attempt | bucket: ${bucket} | file size: ${file.size} bytes | type: ${file.type || 'unknown'}`);
 
-      // Actual existing buckets in Supabase (in priority order)
-      const candidateBuckets = [bucket, 'profiles', 'applications', 'posts', 'job-images']
+      // Actual existing buckets in Supabase (in priority order, including verified 'resumes')
+      const candidateBuckets = [bucket, 'profiles', 'images', 'resumes', 'applications', 'job-images', 'posts']
         .filter((b, idx, arr) => arr.indexOf(b) === idx);
 
       for (const b of candidateBuckets) {
@@ -229,11 +240,14 @@ export const imageService = {
         const reader = new FileReader();
         reader.onloadend = () => {
           if (typeof reader.result === 'string') {
-            // If image: downscale via canvas before storing to keep DB payload small
-            if (file.type?.startsWith('image/') && reader.result.startsWith('data:image/')) {
+            const resultStr = reader.result;
+            // If image or binary from mobile: downscale via canvas before storing to keep DB payload tiny (< 50KB)
+            if (resultStr.startsWith('data:image/') || resultStr.startsWith('data:application/octet-stream') || resultStr.startsWith('data:;')) {
               try {
                 const img = new Image();
+                const timeout = setTimeout(() => resolve(resultStr), 3000);
                 img.onload = () => {
+                  clearTimeout(timeout);
                   try {
                     const maxDim = 400;
                     let w = img.naturalWidth || img.width || maxDim;
@@ -251,15 +265,20 @@ export const imageService = {
                       return;
                     }
                   } catch { /* fall through to raw */ }
-                  resolve(reader.result as string);
+                  resolve(resultStr);
                 };
-                img.onerror = () => resolve(reader.result as string);
-                img.src = reader.result as string;
+                img.onerror = () => {
+                  clearTimeout(timeout);
+                  resolve(resultStr);
+                };
+                img.src = resultStr;
+                return;
               } catch {
-                resolve(reader.result as string);
+                resolve(resultStr);
+                return;
               }
             } else {
-              resolve(reader.result);
+              resolve(resultStr);
             }
           } else {
             reject(new Error('Failed to encode file'));

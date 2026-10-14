@@ -211,6 +211,40 @@ export function ProfilePage({
     });
   }, [profile]);
 
+  // ── Helper: Robust HEIC/HEIF conversion with magic bytes detection for Samsung Galaxy / iPhone ──
+  const ensureCompatibleImage = async (file: File): Promise<File> => {
+    let isHeic = (file.type && (file.type.includes('heic') || file.type.includes('heif'))) ||
+                 (file.name && /\.(heic|heif)$/i.test(file.name));
+    if (!isHeic && file.size >= 12) {
+      try {
+        const slice = file.slice(0, 12);
+        const buf = await slice.arrayBuffer();
+        const b = new Uint8Array(buf);
+        if (b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
+          isHeic = true;
+        }
+      } catch (_) {}
+    }
+
+    if (isHeic) {
+      try {
+        const heic2anyModule = await import('heic2any');
+        const heic2any = (heic2anyModule as any).default || heic2anyModule;
+        const converted = await heic2any({
+          blob: file.slice(0, file.size, 'image/heic'),
+          toType: 'image/jpeg',
+          quality: 0.85
+        });
+        const blob = Array.isArray(converted) ? converted[0] : converted;
+        const cleanName = (file.name || 'photo').replace(/\.(heic|heif)$/i, '') + '.jpg';
+        return new File([blob], cleanName, { type: 'image/jpeg' });
+      } catch (err) {
+        console.warn('⚠️ [HEIC Conversion] Failed to convert HEIC:', err);
+      }
+    }
+    return file;
+  };
+
   // ── Avatar: Instant Direct Upload & Database Persistence ──
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let file = e.target.files?.[0];
@@ -239,26 +273,10 @@ export function ProfilePage({
     });
 
     setSaveStatus('saving');
-    addToast('جاري تجهيز ورفع الصورة... ⏳');
+    addToast('جاري تجهيز الصورة... ⏳');
 
-    // ── Handle HEIC/HEIF conversion for Samsung Galaxy S21 / iPhone ──
-    const isHeic = (file.type && (file.type.includes('heic') || file.type.includes('heif'))) ||
-                   (file.name && /\.(heic|heif)$/i.test(file.name));
-    if (isHeic) {
-      try {
-        const heic2anyModule = await import('heic2any');
-        const heic2any = heic2anyModule.default || heic2anyModule;
-        const converted = await heic2any({
-          blob: file,
-          toType: 'image/jpeg',
-          quality: 0.85
-        });
-        const blob = Array.isArray(converted) ? converted[0] : converted;
-        file = new File([blob], (file.name || 'photo').replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
-      } catch (heicErr) {
-        console.warn('⚠️ [AvatarUpload] تعذر تحويل HEIC محلياً، المتابعة بالملف الأصلي:', heicErr);
-      }
-    }
+    // Ensure image is compatible JPEG/PNG before previewing
+    file = await ensureCompatibleImage(file);
 
     // Instant local preview for immediate visual feedback (safe for mobile)
     try {
@@ -333,26 +351,10 @@ export function ProfilePage({
     });
 
     setSaveStatus('saving');
-    addToast('جاري تجهيز ورفع صورة الغلاف... ⏳');
+    addToast('جاري تجهيز صورة الغلاف... ⏳');
 
-    // ── Handle HEIC/HEIF conversion for Samsung Galaxy S21 / iPhone ──
-    const isHeic = (file.type && (file.type.includes('heic') || file.type.includes('heif'))) ||
-                   (file.name && /\.(heic|heif)$/i.test(file.name));
-    if (isHeic) {
-      try {
-        const heic2anyModule = await import('heic2any');
-        const heic2any = heic2anyModule.default || heic2anyModule;
-        const converted = await heic2any({
-          blob: file,
-          toType: 'image/jpeg',
-          quality: 0.85
-        });
-        const blob = Array.isArray(converted) ? converted[0] : converted;
-        file = new File([blob], (file.name || 'cover').replace(/\.(heic|heif)$/i, '.jpg'), { type: 'image/jpeg' });
-      } catch (heicErr) {
-        console.warn('⚠️ [CoverUpload] تعذر تحويل HEIC للغلاف:', heicErr);
-      }
-    }
+    // Ensure image is compatible JPEG/PNG before previewing
+    file = await ensureCompatibleImage(file);
 
     // Instant local preview (safe for mobile)
     try {
@@ -361,7 +363,6 @@ export function ProfilePage({
     } catch (previewErr) {
       console.warn("⚠️ [CoverUpload] تعذر إنشاء معاينة محلية للغلاف:", previewErr);
     }
-    setSaveStatus('saving');
     addToast('جاري رفع وتثبيت صورة الغلاف... ⏳');
 
     try {
