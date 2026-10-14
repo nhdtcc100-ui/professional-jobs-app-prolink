@@ -58,6 +58,20 @@ export const cvService = {
 
     const resolvedExt = this.resolveExtension(file);
 
+    // 🛡️ Security Inspection (checks dangerous extensions, magic bytes, embedded webshells)
+    try {
+      const inspection = await inspectUploadedFile(file, user, '/app/upload-cv');
+      if (!inspection.safe) {
+        return {
+          valid: false,
+          error: inspection.error || 'تم حظر الملف لدواعي أمنية',
+          ext: resolvedExt,
+        };
+      }
+    } catch (secErr) {
+      logger.warn('[cvService] Security inspection warning (proceeding):', secErr);
+    }
+
     return { valid: true, ext: resolvedExt };
   },
 

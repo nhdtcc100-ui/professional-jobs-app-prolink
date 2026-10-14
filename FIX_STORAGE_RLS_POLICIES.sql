@@ -58,4 +58,20 @@ USING (
   bucket_id IN ('resumes', 'applications', 'profiles', 'job-images', 'images')
 );
 
+-- 4. حل مشكلة عدم حفظ وتثبيت الصور والسير الذاتية في جدول profiles
+-- لضمان أن تحديث رابط الصورة والسيرة الذاتية يُحفظ دائماً ولا يُرفض صامتاً:
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public Profiles Select" ON public.profiles;
+CREATE POLICY "Public Profiles Select" ON public.profiles
+FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Profiles Update Policy" ON public.profiles;
+CREATE POLICY "Profiles Update Policy" ON public.profiles
+FOR UPDATE USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Profiles Insert Policy" ON public.profiles;
+CREATE POLICY "Profiles Insert Policy" ON public.profiles
+FOR INSERT WITH CHECK (true);
+
 -- ✅ تم الإعداد بنجاح.

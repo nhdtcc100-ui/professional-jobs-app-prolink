@@ -370,10 +370,22 @@ export const profileService = {
       }
     }
 
-    const result = await supabase.from('profiles').update(dbUpdates).eq('id', userId);
+    const result = await supabase.from('profiles').update(dbUpdates).eq('id', userId).select('id');
     
     if (result.error) {
       logger.error(`Supabase update FAILED for profile: ${userId}`, result.error);
+    } else if (!result.data || result.data.length === 0) {
+      logger.warn(`⚠️ [profileService] Update returned 0 modified rows for user ${userId}. Retrying with active session...`);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const activeUid = session?.user?.id;
+        if (activeUid && activeUid !== userId) {
+          const retry = await supabase.from('profiles').update(dbUpdates).eq('id', activeUid).select('id');
+          if (retry.data && retry.data.length > 0) {
+            return retry;
+          }
+        }
+      } catch (_) {}
     }
     return result;
   },

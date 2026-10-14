@@ -197,13 +197,21 @@ export function ProfileModal({
     addToast('جاري رفع السيرة الذاتية... ⏳');
 
     try {
+      const { inspectUploadedFile } = await import('../../lib/security/fileInspector');
+      const inspection = await inspectUploadedFile(file, { id: user.id }, '/app/cv-upload-modal');
+      if (!inspection.safe) {
+        addToast(inspection.error || 'تم حظر الملف لدواعي أمنية', 'error');
+        setSaveStatus('error');
+        return;
+      }
+
       const { cvService } = await import('../../lib/services/cvService');
       const { data: url, error: uploadErr } = await cvService.uploadCV(user.id, file, {
         name: (user as any)?.name || (profile as any)?.name,
         email: (user as any)?.email || (profile as any)?.email,
       });
       if (uploadErr || !url) throw uploadErr || new Error('فشل رفع ملف السيرة الذاتية');
-      const newData = { ...formData, cvUrl: url };
+      const newData = { ...formData, cvUrl: url, cv_url: url };
       setFormData(newData);
       await persistToDatabase(newData);
       addToast('تم رفع السيرة الذاتية بنجاح ✅');
@@ -230,6 +238,14 @@ export function ProfileModal({
     setSaveStatus('saving');
     addToast('جاري معالجة ورفع الصورة... ⏳');
     try {
+      const { inspectUploadedFile } = await import('../../lib/security/fileInspector');
+      const inspection = await inspectUploadedFile(file, { id: targetUserId }, '/app/avatar-upload-modal');
+      if (!inspection.safe) {
+        addToast(inspection.error || 'تم حظر الملف لدواعي أمنية', 'error');
+        setSaveStatus('error');
+        return;
+      }
+
       let url: string;
       try {
         // Use the professional centralized service
@@ -243,7 +259,7 @@ export function ProfileModal({
         });
         addToast('تم استخدام الرفع البديل بنجاح ✅', 'info');
       }
-      const newData = { ...formData, avatar: url };
+      const newData = { ...formData, avatar: url, avatar_url: url };
       setFormData(newData);
       await persistToDatabase(newData);
       addToast('تم تحديث الصورة الشخصية بنجاح ✨');
@@ -262,6 +278,14 @@ export function ProfileModal({
     setSaveStatus('saving');
     addToast('جاري معالجة ورفع الغلاف... ⏳');
     try {
+      const { inspectUploadedFile } = await import('../../lib/security/fileInspector');
+      const inspection = await inspectUploadedFile(file, { id: targetUserId }, '/app/cover-upload-modal');
+      if (!inspection.safe) {
+        addToast(inspection.error || 'تم حظر الملف لدواعي أمنية', 'error');
+        setSaveStatus('error');
+        return;
+      }
+
       let url: string;
       try {
         url = await imageService.processAndUpload(file, targetUserId, 'profiles');
@@ -273,7 +297,7 @@ export function ProfileModal({
           reader.readAsDataURL(file);
         });
       }
-      const newData = { ...formData, coverUrl: url };
+      const newData = { ...formData, coverUrl: url, cover_url: url };
       setFormData(newData);
       await persistToDatabase(newData);
       addToast('تم تحديث الغلاف بنجاح ✨');

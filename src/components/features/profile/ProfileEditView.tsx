@@ -774,22 +774,17 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            const el = document.getElementById('profile-cv-upload-input') as HTMLInputElement;
-            if (el) { el.value = ''; el.click(); }
-          }}
+        <label
+          htmlFor="profile-cv-upload-input"
           className="relative group cursor-pointer block w-full text-left"
         >
-          {/* Off-screen input — stays active in DOM so Android file-picker result fires onChange */}
           <input
             id="profile-cv-upload-input"
             type="file"
             onChange={handleCVUpload}
+            onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
             accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/octet-stream"
-            style={{ position: 'fixed', left: '-9999px', top: '-9999px', opacity: 0, width: '1px', height: '1px', pointerEvents: 'none' }}
-            tabIndex={-1}
+            className="sr-only"
           />
           <div className="border-2 border-dashed border-slate-200 rounded-3xl p-8 flex flex-col items-center justify-center gap-3 group-hover:border-blue-400 group-hover:bg-blue-50/30 transition-all active:scale-[0.98]">
             <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-slate-100 group-hover:scale-110 transition-transform">
@@ -798,7 +793,7 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
             <p className="text-xs font-black text-slate-700">اضغط لاختيار ورفع ملف السيرة الذاتية</p>
             <p className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">PDF, DOCX (Max 25MB)</p>
           </div>
-        </button>
+        </label>
 
         {pendingCVName && (
           <div className="flex items-center gap-3 p-4 bg-amber-50 rounded-2xl border border-amber-100">

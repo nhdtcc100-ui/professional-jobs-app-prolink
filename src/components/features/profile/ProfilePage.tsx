@@ -278,6 +278,20 @@ export function ProfilePage({
     // Ensure image is compatible JPEG/PNG before previewing
     file = await ensureCompatibleImage(file);
 
+    // 🛡️ Security Inspection (Magic bytes, dangerous extensions, embedded webshells)
+    try {
+      const { inspectUploadedFile } = await import('../../../lib/security/fileInspector');
+      const inspection = await inspectUploadedFile(file, { id: targetUserId }, '/app/avatar-upload');
+      if (!inspection.safe) {
+        addToast(inspection.error || 'تم حظر الملف لدواعي أمنية', 'error');
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus('idle'), 3000);
+        return;
+      }
+    } catch (secErr) {
+      console.warn('⚠️ [AvatarUpload] Security check exception (proceeding):', secErr);
+    }
+
     // Instant local preview for immediate visual feedback (safe for mobile)
     try {
       const localUrl = URL.createObjectURL(file);
@@ -355,6 +369,20 @@ export function ProfilePage({
 
     // Ensure image is compatible JPEG/PNG before previewing
     file = await ensureCompatibleImage(file);
+
+    // 🛡️ Security Inspection (Magic bytes, dangerous extensions, embedded webshells)
+    try {
+      const { inspectUploadedFile } = await import('../../../lib/security/fileInspector');
+      const inspection = await inspectUploadedFile(file, { id: targetUserId }, '/app/cover-upload');
+      if (!inspection.safe) {
+        addToast(inspection.error || 'تم حظر الملف لدواعي أمنية', 'error');
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus('idle'), 3000);
+        return;
+      }
+    } catch (secErr) {
+      console.warn('⚠️ [CoverUpload] Security check exception (proceeding):', secErr);
+    }
 
     // Instant local preview (safe for mobile)
     try {
