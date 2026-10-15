@@ -215,16 +215,9 @@ export function ProfilePage({
     });
   }, [profile]);
 
-  // ── Avatar: Instant Direct Upload & Database Persistence ──
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    let rawFile = e.target.files?.[0];
-    const targetInput = e.target;
-    if (!rawFile) {
-      await new Promise(r => setTimeout(r, 120));
-      rawFile = targetInput?.files?.[0];
-    }
+  // ── Avatar: Direct Upload & Database Persistence ──
+  const handleDirectAvatarUpload = async (rawFile: File) => {
     if (!rawFile) return;
-
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
     if (!targetUserId) {
       addToast('تعذر تحديد حساب المستخدم لتحديث الصورة', 'error');
@@ -240,7 +233,6 @@ export function ProfilePage({
       console.error("❌ [AvatarUpload] فشل قراءة الملف من الجهاز:", readErr);
       addToast('تعذر قراءة الصورة من ذاكرة الجهاز، يرجى إعادة المحاولة', 'error');
       setIsUploadingAvatar(false);
-      if (targetInput) targetInput.value = '';
       return;
     }
 
@@ -276,20 +268,23 @@ export function ProfilePage({
       addToast('فشل رفع الصورة: ' + (err.message || ''), 'error');
     } finally {
       setIsUploadingAvatar(false);
-      if (targetInput) targetInput.value = '';
     }
   };
 
-  // ── Cover: Instant Direct Upload & Database Persistence ──
-  const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let rawFile = e.target.files?.[0];
     const targetInput = e.target;
     if (!rawFile) {
       await new Promise(r => setTimeout(r, 120));
       rawFile = targetInput?.files?.[0];
     }
-    if (!rawFile) return;
+    if (rawFile) await handleDirectAvatarUpload(rawFile);
+    if (targetInput) targetInput.value = '';
+  };
 
+  // ── Cover: Direct Upload & Database Persistence ──
+  const handleDirectCoverUpload = async (rawFile: File) => {
+    if (!rawFile) return;
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
     if (!targetUserId) {
       addToast('تعذر تحديد حساب المستخدم لتحديث الغلاف', 'error');
@@ -305,7 +300,6 @@ export function ProfilePage({
       console.error("❌ [CoverUpload] فشل قراءة الملف من الجهاز:", readErr);
       addToast('تعذر قراءة صورة الغلاف من ذاكرة الجهاز، يرجى إعادة المحاولة', 'error');
       setIsUploadingCover(false);
-      if (targetInput) targetInput.value = '';
       return;
     }
 
@@ -341,8 +335,18 @@ export function ProfilePage({
       addToast('فشل رفع الغلاف: ' + (err.message || ''), 'error');
     } finally {
       setIsUploadingCover(false);
-      if (targetInput) targetInput.value = '';
     }
+  };
+
+  const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    let rawFile = e.target.files?.[0];
+    const targetInput = e.target;
+    if (!rawFile) {
+      await new Promise(r => setTimeout(r, 120));
+      rawFile = targetInput?.files?.[0];
+    }
+    if (rawFile) await handleDirectCoverUpload(rawFile);
+    if (targetInput) targetInput.value = '';
   };
 
   const handleManualSave = useCallback(async () => {
@@ -499,6 +503,8 @@ export function ProfilePage({
         showCallButton={!!appUser?.isAdmin}
         isUploadingAvatar={isUploadingAvatar}
         isUploadingCover={isUploadingCover}
+        onDirectAvatarPick={handleDirectAvatarUpload}
+        onDirectCoverPick={handleDirectCoverUpload}
       />
 
       {/* Profile Tabs */}

@@ -20,6 +20,8 @@ interface ProfileHeaderProps {
   showCallButton?: boolean;
   isUploadingAvatar?: boolean;
   isUploadingCover?: boolean;
+  onDirectAvatarPick?: (file: File) => void;
+  onDirectCoverPick?: (file: File) => void;
 }
 
 const OPEN_TO_OPTIONS = [
@@ -42,6 +44,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   showCallButton = false,
   isUploadingAvatar = false,
   isUploadingCover = false,
+  onDirectAvatarPick,
+  onDirectCoverPick,
 }) => {
   const currentRole = formData?.role || profile?.role || 'seeker';
   const isEmployer = currentRole === 'employer';
@@ -75,16 +79,26 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
           <>
             <label
               htmlFor="cover-file-input-header"
+              onClick={async (e) => {
+                if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
+                  e.preventDefault();
+                  const { pickImageFromGallery } = await import('../../../lib/services/imageService');
+                  const file = await pickImageFromGallery();
+                  if (file && onDirectCoverPick) {
+                    onDirectCoverPick(file);
+                  }
+                }
+              }}
               className="absolute top-3 right-3 p-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-800 transition-all shadow-md flex items-center gap-1.5 group/btn border border-white/20 dark:border-slate-700 active:scale-95 z-10"
-              title="تغيير صورة الغلاف"
+              title="تغيير صورة الغلاف من المعرض"
             >
               <Camera size={13} className="text-[#0a66c2] dark:text-blue-400" />
-              <span className="text-[9px] font-black text-slate-600 dark:text-slate-200 uppercase tracking-widest hidden group-hover/btn:block">تغيير</span>
+              <span className="text-[9px] font-black text-slate-600 dark:text-slate-200 uppercase tracking-widest hidden group-hover/btn:block">الاستوديو</span>
             </label>
             <input
               id="cover-file-input-header"
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp,image/jpg"
               className="hidden"
               onChange={handleCoverChange}
             />
@@ -114,15 +128,25 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               <>
                 <label
                   htmlFor="avatar-file-input-header"
+                  onClick={async (e) => {
+                    if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
+                      e.preventDefault();
+                      const { pickImageFromGallery } = await import('../../../lib/services/imageService');
+                      const file = await pickImageFromGallery();
+                      if (file && onDirectAvatarPick) {
+                        onDirectAvatarPick(file);
+                      }
+                    }
+                  }}
                   className="absolute bottom-1 left-1 p-1.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-700 shadow-md transition-all border border-slate-100 dark:border-slate-700 active:scale-95 z-10"
-                  title="تغيير الصورة الشخصية"
+                  title="تغيير الصورة الشخصية من المعرض"
                 >
                   <Camera size={11} className="text-[#0a66c2] dark:text-blue-400" />
                 </label>
                 <input
                   id="avatar-file-input-header"
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp,image/jpg"
                   className="hidden"
                   onChange={handleAvatarChange}
                 />

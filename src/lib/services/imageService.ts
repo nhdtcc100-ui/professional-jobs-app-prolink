@@ -520,3 +520,80 @@ export const imageService = {
     return this.uploadFile(file, userId, 'posts');
   }
 };
+
+/**
+ * Directly opens the device Photo Gallery & Albums.
+ * On native Android / iOS (Capacitor), uses CameraSource.Photos which opens the native Gallery directly.
+ * On mobile Web browsers, uses a targeted image file picker (JPEG, PNG, WEBP) that directs Android to Media Gallery.
+ */
+export async function pickImageFromGallery(): Promise<File | null> {
+  // 1. Native Capacitor App (Android / iOS)
+  if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
+    try {
+      const { Camera, CameraSource, CameraResultType } = await import('@capacitor/camera');
+      const photo = await Camera.getPhoto({
+        quality: 85,
+        allowEditing: false,
+        resultType: CameraResultType.Uri,
+        source: CameraSource.Photos, // 👈 Directly opens Native Gallery & Albums!
+      });
+
+      if (photo?.webPath) {
+        const response = await fetch(photo.webPath);
+        const blob = await response.blob();
+        const ext = photo.format || 'jpg';
+        return new File([blob], `photo_${Date.now()}.${ext}`, {
+          type: blob.type || `image/${ext}`,
+          lastModified: Date.now()
+        });
+      }
+      return null;
+    } catch (e: any) {
+      if (e?.message?.includes('cancelled') || e?.message?.includes('User cancelled')) {
+        return null;
+      }
+      console.warn('[pickImageFromGallery] Native picker error, fallback to web:', e);
+    }
+  }
+
+  // 2. Mobile Web / Desktop Browser fallback: specific image MIME types
+  return new Promise<File | null>((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/jpeg,image/png,image/webp,image/jpg';
+    input.style.display = 'none';
+    document.body.appendChild(input);
+
+    let handled = false;
+    const cleanup = () => {
+      if (input.parentNode) {
+        document.body.removeChild(input);
+      }
+    };
+
+    input.onchange = () => {
+      if (handled) return;
+      handled = true;
+      const file = input.files?.[0] || null;
+      cleanup();
+      resolve(file);
+    };
+
+    window.addEventListener(
+      'focus',
+      () => {
+        setTimeout(() => {
+          if (!handled && (!input.files || input.files.length === 0)) {
+            handled = true;
+            cleanup();
+            resolve(null);
+          }
+        }, 1000);
+      },
+      { once: true }
+    );
+
+    input.click();
+  });
+}
+
