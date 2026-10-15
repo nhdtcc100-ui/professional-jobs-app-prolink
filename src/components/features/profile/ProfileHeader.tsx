@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Camera, BadgeCheck, Briefcase, Search, Minus, Phone, 
-  MapPin, Globe, FileText, Linkedin, Twitter, Github, Mail, ExternalLink 
+  MapPin, Globe, FileText, Linkedin, Twitter, Github, Mail, ExternalLink, Loader2 
 } from 'lucide-react';
 
 interface ProfileHeaderProps {
@@ -18,6 +18,8 @@ interface ProfileHeaderProps {
   onMessageClick?: () => void;
   onCallClick?: () => void;
   showCallButton?: boolean;
+  isUploadingAvatar?: boolean;
+  isUploadingCover?: boolean;
 }
 
 const OPEN_TO_OPTIONS = [
@@ -38,6 +40,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   onMessageClick,
   onCallClick,
   showCallButton = false,
+  isUploadingAvatar = false,
+  isUploadingCover = false,
 }) => {
   const currentRole = formData?.role || profile?.role || 'seeker';
   const isEmployer = currentRole === 'employer';
@@ -61,7 +65,13 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         />
         {/* Gradient overlay at bottom for readability */}
         <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/30 to-transparent" />
-        {isMe && (
+        {isUploadingCover && (
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center gap-2 z-20 text-white">
+            <Loader2 size={20} className="animate-spin text-white" />
+            <span className="text-xs font-black drop-shadow">جاري حفظ الغلاف...</span>
+          </div>
+        )}
+        {isMe && !isUploadingCover && (
           <>
             <label
               htmlFor="cover-file-input-header"
@@ -86,15 +96,21 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
       <div className="px-4 md:px-6 pb-4 relative">
         <div className="flex items-end justify-between -mt-10 md:-mt-14 mb-4">
           <div className="relative group/avatar">
-            <div className="w-20 h-20 md:w-28 md:h-28 rounded-3xl border-4 border-white dark:border-slate-900 overflow-hidden shadow-lg bg-white dark:bg-slate-800">
+            <div className="w-20 h-20 md:w-28 md:h-28 rounded-3xl border-4 border-white dark:border-slate-900 overflow-hidden shadow-lg bg-white dark:bg-slate-800 relative">
               <img
                 key={formData.avatar}
                 src={formData.avatar}
                 className="w-full h-full object-cover"
                 alt="Avatar"
               />
+              {isUploadingAvatar && (
+                <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px] flex flex-col items-center justify-center gap-1 z-20 text-white">
+                  <Loader2 size={22} className="animate-spin text-white" />
+                  <span className="text-[8px] font-black tracking-tight">جاري الحفظ...</span>
+                </div>
+              )}
             </div>
-            {isMe && (
+            {isMe && !isUploadingAvatar && (
               <>
                 <label
                   htmlFor="avatar-file-input-header"

@@ -330,13 +330,13 @@ export const imageService = {
       try { await supabase.auth.getSession(); } catch (_) {}
       console.log(`[imageService] Upload attempt | bucket: ${bucket} | file size: ${file.size} bytes | type: ${file.type || 'unknown'}`);
 
-      // Actual existing buckets in Supabase (in priority order, including verified 'resumes')
-      const candidateBuckets = [bucket, 'profiles', 'images', 'resumes', 'applications', 'job-images', 'posts']
-        .filter((b, idx, arr) => arr.indexOf(b) === idx);
+      // Only try requested bucket and primary fallback to prevent long blocking loops
+      const candidateBuckets = [bucket, bucket !== 'profiles' ? 'profiles' : 'images']
+        .filter((b, idx, arr) => arr.indexOf(b) === idx && Boolean(b));
 
       for (const b of candidateBuckets) {
         try {
-          const { error: uploadError } = await supabase.storage
+          const uploadPromise = supabase.storage
             .from(b)
             .upload(fileName, file, {
               contentType,
@@ -344,6 +344,12 @@ export const imageService = {
               // '1' = 1 second cache — effectively no-cache while being a valid value
               cacheControl: '1',
             });
+
+          const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
+            setTimeout(() => reject(new Error('Storage upload timeout (7s)')), 7000)
+          );
+
+          const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);
 
           if (!uploadError) {
             const { data: publicData } = supabase.storage.from(b).getPublicUrl(fileName);
@@ -440,16 +446,20 @@ export const imageService = {
       try {
         const heic2anyModule = await import('heic2any');
         const heic2any = heic2anyModule.default || heic2anyModule;
-        const converted = await heic2any({
+        const convertPromise = heic2any({
           blob: file,
           toType: 'image/jpeg',
           quality: 0.85
         });
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('HEIC conversion timeout (4s)')), 4000)
+        );
+        const converted = await Promise.race([convertPromise, timeoutPromise]);
         const blob = Array.isArray(converted) ? converted[0] : converted;
         const newName = (file.name || 'photo').replace(/\.(heic|heif)$/i, '.jpg');
         file = new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() });
       } catch (heicErr) {
-        console.warn('[imageService] HEIC conversion warning:', heicErr);
+        console.warn('[imageService] HEIC conversion warning (proceeding with original):', heicErr);
       }
     }
 

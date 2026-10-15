@@ -76,6 +76,10 @@ export function ProfilePage({
   const [pendingCV, setPendingCV]             = useState<File | null>(null);
   const [pendingCVName, setPendingCVName]     = useState<string | null>(null);
 
+  // Dedicated upload indicators for images (never blocks manual save button)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isUploadingCover, setIsUploadingCover]   = useState(false);
+
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [activeTab, setActiveTab] = useState<'posts' | 'activity' | 'edit'>(isEditing ? 'edit' : 'activity');
   const [userPosts, setUserPosts]   = useState<any[]>(() => {
@@ -211,102 +215,36 @@ export function ProfilePage({
     });
   }, [profile]);
 
-  // ── Helper: Robust HEIC/HEIF conversion with magic bytes detection for Samsung Galaxy / iPhone ──
-  const ensureCompatibleImage = async (file: File): Promise<File> => {
-    let isHeic = (file.type && (file.type.includes('heic') || file.type.includes('heif'))) ||
-                 (file.name && /\.(heic|heif)$/i.test(file.name));
-    if (!isHeic && file.size >= 12) {
-      try {
-        const slice = file.slice(0, 12);
-        const buf = await slice.arrayBuffer();
-        const b = new Uint8Array(buf);
-        if (b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
-          isHeic = true;
-        }
-      } catch (_) {}
-    }
-
-    if (isHeic) {
-      try {
-        const heic2anyModule = await import('heic2any');
-        const heic2any = (heic2anyModule as any).default || heic2anyModule;
-        const converted = await heic2any({
-          blob: file.slice(0, file.size, 'image/heic'),
-          toType: 'image/jpeg',
-          quality: 0.85
-        });
-        const blob = Array.isArray(converted) ? converted[0] : converted;
-        const cleanName = (file.name || 'photo').replace(/\.(heic|heif)$/i, '') + '.jpg';
-        return new File([blob], cleanName, { type: 'image/jpeg' });
-      } catch (err) {
-        console.warn('⚠️ [HEIC Conversion] Failed to convert HEIC:', err);
-      }
-    }
-    return file;
-  };
-
   // ── Avatar: Instant Direct Upload & Database Persistence ──
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let rawFile = e.target.files?.[0];
     const targetInput = e.target;
     if (!rawFile) {
-      // Small pause for Samsung One UI / Scoped Storage FileList population
       await new Promise(r => setTimeout(r, 120));
       rawFile = targetInput?.files?.[0];
     }
-    if (!rawFile) {
-      console.warn("⚠️ [AvatarUpload] لم يتم اختيار أي ملف من المتصفح.");
-      return;
-    }
+    if (!rawFile) return;
+
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
     if (!targetUserId) {
-      console.error("❌ [AvatarUpload] فشل التبديل: تعذر العثور على معرّف المستخدم (User ID is missing).");
       addToast('تعذر تحديد حساب المستخدم لتحديث الصورة', 'error');
       return;
     }
 
-    setSaveStatus('saving');
-    addToast('جاري استلام وتجهيز الصورة... ⏳');
+    setIsUploadingAvatar(true);
 
     let file: File;
     try {
-      // 🚀 عزل الملف فورياً في الذاكرة لتفادي إلغاء أذونات Android Scoped Storage و ERR_UPLOAD_FILE_CHANGED
       file = await snapshotFile(rawFile);
     } catch (readErr: any) {
       console.error("❌ [AvatarUpload] فشل قراءة الملف من الجهاز:", readErr);
       addToast('تعذر قراءة الصورة من ذاكرة الجهاز، يرجى إعادة المحاولة', 'error');
-      setSaveStatus('error');
-      setTimeout(() => setSaveStatus('idle'), 3000);
+      setIsUploadingAvatar(false);
       if (targetInput) targetInput.value = '';
       return;
     }
 
-    console.log("📸 [AvatarUpload] تم استلام وتثبيت ملف الصورة في الذاكرة:", {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      userId: targetUserId
-    });
-
-    // Ensure image is compatible JPEG/PNG before previewing
-    file = await ensureCompatibleImage(file);
-
-    // 🛡️ Security Inspection (Magic bytes, dangerous extensions, embedded webshells)
-    try {
-      const { inspectUploadedFile } = await import('../../../lib/security/fileInspector');
-      const inspection = await inspectUploadedFile(file, { id: targetUserId }, '/app/avatar-upload');
-      if (!inspection.safe) {
-        addToast(inspection.error || 'تم حظر الملف لدواعي أمنية', 'error');
-        setSaveStatus('error');
-        setTimeout(() => setSaveStatus('idle'), 3000);
-        if (targetInput) targetInput.value = '';
-        return;
-      }
-    } catch (secErr) {
-      console.warn('⚠️ [AvatarUpload] Security check exception (proceeding):', secErr);
-    }
-
-    // Instant local preview for immediate visual feedback (safe for mobile)
+    // Instant local preview for immediate visual feedback (0ms delay)
     try {
       const localUrl = URL.createObjectURL(file);
       setFormData(prev => ({ ...prev, avatar: localUrl }));
@@ -314,12 +252,15 @@ export function ProfilePage({
       console.warn("⚠️ [AvatarUpload] تعذر إنشاء معاينة محلية:", previewErr);
     }
 
-    addToast('جاري رفع وتثبيت الصورة الشخصية... ⏳');
-
     try {
-      console.log("⏳ [AvatarUpload] جاري الرفع إلى Storage ومعالجة الصورة...");
-      const permanentUrl = await imageService.processAndUpload(file, targetUserId, 'profiles');
-      console.log("✅ [AvatarUpload] تم رفع الصورة بنجاح إلى Storage، الرابط:", permanentUrl);
+      const uploadTimeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('انتهت مهلة رفع الصورة (12 ثانية)')), 12000)
+      );
+
+      const permanentUrl = await Promise.race([
+        imageService.processAndUpload(file, targetUserId, 'profiles'),
+        uploadTimeout
+      ]);
 
       setFormData(prev => ({ ...prev, avatar: permanentUrl, avatar_url: permanentUrl }));
 
@@ -327,12 +268,7 @@ export function ProfilePage({
         avatar: permanentUrl,
         avatar_url: permanentUrl
       });
-      if (error) {
-        console.error("❌ [AvatarUpload] فشل تحديث قاعدة البيانات:", error);
-        throw error;
-      }
-
-      console.log("✅ [AvatarUpload] تم استبدال وتثبيت الصورة الشخصية بنجاح تام في قاعدة البيانات والملف الشخصي! 🎉");
+      if (error) throw error;
 
       if (isMe && setAppUser) {
         setAppUser((prev: any) => prev ? { ...prev, avatar: permanentUrl, avatar_url: permanentUrl } : null);
@@ -341,15 +277,12 @@ export function ProfilePage({
         await onSave({ avatar: permanentUrl, avatar_url: permanentUrl });
       }
 
-      setSaveStatus('saved');
       addToast('تم حفظ وتثبيت الصورة الشخصية بنجاح! 📸', 'success');
-      setTimeout(() => setSaveStatus('idle'), 2500);
     } catch (err: any) {
-      console.error("❌ [AvatarUpload] لم يتم التبديل - حدث خطأ:", err);
-      setSaveStatus('error');
+      console.error("❌ [AvatarUpload] خطأ في الرفع:", err);
       addToast('فشل رفع الصورة: ' + (err.message || ''), 'error');
-      setTimeout(() => setSaveStatus('idle'), 3000);
     } finally {
+      setIsUploadingAvatar(false);
       if (targetInput) targetInput.value = '';
     }
   };
@@ -362,19 +295,15 @@ export function ProfilePage({
       await new Promise(r => setTimeout(r, 120));
       rawFile = targetInput?.files?.[0];
     }
-    if (!rawFile) {
-      console.warn("⚠️ [CoverUpload] لم يتم اختيار أي ملف غلاف من المتصفح.");
-      return;
-    }
+    if (!rawFile) return;
+
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
     if (!targetUserId) {
-      console.error("❌ [CoverUpload] فشل التبديل: تعذر العثور على معرّف المستخدم (User ID is missing).");
       addToast('تعذر تحديد حساب المستخدم لتحديث الغلاف', 'error');
       return;
     }
 
-    setSaveStatus('saving');
-    addToast('جاري استلام وتجهيز صورة الغلاف... ⏳');
+    setIsUploadingCover(true);
 
     let file: File;
     try {
@@ -382,50 +311,28 @@ export function ProfilePage({
     } catch (readErr: any) {
       console.error("❌ [CoverUpload] فشل قراءة الملف من الجهاز:", readErr);
       addToast('تعذر قراءة صورة الغلاف من ذاكرة الجهاز، يرجى إعادة المحاولة', 'error');
-      setSaveStatus('error');
-      setTimeout(() => setSaveStatus('idle'), 3000);
+      setIsUploadingCover(false);
       if (targetInput) targetInput.value = '';
       return;
     }
 
-    console.log("🖼️ [CoverUpload] تم استلام وتثبيت ملف صورة الغلاف في الذاكرة:", {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      userId: targetUserId
-    });
-
-    // Ensure image is compatible JPEG/PNG before previewing
-    file = await ensureCompatibleImage(file);
-
-    // 🛡️ Security Inspection (Magic bytes, dangerous extensions, embedded webshells)
-    try {
-      const { inspectUploadedFile } = await import('../../../lib/security/fileInspector');
-      const inspection = await inspectUploadedFile(file, { id: targetUserId }, '/app/cover-upload');
-      if (!inspection.safe) {
-        addToast(inspection.error || 'تم حظر الملف لدواعي أمنية', 'error');
-        setSaveStatus('error');
-        setTimeout(() => setSaveStatus('idle'), 3000);
-        if (targetInput) targetInput.value = '';
-        return;
-      }
-    } catch (secErr) {
-      console.warn('⚠️ [CoverUpload] Security check exception (proceeding):', secErr);
-    }
-
-    // Instant local preview (safe for mobile)
+    // Instant local preview
     try {
       const localUrl = URL.createObjectURL(file);
       setFormData(prev => ({ ...prev, coverUrl: localUrl, cover_url: localUrl }));
     } catch (previewErr) {
       console.warn("⚠️ [CoverUpload] تعذر إنشاء معاينة محلية للغلاف:", previewErr);
     }
-    addToast('جاري رفع وتثبيت صورة الغلاف... ⏳');
 
     try {
-      console.log("⏳ [CoverUpload] جاري الرفع إلى Storage ومعالجة صورة الغلاف...");
-      const permanentUrl = await imageService.processAndUpload(file, targetUserId, 'profiles');
-      console.log("✅ [CoverUpload] تم رفع صورة الغلاف بنجاح إلى Storage، الرابط:", permanentUrl);
+      const uploadTimeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('انتهت مهلة رفع صورة الغلاف (12 ثانية)')), 12000)
+      );
+
+      const permanentUrl = await Promise.race([
+        imageService.processAndUpload(file, targetUserId, 'profiles'),
+        uploadTimeout
+      ]);
 
       setFormData(prev => ({ ...prev, coverUrl: permanentUrl, cover_url: permanentUrl }));
 
@@ -433,12 +340,7 @@ export function ProfilePage({
         coverUrl: permanentUrl,
         cover_url: permanentUrl
       });
-      if (error) {
-        console.error("❌ [CoverUpload] فشل تحديث الغلاف في قاعدة البيانات:", error);
-        throw error;
-      }
-
-      console.log("✅ [CoverUpload] تم استبدال وتثبيت صورة الغلاف بنجاح تام في قاعدة البيانات! 🎉");
+      if (error) throw error;
 
       if (isMe && setAppUser) {
         setAppUser((prev: any) => prev ? { ...prev, coverUrl: permanentUrl, cover_url: permanentUrl } : null);
@@ -447,15 +349,12 @@ export function ProfilePage({
         await onSave({ coverUrl: permanentUrl, cover_url: permanentUrl });
       }
 
-      setSaveStatus('saved');
       addToast('تم حفظ وتثبيت صورة الغلاف بنجاح! 🖼️', 'success');
-      setTimeout(() => setSaveStatus('idle'), 2500);
     } catch (err: any) {
-      console.error("❌ [CoverUpload] لم يتم التبديل - حدث خطأ:", err);
-      setSaveStatus('error');
+      console.error("❌ [CoverUpload] خطأ في الرفع:", err);
       addToast('فشل رفع الغلاف: ' + (err.message || ''), 'error');
-      setTimeout(() => setSaveStatus('idle'), 3000);
     } finally {
+      setIsUploadingCover(false);
       if (targetInput) targetInput.value = '';
     }
   };
@@ -543,83 +442,31 @@ export function ProfilePage({
     }
   }, [formData, user?.id, appUser?.id, profile?.id, isMe, setAppUser, onSave, addToast]);
 
-  // ── CV: Instant Direct Upload & Database Persistence ──
+  // ── CV: Selection Staging — Uploads & Saves cleanly on manual Save ──
   const handleCVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let rawFile = e.target.files?.[0];
     const targetInput = e.target;
-    // Android Scoped Storage: FileList may not be populated immediately after
-    // returning from an external Activity (Samsung Gallery / Downloads)
     if (!rawFile) {
       await new Promise(r => setTimeout(r, 120));
       rawFile = targetInput?.files?.[0];
     }
     if (!rawFile) return;
 
-    const currentUserId = user?.id || appUser?.id || profile?.id || formData?.id;
-    if (!currentUserId) {
-      addToast('يرجى تسجيل الدخول أولاً لرفع السيرة الذاتية', 'error');
-      return;
-    }
-
-    setSaveStatus('saving');
-    addToast('جاري استلام وتجهيز السيرة الذاتية... ⏳');
-
-    let file: File;
-    try {
-      file = await snapshotFile(rawFile);
-    } catch (readErr: any) {
-      console.error("❌ [CVUpload] فشل قراءة الملف من الجهاز:", readErr);
-      addToast('تعذر قراءة ملف السيرة الذاتية من ذاكرة الجهاز', 'error');
-      setSaveStatus('error');
-      setTimeout(() => setSaveStatus('idle'), 3000);
+    if (rawFile.size > 25 * 1024 * 1024) {
+      addToast('حجم ملف السيرة الذاتية كبير جداً (أقصى حد 25 ميجابايت)', 'error');
       if (targetInput) targetInput.value = '';
       return;
     }
 
-    addToast('جاري رفع وتثبيت السيرة الذاتية... ⏳');
-
     try {
-      // Remove old CV if exists
-      if (formData.cvUrl) {
-        await cvService.deleteCV(formData.cvUrl);
-      }
-
-      const { data: url, error: uploadErr } = await cvService.uploadCV(currentUserId, file, {
-        name: user?.name || appUser?.name || profile?.name,
-        email: user?.email || appUser?.email || profile?.email,
-      });
-
-      if (uploadErr || !url) {
-        throw uploadErr || new Error('فشل رفع ملف السيرة الذاتية');
-      }
-
-      const updatedData = { ...formData, cvUrl: url, cv_url: url };
-      setFormData(updatedData);
-
-      const { error } = await profileService.updateProfile(currentUserId, {
-        cvUrl: url,
-        cv_url: url
-      });
-      if (error) throw error;
-
-      if (isMe && setAppUser) {
-        setAppUser((prev: any) => prev ? { ...prev, cvUrl: url, cv_url: url } : null);
-      }
-      if (onSave) {
-        await onSave({ cvUrl: url, cv_url: url });
-      }
-
-      setPendingCV(null);
-      setPendingCVName(null);
-      setSaveStatus('saved');
-      addToast('تم رفع وتثبيت السيرة الذاتية بنجاح! 📄', 'success');
-      setTimeout(() => setSaveStatus('idle'), 2500);
-    } catch (err: any) {
-      setSaveStatus('error');
-      addToast('فشل رفع السيرة الذاتية: ' + (err.message || ''), 'error');
-      setTimeout(() => setSaveStatus('idle'), 3500);
+      const file = await snapshotFile(rawFile);
+      setPendingCV(file);
+      setPendingCVName(file.name);
+      addToast(`تم تحديد "${file.name}" 📄 اضغط "حفظ جميع التغييرات" لتثبيته`, 'success');
+    } catch (readErr: any) {
+      console.error("❌ [CVUpload] فشل قراءة الملف من الجهاز:", readErr);
+      addToast('تعذر قراءة ملف السيرة الذاتية من جهازك', 'error');
     } finally {
-      // Clear input so selecting the same or another file triggers onChange on mobile
       if (targetInput) targetInput.value = '';
     }
   };
@@ -664,6 +511,8 @@ export function ProfilePage({
         onMessageClick={onMessageClick}
         onCallClick={() => onCallClick?.(profile)}
         showCallButton={!!appUser?.isAdmin}
+        isUploadingAvatar={isUploadingAvatar}
+        isUploadingCover={isUploadingCover}
       />
 
       {/* Profile Tabs */}
