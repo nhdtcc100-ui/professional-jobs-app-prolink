@@ -254,7 +254,7 @@ export function ProfilePage({
 
     try {
       const uploadTimeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('انتهت مهلة رفع الصورة (12 ثانية)')), 12000)
+        setTimeout(() => reject(new Error('انتهت مهلة رفع الصورة (60 ثانية)')), 60000)
       );
 
       const permanentUrl = await Promise.race([
@@ -326,7 +326,7 @@ export function ProfilePage({
 
     try {
       const uploadTimeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('انتهت مهلة رفع صورة الغلاف (12 ثانية)')), 12000)
+        setTimeout(() => reject(new Error('انتهت مهلة رفع صورة الغلاف (60 ثانية)')), 60000)
       );
 
       const permanentUrl = await Promise.race([

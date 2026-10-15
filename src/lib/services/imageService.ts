@@ -150,7 +150,7 @@ export const imageService = {
     const safeBitmap = (src: ImageBitmapSource, opts?: ImageBitmapOptions): Promise<ImageBitmap | null> =>
       Promise.race([
         opts ? createImageBitmap(src, opts) : createImageBitmap(src),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
       ]).catch(() => null);
 
     // 1. Try modern createImageBitmap with native GPU/C++ downscaling
@@ -334,45 +334,18 @@ export const imageService = {
       try { await supabase.auth.getSession(); } catch (_) {}
       console.log(`[imageService] Upload attempt | bucket: ${bucket} | size: ${file.size} bytes | type: ${contentType}`);
 
-      // ── Strategy 1: Presigned URL (bypasses CORS & WebView auth issues on mobile) ──
-      try {
-        const presigned = await this.createPresignedUploadUrl(userId, contentType, bucket);
-        if (presigned?.signedUrl) {
-          const uploadRes = await Promise.race([
-            fetch(presigned.signedUrl, {
-              method: 'PUT',
-              body: file,
-              headers: { 'Content-Type': contentType, 'x-upsert': 'true' },
-            }),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('Presigned upload timeout (10s)')), 10000)
-            ),
-          ]) as Response;
-
-          if (uploadRes.ok) {
-            const separator = presigned.publicUrl.includes('?') ? '&' : '?';
-            const freshUrl = `${presigned.publicUrl}${separator}t=${uuid}`;
-            console.log(`✅ [imageService] Presigned upload success:`, freshUrl);
-            return freshUrl;
-          }
-          console.warn(`⚠️ [imageService] Presigned upload HTTP ${(uploadRes as Response).status}`);
-        }
-      } catch (presignErr) {
-        console.warn('[imageService] Presigned upload failed, trying direct SDK:', presignErr);
-      }
-
-      // ── Strategy 2: Direct SDK upload (works on desktop) ──
-      const candidateBuckets = [bucket, bucket !== 'profiles' ? 'profiles' : 'images']
+      // ── Strategy 1: Direct SDK upload (matches cvService: uses standard Supabase POST, no CORS preflight stalls) ──
+      const candidateBuckets = [bucket, 'profiles', 'images']
         .filter((b, idx, arr) => arr.indexOf(b) === idx && Boolean(b));
 
       for (const b of candidateBuckets) {
         try {
           const uploadPromise = supabase.storage
             .from(b)
-            .upload(fileName, file, { contentType, upsert: true, cacheControl: '1' });
+            .upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' });
 
           const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-            setTimeout(() => reject(new Error('Storage upload timeout (7s)')), 7000)
+            setTimeout(() => reject(new Error(`Storage upload timeout (15s) for bucket '${b}'`)), 15000)
           );
 
           const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);
@@ -391,6 +364,32 @@ export const imageService = {
         } catch (bErr) {
           console.warn(`⚠️ [imageService] Exception trying bucket '${b}':`, bErr);
         }
+      }
+
+      // ── Strategy 2: Presigned URL fallback (only if direct SDK fails) ──
+      try {
+        const presigned = await this.createPresignedUploadUrl(userId, contentType, bucket);
+        if (presigned?.signedUrl) {
+          const uploadRes = await Promise.race([
+            fetch(presigned.signedUrl, {
+              method: 'PUT',
+              body: file,
+              headers: { 'Content-Type': contentType, 'x-upsert': 'true' },
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Presigned upload timeout (8s)')), 8000)
+            ),
+          ]) as Response;
+
+          if (uploadRes.ok) {
+            const separator = presigned.publicUrl.includes('?') ? '&' : '?';
+            const freshUrl = `${presigned.publicUrl}${separator}t=${uuid}`;
+            console.log(`✅ [imageService] Presigned upload fallback success:`, freshUrl);
+            return freshUrl;
+          }
+        }
+      } catch (presignErr) {
+        console.warn('[imageService] Presigned upload fallback failed:', presignErr);
       }
     } catch (e) {
       console.warn('[imageService] Storage upload error, falling back to base64:', e);
