@@ -146,10 +146,19 @@ export const imageService = {
       return file;
     }
 
-    // 1. Try modern createImageBitmap with native GPU/C++ downscaling (Fast & zero OOM on Galaxy S21)
+    // Helper: createImageBitmap with safety timeout (prevents hang on low-memory mobile)
+    const safeBitmap = (src: ImageBitmapSource, opts?: ImageBitmapOptions): Promise<ImageBitmap | null> =>
+      Promise.race([
+        opts ? createImageBitmap(src, opts) : createImageBitmap(src),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+      ]).catch(() => null);
+
+    // 1. Try modern createImageBitmap with native GPU/C++ downscaling
     if (typeof window !== 'undefined' && typeof window.createImageBitmap === 'function') {
       try {
-        const probe = await createImageBitmap(file);
+        const probe = await safeBitmap(file);
+        if (!probe) throw new Error('createImageBitmap probe timeout');
+
         const origW = probe.width;
         const origH = probe.height;
         probe.close();
@@ -171,11 +180,13 @@ export const imageService = {
             }
           }
 
-          const resizedBitmap = await createImageBitmap(file, {
+          const resizedBitmap = await safeBitmap(file, {
             resizeWidth: targetW,
             resizeHeight: targetH,
             resizeQuality: 'medium'
           });
+
+          if (!resizedBitmap) throw new Error('createImageBitmap resize timeout');
 
           const canvas = document.createElement('canvas');
           canvas.width = targetW;
