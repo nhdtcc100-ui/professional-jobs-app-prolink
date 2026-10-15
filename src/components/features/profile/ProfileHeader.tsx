@@ -1,11 +1,9 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Camera, BadgeCheck, Briefcase, Search, Minus, Phone, 
   MapPin, Globe, FileText, Linkedin, Twitter, Github, Mail, ExternalLink 
 } from 'lucide-react';
-import { useFilePermission } from '../../../hooks/useFilePermission';
-import { PermissionDeniedModal } from '../../ui/PermissionDeniedModal';
 
 interface ProfileHeaderProps {
   formData: any;
@@ -51,34 +49,6 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   const isAvailable = openToStatus === 'work';
   const isPro = profile.is_pro || profile.isPro;
 
-  // ── File Permission (Android + iOS) ──────────────────────────
-  // IMPORTANT: We check permission status eagerly on mount (autoCheck=true).
-  // We NEVER await anything before opening the file picker — iOS Safari
-  // invalidates the user-gesture token on any async boundary.
-  // Strategy: <label> → <input> (direct, synchronous). If the status is
-  // already 'denied' we intercept the click and show the modal instead.
-  const { status: permStatus, requestPermission } = useFilePermission(true);
-  const [permissionDenied, setPermissionDenied] = useState(false);
-
-  /**
-   * Called synchronously when the user taps a camera label.
-   * If permission is known-denied: block the file picker and show modal.
-   * Otherwise: let the event bubble — the <label for="..."> opens the picker.
-   */
-  const guardClick = (e: React.MouseEvent) => {
-    if (permStatus === 'denied') {
-      e.preventDefault();
-      setPermissionDenied(true);
-    }
-    // 'granted' | 'limited' | 'prompt' | 'unknown' → allow label to open picker normally
-  };
-
-  /** Shown when user taps "فتح الإعدادات" in the modal — requests again first */
-  const handleRetryPermission = async () => {
-    setPermissionDenied(false);
-    await requestPermission('photos');
-  };
-
   return (
     <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden relative">
       {/* Cover Image */}
@@ -93,10 +63,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/30 to-transparent" />
         {isMe && (
           <>
-            {/* Cover change — label/input fires synchronously (iOS-safe) */}
             <label
               htmlFor="cover-file-input-header"
-              onClick={guardClick}
               className="absolute top-3 right-3 p-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-800 transition-all shadow-md flex items-center gap-1.5 group/btn border border-white/20 dark:border-slate-700 active:scale-95 z-10"
               title="تغيير صورة الغلاف"
             >
@@ -107,7 +75,6 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               id="cover-file-input-header"
               type="file"
               accept="image/*"
-              capture="environment"
               className="hidden"
               onChange={handleCoverChange}
             />
@@ -129,10 +96,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             </div>
             {isMe && (
               <>
-                {/* Avatar change — label/input fires synchronously (iOS-safe) */}
                 <label
                   htmlFor="avatar-file-input-header"
-                  onClick={guardClick}
                   className="absolute bottom-1 left-1 p-1.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-700 shadow-md transition-all border border-slate-100 dark:border-slate-700 active:scale-95 z-10"
                   title="تغيير الصورة الشخصية"
                 >
@@ -142,7 +107,6 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                   id="avatar-file-input-header"
                   type="file"
                   accept="image/*"
-                  capture="user"
                   className="hidden"
                   onChange={handleAvatarChange}
                 />
@@ -320,13 +284,6 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         )}
       </div>
 
-      {/* Permission Denied Modal (iOS + Android) */}
-      <PermissionDeniedModal
-        isOpen={permissionDenied}
-        onClose={() => setPermissionDenied(false)}
-        onRetry={handleRetryPermission}
-        permissionType="photos"
-      />
     </div>
   );
 };
