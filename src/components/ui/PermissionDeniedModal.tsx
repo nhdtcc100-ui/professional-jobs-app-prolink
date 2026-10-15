@@ -16,6 +16,8 @@ import { ShieldAlert, Settings, X } from 'lucide-react';
 interface PermissionDeniedModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Called when user taps "محاولة مجددا" — triggers requestPermission then closes modal */
+  onRetry?: () => void;
   /** 'camera' | 'photos' | 'storage' */
   permissionType?: 'camera' | 'photos' | 'storage';
 }
@@ -23,6 +25,7 @@ interface PermissionDeniedModalProps {
 export const PermissionDeniedModal: React.FC<PermissionDeniedModalProps> = ({
   isOpen,
   onClose,
+  onRetry,
   permissionType = 'photos',
 }) => {
   // Detect platform for tailored messaging
@@ -123,6 +126,14 @@ export const PermissionDeniedModal: React.FC<PermissionDeniedModalProps> = ({
                 >
                   إلغاء
                 </button>
+                {onRetry && (
+                  <button
+                    onClick={onRetry}
+                    className="flex-1 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-black text-sm hover:bg-slate-200 dark:hover:bg-slate-700 transition-all active:scale-95"
+                  >
+                    محاولة مجدداً
+                  </button>
+                )}
                 <button
                   onClick={openSettings}
                   className="flex-1 py-3 rounded-xl bg-[#0a66c2] text-white font-black text-sm hover:bg-[#004182] transition-all shadow-md active:scale-95 flex items-center justify-center gap-2"

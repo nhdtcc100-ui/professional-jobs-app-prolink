@@ -1,129 +1,143 @@
 /**
  * useFilePermission
  * ─────────────────────────────────────────────────────────────────
- * Handles OS-level file / camera / photo-library permission requests
- * for Android (Capacitor / Chrome WebView) and iPhone/iOS (WKWebView / Safari).
+ * Handles camera / photo-library permission requests for:
+ *  - Capacitor Android (via @capacitor/camera)
+ *  - Capacitor iOS     (via @capacitor/camera)
+ *  - Mobile Web        (implicit via <input type="file">)
+ *  - Desktop           (no permission needed)
  *
- * Works WITHOUT @capacitor/camera being installed — uses window.Capacitor
- * global API that is injected by the native shell at runtime.
- *
- * Flow:
- *  1. User taps "Change Photo" or "Upload CV"
- *  2. Hook checks platform & permission state
- *  3. If not granted → show native prompt or guide to Settings
- *  4. On grant → caller opens the file picker
+ * ⚠️ Critical iOS rule: Never call input.click() after an `await`.
+ *    iOS Safari invalidates the user-gesture token on any async boundary.
+ *    Strategy: call checkPermission() eagerly (on mount / before render),
+ *    cache the result, then on user tap – if granted, the <label>/<input>
+ *    pair fires directly; if denied, show the guidance modal.
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 
-// ─── Types ────────────────────────────────────────────────────────
 export type PermissionStatus = 'granted' | 'denied' | 'prompt' | 'limited' | 'unknown';
-export type PermissionType   = 'camera' | 'photos' | 'storage';
+export type PermissionType   = 'camera' | 'photos';
 
 export interface UseFilePermissionReturn {
+  /** Cached status (updated on mount + after each request) */
   status: PermissionStatus;
-  requestPermission: (type?: PermissionType) => Promise<boolean>;
+  /**
+   * Call this on component mount to pre-warm the status.
+   * Returns true if the file picker can be opened right now.
+   */
+  checkPermission: (type?: PermissionType) => Promise<PermissionStatus>;
+  /**
+   * Triggers the OS permission prompt (Capacitor only).
+   * On web, always returns 'granted' — file picker handles it natively.
+   * ⚠️ Do NOT call this inside the file-picker click handler on iOS.
+   *    Call it separately (e.g., on a "grant permission" button press).
+   */
+  requestPermission: (type?: PermissionType) => Promise<PermissionStatus>;
   isNative: boolean;
   isIOS: boolean;
   isAndroid: boolean;
 }
 
-// ─── Platform Detection (evaluated once at module load) ───────────
-const ua          = typeof navigator !== 'undefined' ? navigator.userAgent : '';
-const IS_CAPACITOR = typeof (window as any)?.Capacitor !== 'undefined';
-const IS_IOS =
+// ─── Platform detection (module-level, evaluated once) ────────────
+const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+export const IS_IOS =
   /iPad|iPhone|iPod/.test(ua) ||
   (typeof navigator !== 'undefined' && navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const IS_ANDROID  = /Android/.test(ua);
-const IS_NATIVE   = IS_CAPACITOR && (IS_IOS || IS_ANDROID);
+export const IS_ANDROID = /Android/.test(ua);
+const IS_CAPACITOR = typeof (window as any)?.Capacitor !== 'undefined';
+export const IS_NATIVE = IS_CAPACITOR && (IS_IOS || IS_ANDROID);
 
-// ─── Capacitor Camera bridge (no npm import needed) ──────────────
-// window.Capacitor.Plugins.Camera is injected by the native app shell.
-const getCapCamera = (): any | null => {
+// ─── Lazy import of @capacitor/camera (only in native builds) ─────
+let _CameraPlugin: any = null;
+async function getCameraPlugin(): Promise<any | null> {
+  if (_CameraPlugin) return _CameraPlugin;
+  if (!IS_NATIVE) return null;
   try {
-    const cam = (window as any)?.Capacitor?.Plugins?.Camera;
-    return cam ?? null;
+    const mod = await import('@capacitor/camera');
+    _CameraPlugin = mod.Camera;
+    return _CameraPlugin;
   } catch {
+    // Plugin not installed — fall back to web behaviour
     return null;
   }
-};
+}
 
 // ─── Hook ────────────────────────────────────────────────────────
-export function useFilePermission(): UseFilePermissionReturn {
+export function useFilePermission(autoCheck = true): UseFilePermissionReturn {
   const [status, setStatus] = useState<PermissionStatus>('unknown');
 
-  const requestPermission = useCallback(
-    async (type: PermissionType = 'photos'): Promise<boolean> => {
+  // ── Check (non-prompting) ──────────────────────────────────────
+  const checkPermission = useCallback(
+    async (type: PermissionType = 'photos'): Promise<PermissionStatus> => {
+      const Camera = await getCameraPlugin();
 
-      // ── 1. Capacitor Native (Android + iOS) ─────────────────────
-      if (IS_NATIVE) {
-        const Camera = getCapCamera();
-        if (Camera) {
-          try {
-            // Check current state first to avoid redundant system prompts
-            const current = await Camera.checkPermissions();
-            const camState   = current?.camera;
-            const photoState = current?.photos;
-
-            if (
-              (type === 'camera'  && camState   === 'granted') ||
-              (type === 'photos'  && photoState === 'granted') ||
-              (type === 'storage' && photoState === 'granted')
-            ) {
-              setStatus('granted');
-              return true;
-            }
-
-            // iOS: 'limited' = user chose a subset of photos — still usable
-            if (IS_IOS && photoState === 'limited') {
-              setStatus('limited');
-              return true;
-            }
-
-            // Request the permission from the OS
-            const result = await Camera.requestPermissions({
-              permissions: type === 'camera' ? ['camera'] : ['photos'],
-            });
-
-            const granted = result?.camera === 'granted' || result?.photos === 'granted';
-            const limited  = IS_IOS && result?.photos === 'limited';
-
-            if (granted || limited) {
-              setStatus(limited ? 'limited' : 'granted');
-              return true;
-            }
-
-            setStatus('denied');
-            return false;
-          } catch (err) {
-            // Camera plugin unavailable in this build — fall through
-            console.warn('[useFilePermission] Capacitor Camera bridge error:', err);
-          }
-        }
-      }
-
-      // ── 2. Mobile Web (Safari iOS / Chrome Android) ─────────────
-      // <input type="file"> already triggers the native photo/file picker,
-      // which includes implicit permission handling. We only query the
-      // Permissions API as a best-effort check (not all browsers support it).
-      if (typeof navigator?.permissions?.query === 'function') {
+      if (Camera) {
         try {
-          const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
-          if (result.state === 'granted') { setStatus('granted'); return true; }
-          if (result.state === 'prompt')  { setStatus('prompt');  return true; }
-          if (result.state === 'denied')  { setStatus('denied');  return false; }
-        } catch {
-          // Browser doesn't support querying 'camera' — that's fine
+          const result = await Camera.checkPermissions();
+          const state: string =
+            type === 'camera' ? result.camera : result.photos;
+
+          const mapped: PermissionStatus =
+            state === 'granted' ? 'granted' :
+            state === 'limited' ? 'limited' :
+            state === 'denied'  ? 'denied'  :
+            'prompt';
+
+          setStatus(mapped);
+          return mapped;
+        } catch (e) {
+          console.warn('[useFilePermission] checkPermissions error:', e);
         }
       }
 
-      // ── 3. Default: <input type="file"> handles everything implicitly ─
-      // Works on: Desktop Chrome/Firefox/Safari, iOS Safari, Android Chrome
+      // Web: <input type="file"> is always implicitly available
       setStatus('granted');
-      return true;
+      return 'granted';
     },
     []
   );
 
-  return { status, requestPermission, isNative: IS_NATIVE, isIOS: IS_IOS, isAndroid: IS_ANDROID };
+  // ── Request (shows OS prompt) ──────────────────────────────────
+  const requestPermission = useCallback(
+    async (type: PermissionType = 'photos'): Promise<PermissionStatus> => {
+      const Camera = await getCameraPlugin();
+
+      if (Camera) {
+        try {
+          const result = await Camera.requestPermissions({
+            permissions: type === 'camera' ? ['camera'] : ['photos'],
+          });
+
+          const state: string =
+            type === 'camera' ? result.camera : result.photos;
+
+          const mapped: PermissionStatus =
+            state === 'granted' ? 'granted' :
+            state === 'limited' ? 'limited' :
+            state === 'denied'  ? 'denied'  :
+            'prompt';
+
+          setStatus(mapped);
+          return mapped;
+        } catch (e) {
+          console.warn('[useFilePermission] requestPermissions error:', e);
+        }
+      }
+
+      // Web fallback
+      setStatus('granted');
+      return 'granted';
+    },
+    []
+  );
+
+  // ── Auto-check on mount (so UI knows state before user taps) ───
+  useEffect(() => {
+    if (autoCheck) {
+      checkPermission('photos').catch(() => {});
+    }
+  }, [autoCheck, checkPermission]);
+
+  return { status, checkPermission, requestPermission, isNative: IS_NATIVE, isIOS: IS_IOS, isAndroid: IS_ANDROID };
 }
