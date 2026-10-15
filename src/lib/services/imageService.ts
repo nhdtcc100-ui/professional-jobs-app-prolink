@@ -303,9 +303,7 @@ export const imageService = {
 
   async uploadFile(file: File | Blob, userId: string, bucket = 'profiles'): Promise<string> {
     try {
-      // Always use a fresh UUID so upsert never hits a stale cached path
       const uuid = generateUUID();
-      // Resolve MIME first — mobile album photos often have empty type
       const effectiveMime = file instanceof File ? resolveMimeType(file) : (file.type || 'image/jpeg');
       const mimeToExt: Record<string, string> = {
         'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png',
@@ -313,7 +311,6 @@ export const imageService = {
         'image/heic': 'heic', 'image/heif': 'heif',
         'application/pdf': 'pdf',
       };
-      // Try extension from name first, then from MIME type
       const rawExt = file instanceof File ? (file.name || '').split('.').pop()?.toLowerCase() : '';
       const fileExt = (rawExt && /^(jpg|jpeg|png|webp|gif|heic|heif|bmp|pdf|doc|docx)$/.test(rawExt))
         ? rawExt
@@ -322,15 +319,38 @@ export const imageService = {
       const fileName    = `${userId}/${uuid}.${safeExt}`;
       const contentType = effectiveMime;
 
-      // Log upload attempt — no artificial session gate here.
-      // Supabase Storage RLS allows public/anon INSERT, so we always attempt
-      // the upload directly and surface real errors if they occur.
-      // (On mobile, getSession() can return null even with a valid cached
-      //  session, so blocking on it caused silent upload failures.)
+      // Refresh session before upload
       try { await supabase.auth.getSession(); } catch (_) {}
-      console.log(`[imageService] Upload attempt | bucket: ${bucket} | file size: ${file.size} bytes | type: ${file.type || 'unknown'}`);
+      console.log(`[imageService] Upload attempt | bucket: ${bucket} | size: ${file.size} bytes | type: ${contentType}`);
 
-      // Only try requested bucket and primary fallback to prevent long blocking loops
+      // ── Strategy 1: Presigned URL (bypasses CORS & WebView auth issues on mobile) ──
+      try {
+        const presigned = await this.createPresignedUploadUrl(userId, contentType, bucket);
+        if (presigned?.signedUrl) {
+          const uploadRes = await Promise.race([
+            fetch(presigned.signedUrl, {
+              method: 'PUT',
+              body: file,
+              headers: { 'Content-Type': contentType, 'x-upsert': 'true' },
+            }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('Presigned upload timeout (10s)')), 10000)
+            ),
+          ]) as Response;
+
+          if (uploadRes.ok) {
+            const separator = presigned.publicUrl.includes('?') ? '&' : '?';
+            const freshUrl = `${presigned.publicUrl}${separator}t=${uuid}`;
+            console.log(`✅ [imageService] Presigned upload success:`, freshUrl);
+            return freshUrl;
+          }
+          console.warn(`⚠️ [imageService] Presigned upload HTTP ${(uploadRes as Response).status}`);
+        }
+      } catch (presignErr) {
+        console.warn('[imageService] Presigned upload failed, trying direct SDK:', presignErr);
+      }
+
+      // ── Strategy 2: Direct SDK upload (works on desktop) ──
       const candidateBuckets = [bucket, bucket !== 'profiles' ? 'profiles' : 'images']
         .filter((b, idx, arr) => arr.indexOf(b) === idx && Boolean(b));
 
@@ -338,12 +358,7 @@ export const imageService = {
         try {
           const uploadPromise = supabase.storage
             .from(b)
-            .upload(fileName, file, {
-              contentType,
-              upsert: true,
-              // '1' = 1 second cache — effectively no-cache while being a valid value
-              cacheControl: '1',
-            });
+            .upload(fileName, file, { contentType, upsert: true, cacheControl: '1' });
 
           const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
             setTimeout(() => reject(new Error('Storage upload timeout (7s)')), 7000)
@@ -354,14 +369,13 @@ export const imageService = {
           if (!uploadError) {
             const { data: publicData } = supabase.storage.from(b).getPublicUrl(fileName);
             if (publicData?.publicUrl) {
-              // Append cache-buster so browser always fetches fresh image
               const separator = publicData.publicUrl.includes('?') ? '&' : '?';
               const freshUrl = `${publicData.publicUrl}${separator}t=${uuid}`;
-              console.log(`✅ [imageService] Successfully uploaded file to bucket '${b}':`, freshUrl);
+              console.log(`✅ [imageService] Direct SDK upload success in bucket '${b}':`, freshUrl);
               return freshUrl;
             }
           } else {
-            console.warn(`⚠️ [imageService] Bucket '${b}' upload failed:`, uploadError.message || JSON.stringify(uploadError));
+            console.warn(`⚠️ [imageService] Bucket '${b}' SDK upload failed:`, uploadError.message || JSON.stringify(uploadError));
           }
         } catch (bErr) {
           console.warn(`⚠️ [imageService] Exception trying bucket '${b}':`, bErr);
