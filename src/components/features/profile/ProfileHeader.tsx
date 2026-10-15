@@ -228,10 +228,16 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                   تعزيز الملف
                 </button>
                 <button
-                  onClick={handleDownloadCV}
+                  onClick={() => {
+                    if (formData.cv_url) {
+                      window.open(formData.cv_url, '_blank');
+                    } else {
+                      handleDownloadCV();
+                    }
+                  }}
                   className="px-5 py-2.5 border-2 border-[#0a66c2] text-[#0a66c2] rounded-xl font-black text-[10px] hover:bg-blue-50 transition-all active:scale-95 flex items-center gap-2"
                 >
-                  {(formData.cv_url || formData.cvUrl) ? '📄 عرض السيرة الذاتية' : 'تحميل CV'}
+                  {formData.cv_url ? '📄 عرض السيرة الذاتية' : 'تحميل CV'}
                 </button>
               </>
             ) : (
@@ -250,42 +256,16 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 )}
                 {/* ✅ زر عرض CV للزوار */}
                 {(profile.cvUrl || (profile as any).cv_url) && (
-                  <button
-                    onClick={() => {
-                      const url = profile.cvUrl || (profile as any).cv_url;
-                      if (!url) return;
-                      if (url.startsWith('data:')) {
-                        try {
-                          const arr = url.split(',');
-                          const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/pdf';
-                          const bstr = atob(arr[1]);
-                          let n = bstr.length;
-                          const u8arr = new Uint8Array(n);
-                          while (n--) {
-                            u8arr[n] = bstr.charCodeAt(n);
-                          }
-                          const blob = new Blob([u8arr], { type: mime });
-                          const blobUrl = URL.createObjectURL(blob);
-                          const link = document.createElement('a');
-                          link.href = blobUrl;
-                          link.download = `${profile.name || 'User'}_CV.pdf`;
-                          document.body.appendChild(link);
-                          link.click();
-                          setTimeout(() => {
-                            document.body.removeChild(link);
-                            URL.revokeObjectURL(blobUrl);
-                          }, 2000);
-                          return;
-                        } catch (_) {}
-                      }
-                      window.open(url, '_blank', 'noopener,noreferrer');
-                    }}
+                  <a
+                    href={profile.cvUrl || (profile as any).cv_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="flex items-center gap-1.5 px-4 py-2.5 border-2 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-black text-[10px] hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all active:scale-95"
                     title="عرض السيرة الذاتية"
                   >
                     <FileText size={13} />
                     <span>CV</span>
-                  </button>
+                  </a>
                 )}
               </div>
             )}

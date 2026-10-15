@@ -146,6 +146,11 @@ export const imageService = {
       return file;
     }
 
+    // Fast-path: already small compressed image (< 200KB)
+    if (file.size <= 200 * 1024 && (effectiveMime === 'image/jpeg' || effectiveMime === 'image/webp')) {
+      return file;
+    }
+
     // Helper: createImageBitmap with safety timeout (prevents hang on low-memory mobile)
     const safeBitmap = (src: ImageBitmapSource, opts?: ImageBitmapOptions): Promise<ImageBitmap | null> =>
       Promise.race([
