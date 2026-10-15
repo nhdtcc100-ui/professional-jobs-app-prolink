@@ -176,10 +176,10 @@ export const cvService = {
         return { data: uploadedUrl, error: null };
       }
 
-      // 4. Fallback for smaller files (< 5MB) — covers most real CV files on mobile
-      const MAX_BASE64_BYTES = 5 * 1024 * 1024; // 5 MB (up from 1MB — most mobile CVs are under 5MB)
+      // 4. Fallback: Base64 stored directly in database for files <= 25MB
+      const MAX_BASE64_BYTES = 25 * 1024 * 1024; // 25 MB
       if (file.size <= MAX_BASE64_BYTES) {
-        logger.warn('[cvService] Supabase storage failed; using Base64 fallback for file <= 5MB.');
+        logger.warn('[cvService] Supabase storage unavailable/failed; using direct Base64 fallback for database.');
         try {
           const base64Url = await this.fileToBase64(file);
           return { data: base64Url, error: null };
