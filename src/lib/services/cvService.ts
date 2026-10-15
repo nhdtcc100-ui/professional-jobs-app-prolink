@@ -3,6 +3,7 @@ import { generateUUID } from '../security/distributedId';
 import { logger } from '../logger';
 import { verifyFileMimeType } from '../security/mimeValidator';
 import { inspectUploadedFile } from '../security/fileInspector';
+import { snapshotFile } from './imageService';
 
 const MAX_CV_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
 
@@ -104,6 +105,13 @@ export const cvService = {
     try {
       if (!userId) {
         return { data: null, error: new Error('معرف المستخدم مفقود. يرجى تسجيل الدخول أولاً.') };
+      }
+
+      // 0. Snapshot to memory immediately so Android URI permissions don't expire
+      try {
+        file = await snapshotFile(file);
+      } catch (snapErr: any) {
+        logger.warn('[cvService] snapshotFile warning:', snapErr);
       }
 
       // 1. Validation & Extension Resolution

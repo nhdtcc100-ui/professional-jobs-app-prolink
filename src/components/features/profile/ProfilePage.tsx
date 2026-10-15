@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Briefcase, ArrowRight, Lock, Send, Loader2, CheckCircle2, AlertCircle, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { profileService } from '../../../lib/services/profileService';
-import { imageService } from '../../../lib/services/imageService';
+import { imageService, snapshotFile } from '../../../lib/services/imageService';
 import { cvService } from '../../../lib/services/cvService';
 import { PostTransmissionCard } from '../index';
 import { AppUser, Post } from '../../../types';
@@ -247,14 +247,14 @@ export function ProfilePage({
 
   // ── Avatar: Instant Direct Upload & Database Persistence ──
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    let file = e.target.files?.[0];
+    let rawFile = e.target.files?.[0];
     const targetInput = e.target;
-    if (!file) {
+    if (!rawFile) {
       // Small pause for Samsung One UI / Scoped Storage FileList population
-      await new Promise(r => setTimeout(r, 80));
-      file = targetInput?.files?.[0];
+      await new Promise(r => setTimeout(r, 120));
+      rawFile = targetInput?.files?.[0];
     }
-    if (!file) {
+    if (!rawFile) {
       console.warn("⚠️ [AvatarUpload] لم يتم اختيار أي ملف من المتصفح.");
       return;
     }
@@ -265,15 +265,28 @@ export function ProfilePage({
       return;
     }
 
-    console.log("📸 [AvatarUpload] تم استلام ملف الصورة:", {
+    setSaveStatus('saving');
+    addToast('جاري استلام وتجهيز الصورة... ⏳');
+
+    let file: File;
+    try {
+      // 🚀 عزل الملف فورياً في الذاكرة لتفادي إلغاء أذونات Android Scoped Storage و ERR_UPLOAD_FILE_CHANGED
+      file = await snapshotFile(rawFile);
+    } catch (readErr: any) {
+      console.error("❌ [AvatarUpload] فشل قراءة الملف من الجهاز:", readErr);
+      addToast('تعذر قراءة الصورة من ذاكرة الجهاز، يرجى إعادة المحاولة', 'error');
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+      if (targetInput) targetInput.value = '';
+      return;
+    }
+
+    console.log("📸 [AvatarUpload] تم استلام وتثبيت ملف الصورة في الذاكرة:", {
       name: file.name,
       size: file.size,
       type: file.type,
       userId: targetUserId
     });
-
-    setSaveStatus('saving');
-    addToast('جاري تجهيز الصورة... ⏳');
 
     // Ensure image is compatible JPEG/PNG before previewing
     file = await ensureCompatibleImage(file);
@@ -286,6 +299,7 @@ export function ProfilePage({
         addToast(inspection.error || 'تم حظر الملف لدواعي أمنية', 'error');
         setSaveStatus('error');
         setTimeout(() => setSaveStatus('idle'), 3000);
+        if (targetInput) targetInput.value = '';
         return;
       }
     } catch (secErr) {
@@ -299,6 +313,8 @@ export function ProfilePage({
     } catch (previewErr) {
       console.warn("⚠️ [AvatarUpload] تعذر إنشاء معاينة محلية:", previewErr);
     }
+
+    addToast('جاري رفع وتثبيت الصورة الشخصية... ⏳');
 
     try {
       console.log("⏳ [AvatarUpload] جاري الرفع إلى Storage ومعالجة الصورة...");
@@ -340,13 +356,13 @@ export function ProfilePage({
 
   // ── Cover: Instant Direct Upload & Database Persistence ──
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    let file = e.target.files?.[0];
+    let rawFile = e.target.files?.[0];
     const targetInput = e.target;
-    if (!file) {
-      await new Promise(r => setTimeout(r, 80));
-      file = targetInput?.files?.[0];
+    if (!rawFile) {
+      await new Promise(r => setTimeout(r, 120));
+      rawFile = targetInput?.files?.[0];
     }
-    if (!file) {
+    if (!rawFile) {
       console.warn("⚠️ [CoverUpload] لم يتم اختيار أي ملف غلاف من المتصفح.");
       return;
     }
@@ -357,15 +373,27 @@ export function ProfilePage({
       return;
     }
 
-    console.log("🖼️ [CoverUpload] تم استلام ملف صورة الغلاف:", {
+    setSaveStatus('saving');
+    addToast('جاري استلام وتجهيز صورة الغلاف... ⏳');
+
+    let file: File;
+    try {
+      file = await snapshotFile(rawFile);
+    } catch (readErr: any) {
+      console.error("❌ [CoverUpload] فشل قراءة الملف من الجهاز:", readErr);
+      addToast('تعذر قراءة صورة الغلاف من ذاكرة الجهاز، يرجى إعادة المحاولة', 'error');
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+      if (targetInput) targetInput.value = '';
+      return;
+    }
+
+    console.log("🖼️ [CoverUpload] تم استلام وتثبيت ملف صورة الغلاف في الذاكرة:", {
       name: file.name,
       size: file.size,
       type: file.type,
       userId: targetUserId
     });
-
-    setSaveStatus('saving');
-    addToast('جاري تجهيز صورة الغلاف... ⏳');
 
     // Ensure image is compatible JPEG/PNG before previewing
     file = await ensureCompatibleImage(file);
@@ -378,6 +406,7 @@ export function ProfilePage({
         addToast(inspection.error || 'تم حظر الملف لدواعي أمنية', 'error');
         setSaveStatus('error');
         setTimeout(() => setSaveStatus('idle'), 3000);
+        if (targetInput) targetInput.value = '';
         return;
       }
     } catch (secErr) {
@@ -516,15 +545,15 @@ export function ProfilePage({
 
   // ── CV: Instant Direct Upload & Database Persistence ──
   const handleCVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    let file = e.target.files?.[0];
+    let rawFile = e.target.files?.[0];
     const targetInput = e.target;
     // Android Scoped Storage: FileList may not be populated immediately after
     // returning from an external Activity (Samsung Gallery / Downloads)
-    if (!file) {
-      await new Promise(r => setTimeout(r, 80));
-      file = targetInput?.files?.[0];
+    if (!rawFile) {
+      await new Promise(r => setTimeout(r, 120));
+      rawFile = targetInput?.files?.[0];
     }
-    if (!file) return;
+    if (!rawFile) return;
 
     const currentUserId = user?.id || appUser?.id || profile?.id || formData?.id;
     if (!currentUserId) {
@@ -533,6 +562,20 @@ export function ProfilePage({
     }
 
     setSaveStatus('saving');
+    addToast('جاري استلام وتجهيز السيرة الذاتية... ⏳');
+
+    let file: File;
+    try {
+      file = await snapshotFile(rawFile);
+    } catch (readErr: any) {
+      console.error("❌ [CVUpload] فشل قراءة الملف من الجهاز:", readErr);
+      addToast('تعذر قراءة ملف السيرة الذاتية من ذاكرة الجهاز', 'error');
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+      if (targetInput) targetInput.value = '';
+      return;
+    }
+
     addToast('جاري رفع وتثبيت السيرة الذاتية... ⏳');
 
     try {
@@ -577,7 +620,7 @@ export function ProfilePage({
       setTimeout(() => setSaveStatus('idle'), 3500);
     } finally {
       // Clear input so selecting the same or another file triggers onChange on mobile
-      if (e.target) e.target.value = '';
+      if (targetInput) targetInput.value = '';
     }
   };
 

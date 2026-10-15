@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Briefcase, CheckCircle2, AlertCircle, Loader2, CloudUpload } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { profileService } from '../../lib/services/profileService';
-import { imageService } from '../../lib/services/imageService';
+import { imageService, snapshotFile } from '../../lib/services/imageService';
 import { PostTransmissionCard } from '../features';
 import { AppUser, Post } from '../../types';
 import { ProfileHeader, ProfileTabs, ProfileEditView, ProfileActivityView } from './profile';
@@ -168,33 +168,26 @@ export function ProfileModal({
   }, [persistToDatabase, isMe, setAppUser, profile, formData]);
 
   const handleCVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    let file = e.target.files?.[0];
+    let rawFile = e.target.files?.[0];
     const targetInput = e.target;
-    // Android Scoped Storage: FileList may not be populated immediately
-    if (!file) {
-      await new Promise(r => setTimeout(r, 80));
-      file = targetInput?.files?.[0];
+    if (!rawFile) {
+      await new Promise(r => setTimeout(r, 120));
+      rawFile = targetInput?.files?.[0];
     }
-    if (!file || !user?.id) return;
-
-    // Accept PDF, Word, and application/octet-stream (common on Android Downloads/SD card)
-    const ext = (file.name || '').split('.').pop()?.toLowerCase() || '';
-    const allowedExts = ['pdf', 'doc', 'docx'];
-    const allowedMimes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/octet-stream', // Android file pickers often return this
-    ];
-    const mimeOk = allowedMimes.includes(file.type) || file.type === '';
-    const extOk  = allowedExts.includes(ext);
-    if (!mimeOk && !extOk) {
-      addToast('يرجى رفع ملف بصيغة PDF أو Word فقط', 'error');
-      return;
-    }
+    if (!rawFile || !user?.id) return;
 
     setSaveStatus('saving');
-    addToast('جاري رفع السيرة الذاتية... ⏳');
+    addToast('جاري استلام وتجهيز السيرة الذاتية... ⏳');
+
+    let file: File;
+    try {
+      file = await snapshotFile(rawFile);
+    } catch (readErr: any) {
+      addToast('تعذر قراءة ملف السيرة الذاتية من ذاكرة الجهاز', 'error');
+      setSaveStatus('error');
+      if (targetInput) targetInput.value = '';
+      return;
+    }
 
     try {
       const { inspectUploadedFile } = await import('../../lib/security/fileInspector');
@@ -214,7 +207,7 @@ export function ProfileModal({
       const newData = { ...formData, cvUrl: url, cv_url: url };
       setFormData(newData);
       await persistToDatabase(newData);
-      addToast('تم رفع السيرة الذاتية بنجاح ✅');
+      addToast('تم رفع السيرة الذاتية بنجاح ✅', 'success');
     } catch (err: any) {
       console.error('CV upload failed:', err);
       addToast(`فشل رفع الملف: ${err.message}`, 'error');
@@ -232,11 +225,26 @@ export function ProfileModal({
   }, []);
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    let rawFile = e.target.files?.[0];
+    const targetInput = e.target;
+    if (!rawFile) {
+      await new Promise(r => setTimeout(r, 120));
+      rawFile = targetInput?.files?.[0];
+    }
     const targetUserId = user?.id || (profile as any)?.id;
-    if (!file || !targetUserId) return;
+    if (!rawFile || !targetUserId) return;
     setSaveStatus('saving');
-    addToast('جاري معالجة ورفع الصورة... ⏳');
+    addToast('جاري استلام وتجهيز الصورة... ⏳');
+    let file: File;
+    try {
+      file = await snapshotFile(rawFile);
+    } catch {
+      addToast('تعذر قراءة الصورة من الجهاز', 'error');
+      setSaveStatus('error');
+      if (targetInput) targetInput.value = '';
+      return;
+    }
+
     try {
       const { inspectUploadedFile } = await import('../../lib/security/fileInspector');
       const inspection = await inspectUploadedFile(file, { id: targetUserId }, '/app/avatar-upload-modal');
@@ -246,37 +254,40 @@ export function ProfileModal({
         return;
       }
 
-      let url: string;
-      try {
-        // Use the professional centralized service
-        url = await imageService.processAndUpload(file, targetUserId, 'profiles');
-      } catch (err: any) {
-        console.error("DEBUG: Upload failed, using fallback:", err);
-        url = await new Promise(resolve => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
-        addToast('تم استخدام الرفع البديل بنجاح ✅', 'info');
-      }
+      const url = await imageService.processAndUpload(file, targetUserId, 'profiles');
       const newData = { ...formData, avatar: url, avatar_url: url };
       setFormData(newData);
       await persistToDatabase(newData);
-      addToast('تم تحديث الصورة الشخصية بنجاح ✨');
+      addToast('تم تحديث الصورة الشخصية بنجاح ✨', 'success');
     } catch (err: any) {
       addToast(`خطأ: ${err.message}`, 'error');
       setSaveStatus('error');
     } finally {
-      if (e.target) e.target.value = '';
+      if (targetInput) targetInput.value = '';
     }
   };
 
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    let rawFile = e.target.files?.[0];
+    const targetInput = e.target;
+    if (!rawFile) {
+      await new Promise(r => setTimeout(r, 120));
+      rawFile = targetInput?.files?.[0];
+    }
     const targetUserId = user?.id || (profile as any)?.id;
-    if (!file || !targetUserId) return;
+    if (!rawFile || !targetUserId) return;
     setSaveStatus('saving');
-    addToast('جاري معالجة ورفع الغلاف... ⏳');
+    addToast('جاري استلام وتجهيز الغلاف... ⏳');
+    let file: File;
+    try {
+      file = await snapshotFile(rawFile);
+    } catch {
+      addToast('تعذر قراءة الغلاف من الجهاز', 'error');
+      setSaveStatus('error');
+      if (targetInput) targetInput.value = '';
+      return;
+    }
+
     try {
       const { inspectUploadedFile } = await import('../../lib/security/fileInspector');
       const inspection = await inspectUploadedFile(file, { id: targetUserId }, '/app/cover-upload-modal');
@@ -286,21 +297,11 @@ export function ProfileModal({
         return;
       }
 
-      let url: string;
-      try {
-        url = await imageService.processAndUpload(file, targetUserId, 'profiles');
-      } catch (err) {
-        console.warn("DEBUG: Cover upload fallback:", err);
-        url = await new Promise(resolve => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
-      }
+      const url = await imageService.processAndUpload(file, targetUserId, 'profiles');
       const newData = { ...formData, coverUrl: url, cover_url: url };
       setFormData(newData);
       await persistToDatabase(newData);
-      addToast('تم تحديث الغلاف بنجاح ✨');
+      addToast('تم تحديث الغلاف بنجاح ✨', 'success');
     } catch (err: any) {
       addToast(`خطأ: ${err.message}`, 'error');
       setSaveStatus('error');

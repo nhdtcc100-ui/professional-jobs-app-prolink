@@ -70,15 +70,14 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             >
               <Camera size={13} className="text-[#0a66c2] dark:text-blue-400" />
               <span className="text-[9px] font-black text-slate-600 dark:text-slate-200 uppercase tracking-widest hidden group-hover/btn:block">تغيير</span>
-              <input
-                id="cover-file-input-header"
-                type="file"
-                accept="image/*,image/jpeg,image/png,image/webp,image/heic,image/heif"
-                className="sr-only"
-                onChange={handleCoverChange}
-                onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
-              />
             </label>
+            <input
+              id="cover-file-input-header"
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleCoverChange}
+            />
           </>
         )}
       </div>
@@ -96,21 +95,22 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               />
             </div>
             {isMe && (
-              <label 
-                htmlFor="avatar-file-input-header"
-                className="absolute bottom-1 left-1 p-1.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-700 shadow-md transition-all border border-slate-100 dark:border-slate-700 active:scale-95 z-10"
-                title="تغيير الصورة الشخصية"
-              >
-                <Camera size={11} className="text-[#0a66c2] dark:text-blue-400" />
+              <>
+                <label 
+                  htmlFor="avatar-file-input-header"
+                  className="absolute bottom-1 left-1 p-1.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-700 shadow-md transition-all border border-slate-100 dark:border-slate-700 active:scale-95 z-10"
+                  title="تغيير الصورة الشخصية"
+                >
+                  <Camera size={11} className="text-[#0a66c2] dark:text-blue-400" />
+                </label>
                 <input
                   id="avatar-file-input-header"
                   type="file"
-                  accept="image/*,image/jpeg,image/png,image/webp,image/heic,image/heif"
-                  className="sr-only"
+                  accept="image/*"
+                  className="hidden"
                   onChange={handleAvatarChange}
-                  onClick={(e) => { (e.target as HTMLInputElement).value = ''; }}
                 />
-              </label>
+              </>
             )}
 
             {/* Open-to Badge on Avatar (Small floating tag) */}
