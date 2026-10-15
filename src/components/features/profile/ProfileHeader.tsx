@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Camera, BadgeCheck, Briefcase, Search, Minus, Phone, 
   MapPin, Globe, FileText, Linkedin, Twitter, Github, Mail, ExternalLink 
 } from 'lucide-react';
+import { useFilePermission } from '../../../hooks/useFilePermission';
+import { PermissionDeniedModal } from '../../ui/PermissionDeniedModal';
 
 interface ProfileHeaderProps {
   formData: any;
@@ -49,6 +51,30 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   const isAvailable = openToStatus === 'work';
   const isPro = profile.is_pro || profile.isPro;
 
+  // ── File Permission Logic (Android + iOS) ──────────────────────
+  const { requestPermission } = useFilePermission();
+  const [permissionDenied, setPermissionDenied] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef  = useRef<HTMLInputElement>(null);
+
+  const handleAvatarClick = async () => {
+    const granted = await requestPermission('photos');
+    if (granted) {
+      avatarInputRef.current?.click();
+    } else {
+      setPermissionDenied(true);
+    }
+  };
+
+  const handleCoverClick = async () => {
+    const granted = await requestPermission('photos');
+    if (granted) {
+      coverInputRef.current?.click();
+    } else {
+      setPermissionDenied(true);
+    }
+  };
+
   return (
     <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden relative">
       {/* Cover Image */}
@@ -63,15 +89,18 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/30 to-transparent" />
         {isMe && (
           <>
-            <label 
-              htmlFor="cover-file-input-header"
+            {/* Cover change button — triggers permission check before opening picker */}
+            <button
+              type="button"
+              onClick={handleCoverClick}
               className="absolute top-3 right-3 p-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-800 transition-all shadow-md flex items-center gap-1.5 group/btn border border-white/20 dark:border-slate-700 active:scale-95 z-10"
               title="تغيير صورة الغلاف"
             >
               <Camera size={13} className="text-[#0a66c2] dark:text-blue-400" />
               <span className="text-[9px] font-black text-slate-600 dark:text-slate-200 uppercase tracking-widest hidden group-hover/btn:block">تغيير</span>
-            </label>
+            </button>
             <input
+              ref={coverInputRef}
               id="cover-file-input-header"
               type="file"
               accept="image/*"
@@ -96,14 +125,17 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             </div>
             {isMe && (
               <>
-                <label 
-                  htmlFor="avatar-file-input-header"
+                {/* Avatar change button — triggers permission check before opening picker */}
+                <button
+                  type="button"
+                  onClick={handleAvatarClick}
                   className="absolute bottom-1 left-1 p-1.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-700 shadow-md transition-all border border-slate-100 dark:border-slate-700 active:scale-95 z-10"
                   title="تغيير الصورة الشخصية"
                 >
                   <Camera size={11} className="text-[#0a66c2] dark:text-blue-400" />
-                </label>
+                </button>
                 <input
+                  ref={avatarInputRef}
                   id="avatar-file-input-header"
                   type="file"
                   accept="image/*"
@@ -283,6 +315,13 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
           </div>
         )}
       </div>
+
+      {/* Permission Denied Modal (iOS + Android) */}
+      <PermissionDeniedModal
+        isOpen={permissionDenied}
+        onClose={() => setPermissionDenied(false)}
+        permissionType="photos"
+      />
     </div>
   );
 };
