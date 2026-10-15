@@ -130,20 +130,26 @@ export const cvService = {
         await supabase.auth.getSession();
       } catch (_) {}
 
-      // 3. Candidate Buckets in priority order
-      const candidateBuckets = ['resumes', 'applications', 'profiles', 'job-images'];
+      // 3. Candidate Buckets in priority order (only first 2 to avoid long blocking)
+      const candidateBuckets = ['resumes', 'profiles'];
       let uploadedUrl: string | null = null;
       let lastStorageError: any = null;
 
       for (const bucket of candidateBuckets) {
         try {
-          const { error: uploadError } = await supabase.storage
+          const uploadPromise = supabase.storage
             .from(bucket)
             .upload(fileName, file, {
               contentType,
               upsert: true,
               cacheControl: '3600',
             });
+
+          const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
+            setTimeout(() => reject(new Error(`Storage upload timeout (7s) for bucket '${bucket}'`)), 7000)
+          );
+
+          const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);
 
           if (!uploadError) {
             const { data: publicData } = supabase.storage

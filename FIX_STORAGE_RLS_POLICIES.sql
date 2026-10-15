@@ -1,77 +1,102 @@
 -- ==============================================================================
--- 🚀 ProLink: حل مشكلة رفع السيرة الذاتية والصور في Supabase Storage
+-- ProLink: اصلاح شامل لسياسات Storage RLS + تفعيل Buckets
 -- ==============================================================================
--- قم بنسخ هذا الكود بالكامل وتشغيله في:
--- Supabase Dashboard -> SQL Editor -> New Query -> Run
+-- شغّل هذا الكود في: Supabase Dashboard -> SQL Editor -> New Query -> Run
 -- ==============================================================================
 
--- 1. التأكد من إنشاء مستودعات التخزين (Buckets) وجعلها عامة للقراءة
-INSERT INTO storage.buckets (id, name, public, file_size_limit)
+-- 1. انشاء/تحديث Buckets وجعلها عامة
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 VALUES 
-  ('resumes', 'resumes', true, 52428800),
-  ('applications', 'applications', true, 52428800),
-  ('profiles', 'profiles', true, 52428800),
-  ('job-images', 'job-images', true, 52428800),
-  ('images', 'images', true, 52428800)
-ON CONFLICT (id) DO UPDATE SET 
-  public = true,
-  file_size_limit = 52428800;
+  ('profiles',     'profiles',     true, 52428800, ARRAY['image/jpeg','image/jpg','image/png','image/webp','image/gif','image/heic','image/heif','image/bmp','application/pdf']),
+  ('resumes',      'resumes',      true, 52428800, ARRAY['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document']),
+  ('applications', 'applications', true, 52428800, ARRAY['application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document']),
+  ('job-images',   'job-images',   true, 52428800, ARRAY['image/jpeg','image/jpg','image/png','image/webp','image/gif']),
+  ('images',       'images',       true, 52428800, ARRAY['image/jpeg','image/jpg','image/png','image/webp','image/gif']),
+  ('posts',        'posts',        true, 104857600, ARRAY['image/jpeg','image/jpg','image/png','image/webp','image/gif','video/mp4','video/webm'])
+ON CONFLICT (id) DO UPDATE SET
+  public            = EXCLUDED.public,
+  file_size_limit   = EXCLUDED.file_size_limit,
+  allowed_mime_types = EXCLUDED.allowed_mime_types;
 
--- 2. إزالة السياسات القديمة المتعارضة
-DROP POLICY IF EXISTS "Public View Resumes" ON storage.objects;
-DROP POLICY IF EXISTS "Public Upload Resumes" ON storage.objects;
-DROP POLICY IF EXISTS "Prolink Public View Policy" ON storage.objects;
-DROP POLICY IF EXISTS "Prolink Insert Policy" ON storage.objects;
-DROP POLICY IF EXISTS "Prolink Update Policy" ON storage.objects;
-DROP POLICY IF EXISTS "Prolink Delete Policy" ON storage.objects;
-DROP POLICY IF EXISTS "Allow All Insert Resumes" ON storage.objects;
-DROP POLICY IF EXISTS "Allow All Select Resumes" ON storage.objects;
-DROP POLICY IF EXISTS "Allow All Update Resumes" ON storage.objects;
+-- 2. حذف جميع السياسات القديمة المتعارضة
+DO $$
+DECLARE pol RECORD;
+BEGIN
+    FOR pol IN 
+        SELECT policyname FROM pg_policies 
+        WHERE schemaname = 'storage' AND tablename = 'objects'
+    LOOP
+        EXECUTE format('DROP POLICY IF EXISTS %I ON storage.objects', pol.policyname);
+    END LOOP;
+END $$;
 
--- 3. تفعيل سياسات الوصول الشاملة (RLS) للسماح برفع السير الذاتية من الحاسوب والجوال
+-- 3. انشاء السياسات مباشرة (RLS مفعّل مسبقاً على storage.objects في Supabase)
 
--- سياسة المشاهدة والتحميل (SELECT): متاحة للجميع
-CREATE POLICY "Prolink Public View Policy"
+-- 4. سياسة المشاهدة/التنزيل - متاح للجميع
+CREATE POLICY "prolink_storage_select"
 ON storage.objects FOR SELECT
 USING (
-  bucket_id IN ('resumes', 'applications', 'profiles', 'job-images', 'images')
+  bucket_id IN ('profiles', 'resumes', 'applications', 'job-images', 'images', 'posts')
 );
 
--- سياسة الرفع (INSERT): متاحة لجميع المستخدمين (المصادقين والضيوف)
-CREATE POLICY "Prolink Insert Policy"
+-- 5. سياسة الرفع - للمستخدمين المسجلين فقط
+CREATE POLICY "prolink_storage_insert"
 ON storage.objects FOR INSERT
 WITH CHECK (
-  bucket_id IN ('resumes', 'applications', 'profiles', 'job-images', 'images')
+  bucket_id IN ('profiles', 'resumes', 'applications', 'job-images', 'images', 'posts')
+  AND auth.role() = 'authenticated'
 );
 
--- سياسة التحديث (UPDATE)
-CREATE POLICY "Prolink Update Policy"
+-- 6. سياسة التحديث
+CREATE POLICY "prolink_storage_update"
 ON storage.objects FOR UPDATE
 USING (
-  bucket_id IN ('resumes', 'applications', 'profiles', 'job-images', 'images')
+  bucket_id IN ('profiles', 'resumes', 'applications', 'job-images', 'images', 'posts')
+  AND auth.role() = 'authenticated'
+)
+WITH CHECK (
+  bucket_id IN ('profiles', 'resumes', 'applications', 'job-images', 'images', 'posts')
+  AND auth.role() = 'authenticated'
 );
 
--- سياسة الحذف (DELETE)
-CREATE POLICY "Prolink Delete Policy"
+-- 7. سياسة الحذف
+CREATE POLICY "prolink_storage_delete"
 ON storage.objects FOR DELETE
 USING (
-  bucket_id IN ('resumes', 'applications', 'profiles', 'job-images', 'images')
+  bucket_id IN ('profiles', 'resumes', 'applications', 'job-images', 'images', 'posts')
+  AND auth.role() = 'authenticated'
 );
 
--- 4. حل مشكلة عدم حفظ وتثبيت الصور والسير الذاتية في جدول profiles
--- لضمان أن تحديث رابط الصورة والسيرة الذاتية يُحفظ دائماً ولا يُرفض صامتاً:
+-- 8. اصلاح سياسات جدول profiles
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Public Profiles Select" ON public.profiles;
-CREATE POLICY "Public Profiles Select" ON public.profiles
-FOR SELECT USING (true);
+DO $$
+DECLARE pol RECORD;
+BEGIN
+    FOR pol IN 
+        SELECT policyname FROM pg_policies 
+        WHERE schemaname = 'public' AND tablename = 'profiles'
+    LOOP
+        EXECUTE format('DROP POLICY IF EXISTS %I ON public.profiles', pol.policyname);
+    END LOOP;
+END $$;
 
-DROP POLICY IF EXISTS "Profiles Update Policy" ON public.profiles;
-CREATE POLICY "Profiles Update Policy" ON public.profiles
-FOR UPDATE USING (true) WITH CHECK (true);
+CREATE POLICY "profiles_select_all" ON public.profiles
+  FOR SELECT USING (true);
 
-DROP POLICY IF EXISTS "Profiles Insert Policy" ON public.profiles;
-CREATE POLICY "Profiles Insert Policy" ON public.profiles
-FOR INSERT WITH CHECK (true);
+CREATE POLICY "profiles_insert_own" ON public.profiles
+  FOR INSERT WITH CHECK (auth.uid() = id);
 
--- ✅ تم الإعداد بنجاح.
+CREATE POLICY "profiles_update_own" ON public.profiles
+  FOR UPDATE USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "profiles_delete_own" ON public.profiles
+  FOR DELETE USING (auth.uid() = id);
+
+-- 9. للتحقق
+SELECT schemaname, tablename, policyname, cmd
+FROM pg_policies
+WHERE (schemaname = 'storage' AND tablename = 'objects')
+   OR (schemaname = 'public' AND tablename = 'profiles')
+ORDER BY schemaname, tablename, policyname;
