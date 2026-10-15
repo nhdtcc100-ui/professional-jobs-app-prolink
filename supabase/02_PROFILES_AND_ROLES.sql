@@ -46,13 +46,16 @@ CREATE TABLE IF NOT EXISTS public.role_change_requests (
     user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
     user_name TEXT,
     user_avatar TEXT,
-    current_role TEXT NOT NULL,
+    from_role TEXT NOT NULL,
     requested_role TEXT NOT NULL,
     reason TEXT,
     status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE IF EXISTS public.role_change_requests ADD COLUMN IF NOT EXISTS from_role TEXT;
+ALTER TABLE IF EXISTS public.role_change_requests ADD COLUMN IF NOT EXISTS requested_role TEXT;
 
 ALTER TABLE IF EXISTS public.role_change_requests ENABLE ROW LEVEL SECURITY;
 
