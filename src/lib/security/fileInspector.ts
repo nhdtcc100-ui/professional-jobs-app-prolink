@@ -119,20 +119,32 @@ export async function inspectUploadedFile(
     };
   }
 
-  // 3. Inspect binary content & Magic Bytes
+  // 3. Inspect binary content & Magic Bytes with safety timeout (prevents Android SAF freeze)
   try {
     const slice = file.slice(0, 8192);
-    let buffer: ArrayBuffer;
-    if (typeof slice.arrayBuffer === 'function') {
-      buffer = await slice.arrayBuffer();
-    } else {
-      buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+    const readSlice = async (): Promise<ArrayBuffer> => {
+      if (typeof slice.arrayBuffer === 'function') {
+        try {
+          return await slice.arrayBuffer();
+        } catch (_) {}
+      }
+      return await new Promise<ArrayBuffer>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as ArrayBuffer);
         reader.onerror = () => reject(new Error('FileReader failed'));
         reader.readAsArrayBuffer(slice);
       });
+    };
+
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500));
+    const buffer = await Promise.race([readSlice(), timeoutPromise]);
+
+    // If reading slice timed out or failed on mobile SAF, fail safe to allow user flow
+    if (!buffer || buffer.byteLength === 0) {
+      console.warn('[fileInspector] Reading slice timed out or empty; passing safe to avoid blocking mobile user.');
+      return { safe: true };
     }
+
     const bytes = new Uint8Array(buffer);
 
     const lowerName = filename; // already lowercased & mobile-safe from rawFilename

@@ -593,7 +593,7 @@ export async function pickImageFromGallery(): Promise<File | null> {
   return new Promise<File | null>((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/jpeg,image/png,image/webp,image/jpg';
+    input.accept = 'image/*';
     input.style.display = 'none';
     document.body.appendChild(input);
 
