@@ -32,10 +32,114 @@ export async function snapshotFile(rawFile: File): Promise<File> {
   // If already an in-memory processed File, return immediately
   if ((rawFile as any).__isSnapshot) return rawFile;
 
-  let buffer: ArrayBuffer | null = null;
+  const isImage = (rawFile.type && rawFile.type.startsWith('image/')) ||
+    /\.(jpg|jpeg|png|webp|gif|bmp|heic|heif)$/i.test(rawFile.name || '') ||
+    !rawFile.type; // Android SAF often returns empty string for type
 
-  // Single-pass read: Try FileReader first (most stable on Android Web & WebView),
-  // with fallback to rawFile.arrayBuffer()
+  // 1. FAST-PATH FOR IMAGES: Native Image + Canvas pipeline
+  // Bypasses the slow Android SAF content:// IPC stream completely.
+  // The browser's native Skia engine decodes URL.createObjectURL(rawFile) directly,
+  // then Canvas exports a clean in-memory JPEG Blob in < 250ms!
+  if (isImage && typeof window !== 'undefined' && typeof document !== 'undefined') {
+    try {
+      const materialized = await new Promise<File | null>((resolve) => {
+        let objUrl = '';
+        try {
+          objUrl = URL.createObjectURL(rawFile);
+        } catch {
+          resolve(null);
+          return;
+        }
+
+        const img = new Image();
+        let settled = false;
+
+        const cleanup = () => {
+          if (!settled) {
+            settled = true;
+            if (objUrl) {
+              try { URL.revokeObjectURL(objUrl); } catch {}
+            }
+          }
+        };
+
+        // 4-second safety timer is generous for hardware decoding
+        const timer = setTimeout(() => {
+          cleanup();
+          resolve(null);
+        }, 4000);
+
+        img.onload = () => {
+          clearTimeout(timer);
+          try {
+            const MAX_DIM = 1000;
+            let w = img.naturalWidth || img.width || 800;
+            let h = img.naturalHeight || img.height || 600;
+
+            if (w >= h) {
+              if (w > MAX_DIM) {
+                h = Math.max(1, Math.round((h * MAX_DIM) / w));
+                w = MAX_DIM;
+              }
+            } else {
+              if (h > MAX_DIM) {
+                w = Math.max(1, Math.round((w * MAX_DIM) / h));
+                h = MAX_DIM;
+              }
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) {
+              cleanup();
+              resolve(null);
+              return;
+            }
+
+            ctx.drawImage(img, 0, 0, w, h);
+            cleanup();
+
+            canvas.toBlob((blob) => {
+              if (blob && blob.size > 0) {
+                const cleanName = (rawFile.name || 'photo.jpg').replace(/\.[^.]+$/, '.jpg');
+                const cleanFile = new File([blob], cleanName, {
+                  type: 'image/jpeg',
+                  lastModified: Date.now()
+                });
+                (cleanFile as any).__isSnapshot = true;
+                resolve(cleanFile);
+              } else {
+                resolve(null);
+              }
+            }, 'image/jpeg', 0.82);
+          } catch {
+            cleanup();
+            resolve(null);
+          }
+        };
+
+        img.onerror = () => {
+          clearTimeout(timer);
+          cleanup();
+          resolve(null);
+        };
+
+        img.src = objUrl;
+      });
+
+      if (materialized) {
+        console.log(`✅ [snapshotFile] Canvas fast-materialized image in memory: ${materialized.size} bytes`);
+        return materialized;
+      }
+    } catch (e) {
+      console.warn('[snapshotFile] Canvas materialization fallback:', e);
+    }
+  }
+
+  // 2. Fallback for non-images (PDF / Word) or if Canvas materialization failed:
+  let buffer: ArrayBuffer | null = null;
   try {
     const readViaFileReader = (): Promise<ArrayBuffer> => {
       return new Promise<ArrayBuffer>((resolve, reject) => {
@@ -60,14 +164,11 @@ export async function snapshotFile(rawFile: File): Promise<File> {
       throw new Error('arrayBuffer not supported');
     };
 
-    // Realistic timeout: 15 seconds (sufficient for high-res 12-48MP photos across Android SAF Binder IPC)
     const timeoutPromise = new Promise<null>((resolve) =>
-      setTimeout(() => resolve(null), 15000)
+      setTimeout(() => resolve(null), 5000)
     );
 
-    // Prefer FileReader for SAF reliability, fallback to arrayBuffer
     const readPromise = readViaFileReader().catch(() => readViaArrayBuffer());
-
     buffer = await Promise.race([readPromise, timeoutPromise]);
   } catch (err: any) {
     console.warn('[snapshotFile] Error reading file stream:', err);
@@ -81,7 +182,7 @@ export async function snapshotFile(rawFile: File): Promise<File> {
         try {
           const res = await Promise.race([
             fetch(objUrl),
-            new Promise<Response>((_, rej) => setTimeout(() => rej(new Error('fetch timeout')), 5000))
+            new Promise<Response>((_, rej) => setTimeout(() => rej(new Error('fetch timeout')), 3000))
           ]);
           if (res.ok) {
             buffer = await res.arrayBuffer();
@@ -592,6 +693,10 @@ export const imageService = {
 
     // Step 3: Compress image to <= 1000px before uploading
     if (effectiveMime.startsWith('image/')) {
+      // If already a compact in-memory snapshot (<= 300KB), upload immediately
+      if ((workingFile as any).__isSnapshot && workingFile.size <= 300 * 1024) {
+        return await this.uploadFile(workingFile, userId, bucket);
+      }
       try {
         const compressed = await this.compressImage(workingFile);
         return await this.uploadFile(compressed, userId, bucket);
