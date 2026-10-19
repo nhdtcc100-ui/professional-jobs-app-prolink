@@ -519,64 +519,99 @@ export const imageService = {
   },
 
   async processAndUpload(file: File, userId: string, bucket = 'profiles'): Promise<string> {
-    // 0. Ensure file stream is isolated in memory
+    // ── Step 0: Materialize the file ONCE into a real in-memory Blob ──────────────
+    // Android SAF (Browse → My Files / Studio) files are lazy IPC streams.
+    // We resolve them via fetch(objectURL) which Chrome handles natively for content:// URIs.
+    // If this fails → fail fast with a clear message instead of cascading 30s of timeouts.
+    let workingBlob: Blob = file;
+    let objUrl: string | null = null;
     try {
-      file = await snapshotFile(file);
-    } catch (snapErr) {
-      console.warn('[imageService] snapshotFile warning:', snapErr);
+      objUrl = URL.createObjectURL(file);
+      const res = await Promise.race([
+        fetch(objUrl),
+        new Promise<never>((_, rej) =>
+          setTimeout(() => rej(new Error('materialize_timeout')), 6000)
+        )
+      ]) as Response;
+
+      if (res.ok) {
+        const materialized = await Promise.race([
+          res.blob(),
+          new Promise<never>((_, rej) =>
+            setTimeout(() => rej(new Error('blob_read_timeout')), 8000)
+          )
+        ]) as Blob;
+        if (materialized && materialized.size > 0) {
+          workingBlob = materialized;
+          console.log(`✅ [processAndUpload] Materialized ${materialized.size} bytes via fetch(objectURL)`);
+        }
+      }
+    } catch (matErr: any) {
+      const msg = matErr?.message || '';
+      const isTimeout = msg.includes('timeout');
+      const isNetworkBlocked = msg.includes('Failed to fetch') || msg.includes('NetworkError');
+      if (isTimeout || isNetworkBlocked) {
+        throw new Error('لا يمكن قراءة هذه الصورة. إذا كانت في Samsung Cloud أو Google Photos، حمّلها محلياً أولاً ثم حاول مجدداً.');
+      }
+      // Non-timeout errors: proceed with original File (might work for local files)
+      console.warn('[processAndUpload] materialize warning, proceeding with original:', matErr);
+    } finally {
+      if (objUrl) { try { URL.revokeObjectURL(objUrl); } catch {} }
     }
 
-    // 1. Convert HEIC/HEIF (common on Galaxy S21 / iPhone) to standard JPEG
-    const isHeic = (file.type && (file.type.includes('heic') || file.type.includes('heif'))) ||
-                   (file.name && /\.(heic|heif)$/i.test(file.name));
+    // Build a proper File from the materialized Blob for consistent MIME detection
+    let workingFile: File = workingBlob instanceof File
+      ? workingBlob
+      : new File(
+          [workingBlob],
+          (file as File).name || `upload_${Date.now()}.jpg`,
+          { type: workingBlob.type || resolveMimeType(file as File), lastModified: Date.now() }
+        );
+
+    // ── Step 1: Convert HEIC/HEIF → JPEG ─────────────────────────────────────────
+    const isHeic = (workingFile.type && (workingFile.type.includes('heic') || workingFile.type.includes('heif'))) ||
+                   (workingFile.name && /\.(heic|heif)$/i.test(workingFile.name));
     if (isHeic) {
       try {
         const convertPromise = (async () => {
           const heic2anyModule = await import('heic2any');
           const heic2any = heic2anyModule.default || heic2anyModule;
-          return await heic2any({
-            blob: file,
-            toType: 'image/jpeg',
-            quality: 0.85
-          });
+          return await heic2any({ blob: workingFile, toType: 'image/jpeg', quality: 0.85 });
         })();
-        const timeoutPromise = new Promise<null>((resolve) =>
-          setTimeout(() => resolve(null), 3000)
-        );
-        const converted = await Promise.race([convertPromise, timeoutPromise]);
+        const converted = await Promise.race([
+          convertPromise,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+        ]);
         if (converted) {
           const blob = Array.isArray(converted) ? converted[0] : converted;
-          const newName = (file.name || 'photo').replace(/\.(heic|heif)$/i, '.jpg');
-          file = new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() });
+          const newName = (workingFile.name || 'photo').replace(/\.(heic|heif)$/i, '.jpg');
+          workingFile = new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() });
         }
       } catch (heicErr) {
-        console.warn('[imageService] HEIC conversion warning (proceeding with original):', heicErr);
+        console.warn('[imageService] HEIC conversion warning:', heicErr);
       }
     }
 
-    // Use resolveMimeType so album photos with empty file.type are treated as images
-    const effectiveMime = resolveMimeType(file);
+    // ── Step 2: Validate ──────────────────────────────────────────────────────────
+    const effectiveMime = resolveMimeType(workingFile);
     const fileType = effectiveMime.startsWith('image/') ? 'image' : 'document';
-    const validation = validateFile(file, fileType);
+    const validation = validateFile(workingFile, fileType);
     if (!validation.valid) throw new Error(validation.error);
 
+    // ── Step 3: Compress + Upload ─────────────────────────────────────────────────
     if (effectiveMime.startsWith('image/')) {
       try {
-        // Compress first, then upload
-        const compressed = await this.compressImage(file);
-        // On mobile, compressImage may silently return the original File
-        // when canvas is unavailable — that is fine, we still upload it
+        const compressed = await this.compressImage(workingFile);
         return await this.uploadFile(compressed, userId, bucket);
       } catch (compressError) {
-        // Canvas compression failed (common on Android WebView) — upload raw file directly
-        console.warn('[imageService] Canvas compression failed on mobile, uploading raw file:', compressError);
-        return await this.uploadFile(file, userId, bucket);
+        console.warn('[imageService] compressImage failed, uploading uncompressed:', compressError);
+        return await this.uploadFile(workingFile, userId, bucket);
       }
     } else {
-      // PDF / DOC — upload directly without processing
-      return this.uploadFile(file, userId, bucket);
+      return this.uploadFile(workingFile, userId, bucket);
     }
   },
+
 
   /**
    * Compacts a base64 data URL to a small JPEG thumbnail for DB storage.
