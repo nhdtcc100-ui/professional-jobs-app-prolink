@@ -370,23 +370,43 @@ export const profileService = {
       }
     }
 
-    const result = await supabase.from('profiles').update(dbUpdates).eq('id', userId).select('id');
+    let result = await supabase.from('profiles').update(dbUpdates).eq('id', userId).select('id');
     
-    if (result.error) {
-      logger.error(`Supabase update FAILED for profile: ${userId}`, result.error);
-    } else if (!result.data || result.data.length === 0) {
-      logger.warn(`⚠️ [profileService] Update returned 0 modified rows for user ${userId}. Retrying with active session...`);
+    if (result.error || !result.data || result.data.length === 0) {
+      logger.warn(`⚠️ [profileService] Update returned 0 modified rows for user ${userId}. Retrying with upsert...`);
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        const activeUid = session?.user?.id;
-        if (activeUid && activeUid !== userId) {
-          const retry = await supabase.from('profiles').update(dbUpdates).eq('id', activeUid).select('id');
-          if (retry.data && retry.data.length > 0) {
-            return retry;
-          }
+        const activeUid = session?.user?.id || userId;
+        const upsertRes = await supabase.from('profiles').upsert({ id: activeUid, ...dbUpdates }).select('id');
+        if (upsertRes.data && upsertRes.data.length > 0) {
+          result = upsertRes;
         }
-      } catch (_) {}
+      } catch (upsertErr) {
+        logger.warn('[profileService] Upsert fallback warning:', upsertErr);
+      }
     }
+
+    // 💾 Always update local cache so avatar and CV updates are never lost
+    try {
+      const cached = localStorage.getItem('prolink_cached_user');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && (parsed.id === userId || !parsed.id)) {
+          const updatedCached = {
+            ...parsed,
+            ...updates,
+            avatar: updates.avatar || updates.avatar_url || parsed.avatar,
+            avatar_url: updates.avatar || updates.avatar_url || parsed.avatar_url,
+            coverUrl: updates.coverUrl || updates.cover_url || parsed.coverUrl,
+            cover_url: updates.coverUrl || updates.cover_url || parsed.cover_url,
+            cvUrl: updates.cvUrl || updates.cv_url || parsed.cvUrl,
+            cv_url: updates.cvUrl || updates.cv_url || parsed.cv_url,
+          };
+          localStorage.setItem('prolink_cached_user', JSON.stringify(updatedCached));
+        }
+      }
+    } catch (_) {}
+
     return result;
   },
 

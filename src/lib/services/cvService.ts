@@ -146,7 +146,7 @@ export const cvService = {
             });
 
           const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-            setTimeout(() => reject(new Error(`Storage upload timeout (20s) for bucket '${bucket}'`)), 20000)
+            setTimeout(() => reject(new Error(`Storage upload timeout (4s) for bucket '${bucket}'`)), 4000)
           );
 
           const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);
@@ -176,10 +176,10 @@ export const cvService = {
         return { data: uploadedUrl, error: null };
       }
 
-      // 4. Fallback for smaller files (< 5MB) — covers most real CV files on mobile
-      const MAX_BASE64_BYTES = 5 * 1024 * 1024; // 5 MB (up from 1MB — most mobile CVs are under 5MB)
+      // 4. Fallback for files (<= 15MB) — covers almost all CV files on mobile and desktop
+      const MAX_BASE64_BYTES = 15 * 1024 * 1024; // 15 MB
       if (file.size <= MAX_BASE64_BYTES) {
-        logger.warn('[cvService] Supabase storage failed; using Base64 fallback for file <= 5MB.');
+        logger.warn('[cvService] Supabase storage failed; using Base64 fallback for file <= 15MB.');
         try {
           const base64Url = await this.fileToBase64(file);
           return { data: base64Url, error: null };

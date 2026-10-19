@@ -350,7 +350,7 @@ export const imageService = {
             .upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' });
 
           const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-            setTimeout(() => reject(new Error(`Storage upload timeout (15s) for bucket '${b}'`)), 15000)
+            setTimeout(() => reject(new Error(`Storage upload timeout (3.5s) for bucket '${b}'`)), 3500)
           );
 
           const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);
@@ -382,7 +382,7 @@ export const imageService = {
               headers: { 'Content-Type': contentType, 'x-upsert': 'true' },
             }),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('Presigned upload timeout (8s)')), 8000)
+              setTimeout(() => reject(new Error('Presigned upload timeout (3s)')), 3000)
             ),
           ]) as Response;
 
