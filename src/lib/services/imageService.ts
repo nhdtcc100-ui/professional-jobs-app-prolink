@@ -33,33 +33,69 @@ export async function snapshotFile(rawFile: File): Promise<File> {
   if ((rawFile as any).__isSnapshot) return rawFile;
 
   let buffer: ArrayBuffer | null = null;
+
+  // Single-pass read: Try FileReader first (most stable on Android Web & WebView),
+  // with fallback to rawFile.arrayBuffer()
   try {
-    const readPromise = (async () => {
-      if (typeof rawFile.arrayBuffer === 'function') {
-        try {
-          return await rawFile.arrayBuffer();
-        } catch (_) {}
-      }
-      return await new Promise<ArrayBuffer>((resolve, reject) => {
+    const readViaFileReader = (): Promise<ArrayBuffer> => {
+      return new Promise<ArrayBuffer>((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as ArrayBuffer);
-        reader.onerror = () => reject(new Error('FileReader error'));
+        reader.onload = () => {
+          if (reader.result instanceof ArrayBuffer) {
+            resolve(reader.result);
+          } else {
+            reject(new Error('FileReader did not return ArrayBuffer'));
+          }
+        };
+        reader.onerror = () => reject(reader.error || new Error('FileReader error'));
+        reader.onabort = () => reject(new Error('FileReader aborted'));
         reader.readAsArrayBuffer(rawFile);
       });
-    })();
+    };
 
-    // Safety timeout (3.5s): Android SAF / My Files IPC streams must NEVER hang the app
+    const readViaArrayBuffer = async (): Promise<ArrayBuffer> => {
+      if (typeof rawFile.arrayBuffer === 'function') {
+        return await rawFile.arrayBuffer();
+      }
+      throw new Error('arrayBuffer not supported');
+    };
+
+    // Realistic timeout: 15 seconds (sufficient for high-res 12-48MP photos across Android SAF Binder IPC)
     const timeoutPromise = new Promise<null>((resolve) =>
-      setTimeout(() => resolve(null), 3500)
+      setTimeout(() => resolve(null), 15000)
     );
+
+    // Prefer FileReader for SAF reliability, fallback to arrayBuffer
+    const readPromise = readViaFileReader().catch(() => readViaArrayBuffer());
 
     buffer = await Promise.race([readPromise, timeoutPromise]);
   } catch (err: any) {
-    console.warn('[snapshotFile] Error or timeout reading file stream:', err);
+    console.warn('[snapshotFile] Error reading file stream:', err);
   }
 
-  // If reading stream failed or timed out (common with cloud sync/virtual content in Android "Browse"),
-  // return rawFile directly so upload continues smoothly without stalling!
+  // Fallback: If FileReader / arrayBuffer failed or timed out, try object URL fetch before giving up
+  if (!buffer || buffer.byteLength === 0) {
+    try {
+      if (typeof URL !== 'undefined' && URL.createObjectURL) {
+        const objUrl = URL.createObjectURL(rawFile);
+        try {
+          const res = await Promise.race([
+            fetch(objUrl),
+            new Promise<Response>((_, rej) => setTimeout(() => rej(new Error('fetch timeout')), 5000))
+          ]);
+          if (res.ok) {
+            buffer = await res.arrayBuffer();
+          }
+        } finally {
+          URL.revokeObjectURL(objUrl);
+        }
+      }
+    } catch (fetchErr) {
+      console.warn('[snapshotFile] objectURL fallback also failed:', fetchErr);
+    }
+  }
+
+  // If reading stream completely failed, proceed with original File directly
   if (!buffer || buffer.byteLength === 0) {
     console.warn('[snapshotFile] Buffer empty or timed out; proceeding with original File directly.');
     return rawFile;
@@ -161,6 +197,10 @@ export const imageService = {
     }
   },
 
+  /**
+   * Compresses an image to max 1000px and 0.80 quality.
+   * Produces an in-memory JPEG File typically between 80KB - 200KB.
+   */
   async compressImage(file: File): Promise<Blob | File> {
     const doCompress = async (): Promise<Blob | File> => {
       const effectiveMime = file.type || resolveMimeType(file);
@@ -168,184 +208,259 @@ export const imageService = {
         return file;
       }
 
-      // Fast-path: already small compressed image (< 200KB)
-      if (file.size <= 200 * 1024 && (effectiveMime === 'image/jpeg' || effectiveMime === 'image/webp')) {
+      // Fast-path: already small compressed image (< 250KB)
+      if (file.size <= 250 * 1024 && (effectiveMime === 'image/jpeg' || effectiveMime === 'image/webp')) {
         return file;
       }
 
-    // Helper: createImageBitmap with safety timeout (prevents hang on low-memory mobile)
-    const safeBitmap = (src: ImageBitmapSource, opts?: ImageBitmapOptions): Promise<ImageBitmap | null> =>
-      Promise.race([
-        opts ? createImageBitmap(src, opts) : createImageBitmap(src),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 2500)),
-      ]).catch(() => null);
+      const MAX_DIM = 1000;
 
-    // 1. Try modern createImageBitmap with native GPU/C++ downscaling
-    if (typeof window !== 'undefined' && typeof window.createImageBitmap === 'function') {
-      try {
-        const probe = await safeBitmap(file);
-        if (!probe) throw new Error('createImageBitmap probe timeout');
+      // 1. Try modern createImageBitmap with native GPU/C++ downscaling
+      if (typeof window !== 'undefined' && typeof window.createImageBitmap === 'function') {
+        try {
+          const probe = await Promise.race([
+            createImageBitmap(file),
+            new Promise<null>((res) => setTimeout(() => res(null), 3500)),
+          ]);
 
-        const origW = probe.width;
-        const origH = probe.height;
-        probe.close();
+          if (probe && probe.width > 0 && probe.height > 0) {
+            const origW = probe.width;
+            const origH = probe.height;
+            probe.close();
 
-        if (origW > 0 && origH > 0) {
-          const MAX_DIM = 1200;
-          let targetW = origW;
-          let targetH = origH;
-
-          if (origW >= origH) {
-            if (origW > MAX_DIM) {
-              targetH = Math.max(1, Math.round((origH * MAX_DIM) / origW));
-              targetW = MAX_DIM;
+            let targetW = origW;
+            let targetH = origH;
+            if (origW >= origH) {
+              if (origW > MAX_DIM) {
+                targetH = Math.max(1, Math.round((origH * MAX_DIM) / origW));
+                targetW = MAX_DIM;
+              }
+            } else {
+              if (origH > MAX_DIM) {
+                targetW = Math.max(1, Math.round((origW * MAX_DIM) / origH));
+                targetH = MAX_DIM;
+              }
             }
-          } else {
-            if (origH > MAX_DIM) {
-              targetW = Math.max(1, Math.round((origW * MAX_DIM) / origH));
-              targetH = MAX_DIM;
+
+            const resizedBitmap = await Promise.race([
+              createImageBitmap(file, {
+                resizeWidth: targetW,
+                resizeHeight: targetH,
+                resizeQuality: 'medium',
+              }),
+              new Promise<null>((res) => setTimeout(() => res(null), 4000)),
+            ]);
+
+            if (resizedBitmap) {
+              const canvas = document.createElement('canvas');
+              canvas.width = targetW;
+              canvas.height = targetH;
+              const ctx = canvas.getContext('2d');
+              if (ctx) {
+                ctx.drawImage(resizedBitmap, 0, 0);
+                resizedBitmap.close();
+
+                const blob = await new Promise<Blob | null>((res) => {
+                  canvas.toBlob(res, 'image/jpeg', 0.80);
+                });
+
+                if (blob && blob.size > 0) {
+                  const compFile = new File([blob], (file.name || 'image').replace(/\.[^.]+$/, '.jpg'), {
+                    type: 'image/jpeg',
+                    lastModified: Date.now(),
+                  });
+                  (compFile as any).__isSnapshot = true;
+                  return compFile;
+                }
+              } else {
+                resizedBitmap.close();
+              }
             }
           }
-
-          const resizedBitmap = await safeBitmap(file, {
-            resizeWidth: targetW,
-            resizeHeight: targetH,
-            resizeQuality: 'medium'
-          });
-
-          if (!resizedBitmap) throw new Error('createImageBitmap resize timeout');
-
-          const canvas = document.createElement('canvas');
-          canvas.width = targetW;
-          canvas.height = targetH;
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(resizedBitmap, 0, 0);
-            resizedBitmap.close(); // free GPU resources immediately
-
-            const blob = await new Promise<Blob | null>((res) => {
-              canvas.toBlob(res, 'image/jpeg', 0.82);
-            });
-
-            if (blob && blob.size > 0) {
-              return new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
-                type: 'image/jpeg',
-                lastModified: Date.now()
-              });
-            }
-          } else {
-            resizedBitmap.close();
-          }
+        } catch (bitmapErr) {
+          console.warn('[imageService] createImageBitmap fallback to Image element:', bitmapErr);
         }
-      } catch (bitmapErr) {
-        console.warn('[imageService] createImageBitmap fallback to Image element:', bitmapErr);
       }
-    }
 
-    // 2. Standard Image + Canvas fallback with safety timeout
-    return new Promise((resolve) => {
+      // 2. Standard Image + Canvas fallback
+      return new Promise<Blob | File>((resolve) => {
+        try {
+          let objectUrl = '';
+          try {
+            if (typeof URL !== 'undefined' && URL.createObjectURL) {
+              objectUrl = URL.createObjectURL(file);
+            }
+          } catch {}
+
+          const img = new Image();
+          const cleanup = () => {
+            if (objectUrl) {
+              try { URL.revokeObjectURL(objectUrl); } catch {}
+            }
+          };
+
+          const safetyTimer = setTimeout(() => {
+            cleanup();
+            resolve(file);
+          }, 6000);
+
+          img.onload = () => {
+            clearTimeout(safetyTimer);
+            try {
+              cleanup();
+              let width = img.naturalWidth || img.width || 800;
+              let height = img.naturalHeight || img.height || 600;
+
+              if (width >= height) {
+                if (width > MAX_DIM) {
+                  height = Math.round((height * MAX_DIM) / width);
+                  width = MAX_DIM;
+                }
+              } else {
+                if (height > MAX_DIM) {
+                  width = Math.round((width * MAX_DIM) / height);
+                  height = MAX_DIM;
+                }
+              }
+
+              if (!width || !height || width < 1 || height < 1) {
+                resolve(file);
+                return;
+              }
+
+              const canvas = document.createElement('canvas');
+              canvas.width = width;
+              canvas.height = height;
+              const ctx = canvas.getContext('2d');
+              if (!ctx) { resolve(file); return; }
+              ctx.drawImage(img, 0, 0, width, height);
+
+              canvas.toBlob((blob) => {
+                if (blob && blob.size > 0) {
+                  const compFile = new File([blob], (file.name || 'image').replace(/\.[^.]+$/, '.jpg'), {
+                    type: 'image/jpeg',
+                    lastModified: Date.now()
+                  });
+                  (compFile as any).__isSnapshot = true;
+                  resolve(compFile);
+                } else {
+                  resolve(file);
+                }
+              }, 'image/jpeg', 0.80);
+            } catch {
+              resolve(file);
+            }
+          };
+
+          img.onerror = () => {
+            clearTimeout(safetyTimer);
+            cleanup();
+            resolve(file);
+          };
+
+          if (objectUrl) {
+            img.src = objectUrl;
+          } else {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              img.src = e.target?.result as string;
+            };
+            reader.onerror = () => {
+              clearTimeout(safetyTimer);
+              resolve(file);
+            };
+            reader.readAsDataURL(file);
+          }
+        } catch {
+          resolve(file);
+        }
+      });
+    };
+
+    const timeoutPromise = new Promise<File>((resolve) =>
+      setTimeout(() => resolve(file), 12000)
+    );
+
+    return Promise.race([doCompress(), timeoutPromise]);
+  },
+
+  /**
+   * Generates a lightweight Base64 thumbnail (< 30KB) as emergency fallback.
+   * Can be stored directly into PostgreSQL text columns without hitting payload limits.
+   */
+  async createCompactBase64Thumbnail(file: File | Blob, maxDim = 200, quality = 0.55): Promise<string> {
+    return new Promise<string>((resolve) => {
       try {
         let objectUrl = '';
         try {
           if (typeof URL !== 'undefined' && URL.createObjectURL) {
             objectUrl = URL.createObjectURL(file);
           }
-        } catch {
-          // fallback to FileReader if createObjectURL fails on mobile
-        }
+        } catch {}
 
         const img = new Image();
         const cleanup = () => {
-          if (objectUrl) {
-            try { URL.revokeObjectURL(objectUrl); } catch {}
-          }
+          if (objectUrl) { try { URL.revokeObjectURL(objectUrl); } catch {} }
         };
 
-        // Safety timeout: if image decoding hangs on mobile, fallback to original file
-        const safetyTimer = setTimeout(() => {
+        const timeout = setTimeout(() => {
           cleanup();
-          resolve(file);
-        }, 3500);
+          resolve('');
+        }, 6000);
 
         img.onload = () => {
-          clearTimeout(safetyTimer);
+          clearTimeout(timeout);
+          cleanup();
           try {
-            cleanup();
-            const canvas = document.createElement('canvas');
-            let width = img.naturalWidth  || img.width  || 800;
-            let height = img.naturalHeight || img.height || 600;
-
-            const MAX_DIM = 1200;
-
-            if (width >= height) {
-              if (width > MAX_DIM) {
-                height = Math.round((height * MAX_DIM) / width);
-                width = MAX_DIM;
-              }
-            } else {
-              if (height > MAX_DIM) {
-                width = Math.round((width * MAX_DIM) / height);
-                height = MAX_DIM;
-              }
+            let w = img.naturalWidth || img.width || maxDim;
+            let h = img.naturalHeight || img.height || maxDim;
+            if (w >= h && w > maxDim) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else if (h > maxDim) {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
             }
+            if (w < 1 || h < 1) { resolve(''); return; }
 
-            if (!width || !height || width < 1 || height < 1) {
-              resolve(file);
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, w, h);
+              const dataUrl = canvas.toDataURL('image/jpeg', quality);
+              console.log(`ℹ️ [imageService] Compact Base64 thumbnail created: ${dataUrl.length} chars (~${Math.round(dataUrl.length / 1024)}KB)`);
+              resolve(dataUrl);
               return;
             }
-
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) { resolve(file); return; }
-            ctx.drawImage(img, 0, 0, width, height);
-
-            canvas.toBlob((blob) => {
-              if (blob && blob.size > 0) {
-                resolve(blob);
-              } else {
-                console.warn('[imageService] canvas.toBlob returned null/empty on mobile — using original file');
-                resolve(file);
-              }
-            }, 'image/jpeg', 0.82);
-          } catch {
-            resolve(file);
-          }
+          } catch {}
+          resolve('');
         };
 
         img.onerror = () => {
-          clearTimeout(safetyTimer);
+          clearTimeout(timeout);
           cleanup();
-          resolve(file);
+          resolve('');
         };
 
         if (objectUrl) {
           img.src = objectUrl;
         } else {
           const reader = new FileReader();
-          reader.onload = (e) => {
-            img.src = e.target?.result as string;
-          };
-          reader.onerror = () => {
-            clearTimeout(safetyTimer);
-            resolve(file);
-          };
+          reader.onload = () => { img.src = reader.result as string; };
+          reader.onerror = () => resolve('');
           reader.readAsDataURL(file);
         }
       } catch {
-        resolve(file);
+        resolve('');
       }
     });
-    };
-
-    const timeoutPromise = new Promise<File>((resolve) =>
-      setTimeout(() => resolve(file), 3500)
-    );
-
-    return Promise.race([doCompress(), timeoutPromise]);
   },
 
-
+  /**
+   * Uploads file to Supabase Storage with realistic 25s timeout and automatic fallback.
+   */
   async uploadFile(file: File | Blob, userId: string, bucket = 'profiles'): Promise<string> {
     try {
       const uuid = generateUUID();
@@ -368,8 +483,8 @@ export const imageService = {
       try { await supabase.auth.getSession(); } catch (_) {}
       console.log(`[imageService] Upload attempt | bucket: ${bucket} | size: ${file.size} bytes | type: ${contentType}`);
 
-      // ── Strategy 1: Direct SDK upload (matches cvService: uses standard Supabase POST, no CORS preflight stalls) ──
-      const candidateBuckets = [bucket, 'profiles', 'images']
+      // Strategy 1: Direct SDK upload with realistic 25s timeout for mobile networks
+      const candidateBuckets = [bucket, bucket !== 'profiles' ? 'profiles' : 'images']
         .filter((b, idx, arr) => arr.indexOf(b) === idx && Boolean(b));
 
       for (const b of candidateBuckets) {
@@ -379,7 +494,7 @@ export const imageService = {
             .upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' });
 
           const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-            setTimeout(() => reject(new Error(`Storage upload timeout (3.5s) for bucket '${b}'`)), 3500)
+            setTimeout(() => reject(new Error(`Storage upload timeout (25s) for bucket '${b}'`)), 25000)
           );
 
           const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);
@@ -395,12 +510,12 @@ export const imageService = {
           } else {
             console.warn(`⚠️ [imageService] Bucket '${b}' SDK upload failed:`, uploadError.message || JSON.stringify(uploadError));
           }
-        } catch (bErr) {
-          console.warn(`⚠️ [imageService] Exception trying bucket '${b}':`, bErr);
+        } catch (bErr: any) {
+          console.warn(`⚠️ [imageService] Exception trying bucket '${b}':`, bErr?.message || bErr);
         }
       }
 
-      // ── Strategy 2: Presigned URL fallback (only if direct SDK fails) ──
+      // Strategy 2: Presigned URL fallback
       try {
         const presigned = await this.createPresignedUploadUrl(userId, contentType, bucket);
         if (presigned?.signedUrl) {
@@ -411,7 +526,7 @@ export const imageService = {
               headers: { 'Content-Type': contentType, 'x-upsert': 'true' },
             }),
             new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('Presigned upload timeout (3s)')), 3000)
+              setTimeout(() => reject(new Error('Presigned upload timeout (15s)')), 15000)
             ),
           ]) as Response;
 
@@ -426,149 +541,25 @@ export const imageService = {
         console.warn('[imageService] Presigned upload fallback failed:', presignErr);
       }
     } catch (e) {
-      console.warn('[imageService] Storage upload error, falling back to base64:', e);
+      console.warn('[imageService] Storage upload error, falling back to compact Base64:', e);
     }
 
+    // Strategy 3: Compact Base64 thumbnail fallback (ensures DB storage never breaks even if Storage RLS is misconfigured)
+    console.warn('[imageService] All storage upload strategies failed. Generating compact Base64 thumbnail for DB...');
+    const compactThumb = await this.createCompactBase64Thumbnail(file);
+    if (compactThumb) return compactThumb;
 
-    // ── Fallback: base64 data URL ──
-    // Android SAF (Browse → My Files / Studio) content:// URIs can stall FileReader indefinitely.
-    // Strategy:
-    //  1. Try to materialise the file via fetch(objectURL) → concrete in-memory Blob (Chrome handles SAF natively via fetch)
-    //  2. Fall back to FileReader on the materialised Blob
-    //  3. Hard 25s total timeout — never hang the app regardless
-
-    const safeMaterialize = async (): Promise<Blob> => {
-      // Try fetch(objectURL) first — works for SAF content:// on Android Chrome
-      let objUrl: string | null = null;
-      try {
-        objUrl = URL.createObjectURL(file);
-        const res = await Promise.race([
-          fetch(objUrl),
-          new Promise<never>((_, rej) => setTimeout(() => rej(new Error('fetch objectURL timeout')), 8000))
-        ]) as Response;
-        if (res.ok) {
-          const blob = await res.blob();
-          if (blob && blob.size > 0) return blob;
-        }
-      } catch (fetchErr) {
-        console.warn('[imageService] fetch(objectURL) failed, falling back to direct FileReader:', fetchErr);
-      } finally {
-        if (objUrl) { try { URL.revokeObjectURL(objUrl); } catch {} }
-      }
-      // Return original file as Blob
-      return file;
-    };
-
-    const readAsBase64 = (blob: Blob): Promise<string> =>
-      new Promise<string>((res, rej) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          if (typeof reader.result === 'string') res(reader.result);
-          else rej(new Error('FileReader returned non-string'));
-        };
-        reader.onerror = () => rej(new Error('FileReader error'));
-        reader.readAsDataURL(blob);
-      });
-
-    const compactCanvas = (dataUrl: string): Promise<string> =>
-      new Promise<string>((res) => {
-        if (!dataUrl.startsWith('data:image/') &&
-            !dataUrl.startsWith('data:application/octet-stream') &&
-            !dataUrl.startsWith('data:;')) {
-          return res(dataUrl);
-        }
-        const img = new Image();
-        const t = setTimeout(() => res(dataUrl), 4000);
-        img.onload = () => {
-          clearTimeout(t);
-          try {
-            const maxDim = 400;
-            let w = img.naturalWidth || img.width || maxDim;
-            let h = img.naturalHeight || img.height || maxDim;
-            if (w >= h && w > maxDim) { h = Math.round((h * maxDim) / w); w = maxDim; }
-            else if (h > maxDim) { w = Math.round((w * maxDim) / h); h = maxDim; }
-            const canvas = document.createElement('canvas');
-            canvas.width = w; canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(img, 0, 0, w, h);
-              const compact = canvas.toDataURL('image/jpeg', 0.65);
-              console.log(`ℹ️ [imageService] Compact base64: ${compact.length} chars`);
-              return res(compact);
-            }
-          } catch {}
-          res(dataUrl);
-        };
-        img.onerror = () => { clearTimeout(t); res(dataUrl); };
-        img.src = dataUrl;
-      });
-
-    // Hard 25-second total timeout for the entire base64 path
-    const base64Flow = async (): Promise<string> => {
-      const blob = await safeMaterialize();
-      const dataUrl = await readAsBase64(blob);
-      return await compactCanvas(dataUrl);
-    };
-
-    return Promise.race([
-      base64Flow(),
-      new Promise<string>((_, rej) =>
-        setTimeout(() => rej(new Error('Base64 fallback timed out (25s) — file unreadable from Android SAF')), 25000)
-      )
-    ]);
+    throw new Error('تعذر رفع الصورة أو إنشاء معاينة لها. يرجى التحقق من اتصال الإنترنت.');
   },
 
+  /**
+   * Main pipeline: Safely snapshots file from SAF, converts HEIC, validates, compresses, and uploads.
+   */
   async processAndUpload(file: File, userId: string, bucket = 'profiles'): Promise<string> {
-    // ── Step 0: Materialize the file ONCE into a real in-memory Blob ──────────────
-    // Android SAF (Browse → My Files / Studio) files are lazy IPC streams.
-    // We resolve them via fetch(objectURL) which Chrome handles natively for content:// URIs.
-    // If this fails → fail fast with a clear message instead of cascading 30s of timeouts.
-    let workingBlob: Blob = file;
-    let objUrl: string | null = null;
-    try {
-      objUrl = URL.createObjectURL(file);
-      const res = await Promise.race([
-        fetch(objUrl),
-        new Promise<never>((_, rej) =>
-          setTimeout(() => rej(new Error('materialize_timeout')), 6000)
-        )
-      ]) as Response;
+    // Step 0: Ensure file is an in-memory snapshot (isolates from SAF lazy streams)
+    let workingFile = await snapshotFile(file);
 
-      if (res.ok) {
-        const materialized = await Promise.race([
-          res.blob(),
-          new Promise<never>((_, rej) =>
-            setTimeout(() => rej(new Error('blob_read_timeout')), 8000)
-          )
-        ]) as Blob;
-        if (materialized && materialized.size > 0) {
-          workingBlob = materialized;
-          console.log(`✅ [processAndUpload] Materialized ${materialized.size} bytes via fetch(objectURL)`);
-        }
-      }
-    } catch (matErr: any) {
-      const msg = matErr?.message || '';
-      const isTimeout = msg.includes('timeout');
-      const isNetworkBlocked = msg.includes('Failed to fetch') || msg.includes('NetworkError');
-      if (isTimeout || isNetworkBlocked) {
-        throw new Error('لا يمكن قراءة هذه الصورة. إذا كانت في Samsung Cloud أو Google Photos، حمّلها محلياً أولاً ثم حاول مجدداً.');
-      }
-      // Non-timeout errors: proceed with original File (might work for local files)
-      console.warn('[processAndUpload] materialize warning, proceeding with original:', matErr);
-    } finally {
-      if (objUrl) { try { URL.revokeObjectURL(objUrl); } catch {} }
-    }
-
-    // Build a proper File from the materialized Blob for consistent MIME detection
-    let workingFile: File = workingBlob instanceof File
-      ? workingBlob
-      : new File(
-          [workingBlob],
-          (file as File).name || `upload_${Date.now()}.jpg`,
-          { type: workingBlob.type || resolveMimeType(file as File), lastModified: Date.now() }
-        );
-
-    // ── Step 1: Convert HEIC/HEIF → JPEG ─────────────────────────────────────────
+    // Step 1: Convert HEIC/HEIF -> JPEG
     const isHeic = (workingFile.type && (workingFile.type.includes('heic') || workingFile.type.includes('heif'))) ||
                    (workingFile.name && /\.(heic|heif)$/i.test(workingFile.name));
     if (isHeic) {
@@ -580,31 +571,32 @@ export const imageService = {
         })();
         const converted = await Promise.race([
           convertPromise,
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
         ]);
         if (converted) {
           const blob = Array.isArray(converted) ? converted[0] : converted;
           const newName = (workingFile.name || 'photo').replace(/\.(heic|heif)$/i, '.jpg');
           workingFile = new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() });
+          (workingFile as any).__isSnapshot = true;
         }
       } catch (heicErr) {
         console.warn('[imageService] HEIC conversion warning:', heicErr);
       }
     }
 
-    // ── Step 2: Validate ──────────────────────────────────────────────────────────
+    // Step 2: Validate
     const effectiveMime = resolveMimeType(workingFile);
     const fileType = effectiveMime.startsWith('image/') ? 'image' : 'document';
     const validation = validateFile(workingFile, fileType);
     if (!validation.valid) throw new Error(validation.error);
 
-    // ── Step 3: Compress + Upload ─────────────────────────────────────────────────
+    // Step 3: Compress image to <= 1000px before uploading
     if (effectiveMime.startsWith('image/')) {
       try {
         const compressed = await this.compressImage(workingFile);
         return await this.uploadFile(compressed, userId, bucket);
       } catch (compressError) {
-        console.warn('[imageService] compressImage failed, uploading uncompressed:', compressError);
+        console.warn('[imageService] compressImage failed, uploading snapshot directly:', compressError);
         return await this.uploadFile(workingFile, userId, bucket);
       }
     } else {
@@ -612,11 +604,8 @@ export const imageService = {
     }
   },
 
-
   /**
    * Compacts a base64 data URL to a small JPEG thumbnail for DB storage.
-   * Used as fallback when Supabase Storage RLS blocks the real upload.
-   * Returns null on failure so caller can keep the original.
    */
   async compactBase64(dataUrl: string, maxDim = 200, quality = 0.55): Promise<string | null> {
     return new Promise<string | null>((resolve) => {
@@ -638,7 +627,7 @@ export const imageService = {
             if (!ctx) { resolve(null); return; }
             ctx.drawImage(img, 0, 0, w, h);
             const compact = canvas.toDataURL('image/jpeg', quality);
-            console.log(`ℹ️ [compactBase64] ${dataUrl.length} → ${compact.length} chars (${Math.round(compact.length / 1024)}KB)`);
+            console.log(`ℹ️ [compactBase64] ${dataUrl.length} -> ${compact.length} chars (${Math.round(compact.length / 1024)}KB)`);
             resolve(compact);
           } catch { resolve(null); }
         };
@@ -667,17 +656,19 @@ export async function pickImageFromGallery(): Promise<File | null> {
         quality: 85,
         allowEditing: false,
         resultType: CameraResultType.Uri,
-        source: CameraSource.Photos, // 👈 Directly opens Native Gallery & Albums!
+        source: CameraSource.Photos, // 📸 Directly opens Native Gallery & Albums!
       });
 
       if (photo?.webPath) {
         const response = await fetch(photo.webPath);
         const blob = await response.blob();
         const ext = photo.format || 'jpg';
-        return new File([blob], `photo_${Date.now()}.${ext}`, {
+        const file = new File([blob], `photo_${Date.now()}.${ext}`, {
           type: blob.type || `image/${ext}`,
           lastModified: Date.now()
         });
+        (file as any).__isSnapshot = true;
+        return file;
       }
       return null;
     } catch (e: any) {
@@ -728,4 +719,3 @@ export async function pickImageFromGallery(): Promise<File | null> {
     input.click();
   });
 }
-

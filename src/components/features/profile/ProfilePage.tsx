@@ -264,6 +264,9 @@ export function ProfilePage({
       });
       if (dbError) {
         console.warn('⚠️ [AvatarUpload] DB update warning (local preview still valid):', dbError);
+        addToast('تم تحديث الصورة محلياً، مع تنبيه أثناء المزامنة مع الخادم.', 'warning');
+      } else {
+        addToast('تم حفظ وتثبيت الصورة الشخصية بنجاح! 📸', 'success');
       }
 
       if (isMe && setAppUser) {
@@ -272,8 +275,6 @@ export function ProfilePage({
       if (onSave) {
         await onSave({ avatar: permanentUrl, avatar_url: permanentUrl });
       }
-
-      addToast('تم حفظ وتثبيت الصورة الشخصية بنجاح! 📸', 'success');
     } catch (err: any) {
       console.error("❌ [AvatarUpload] خطأ في الرفع:", err);
       addToast('فشل رفع الصورة: ' + (err.message || ''), 'error');
@@ -342,6 +343,9 @@ export function ProfilePage({
       });
       if (dbError) {
         console.warn('⚠️ [CoverUpload] DB update warning (local preview still valid):', dbError);
+        addToast('تم تحديث الغلاف محلياً، مع تنبيه أثناء المزامنة مع الخادم.', 'warning');
+      } else {
+        addToast('تم حفظ وتثبيت صورة الغلاف بنجاح! 🖼️', 'success');
       }
 
       if (isMe && setAppUser) {
@@ -350,8 +354,6 @@ export function ProfilePage({
       if (onSave) {
         await onSave({ coverUrl: permanentUrl, cover_url: permanentUrl });
       }
-
-      addToast('تم حفظ وتثبيت صورة الغلاف بنجاح! 🖼️', 'success');
     } catch (err: any) {
       console.error("❌ [CoverUpload] خطأ في الرفع:", err);
       addToast('فشل رفع الغلاف: ' + (err.message || ''), 'error');

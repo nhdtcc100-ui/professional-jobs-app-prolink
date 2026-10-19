@@ -146,7 +146,7 @@ export const cvService = {
             });
 
           const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-            setTimeout(() => reject(new Error(`Storage upload timeout (4s) for bucket '${bucket}'`)), 4000)
+            setTimeout(() => reject(new Error(`Storage upload timeout (25s) for bucket '${bucket}'`)), 25000)
           );
 
           const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);
