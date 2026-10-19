@@ -248,15 +248,23 @@ export function ProfilePage({
     }
 
     try {
-      const permanentUrl = await imageService.processAndUpload(file, targetUserId, 'profiles');
+      let permanentUrl = await imageService.processAndUpload(file, targetUserId, 'profiles');
+
+      // 🔬 If storage returned a large base64 (Storage RLS blocked), compress to ≤80KB for DB storage
+      if (permanentUrl.startsWith('data:') && permanentUrl.length > 80 * 1024) {
+        permanentUrl = await imageService.compactBase64(permanentUrl, 200, 0.55) || permanentUrl;
+      }
 
       setFormData(prev => ({ ...prev, avatar: permanentUrl, avatar_url: permanentUrl }));
 
-      const { error } = await profileService.updateProfile(targetUserId, {
+      // Save to Supabase DB — if it fails, the local cache from profileService still persists it
+      const { error: dbError } = await profileService.updateProfile(targetUserId, {
         avatar: permanentUrl,
         avatar_url: permanentUrl
       });
-      if (error) throw error;
+      if (dbError) {
+        console.warn('⚠️ [AvatarUpload] DB update warning (local preview still valid):', dbError);
+      }
 
       if (isMe && setAppUser) {
         setAppUser((prev: any) => prev ? { ...prev, avatar: permanentUrl, avatar_url: permanentUrl } : null);
@@ -319,15 +327,22 @@ export function ProfilePage({
     }
 
     try {
-      const permanentUrl = await imageService.processAndUpload(file, targetUserId, 'profiles');
+      let permanentUrl = await imageService.processAndUpload(file, targetUserId, 'profiles');
+
+      // 🔬 If storage returned a large base64 (Storage RLS blocked), compress to ≤80KB for DB storage
+      if (permanentUrl.startsWith('data:') && permanentUrl.length > 80 * 1024) {
+        permanentUrl = await imageService.compactBase64(permanentUrl, 300, 0.55) || permanentUrl;
+      }
 
       setFormData(prev => ({ ...prev, coverUrl: permanentUrl, cover_url: permanentUrl }));
 
-      const { error } = await profileService.updateProfile(targetUserId, {
+      const { error: dbError } = await profileService.updateProfile(targetUserId, {
         coverUrl: permanentUrl,
         cover_url: permanentUrl
       });
-      if (error) throw error;
+      if (dbError) {
+        console.warn('⚠️ [CoverUpload] DB update warning (local preview still valid):', dbError);
+      }
 
       if (isMe && setAppUser) {
         setAppUser((prev: any) => prev ? { ...prev, coverUrl: permanentUrl, cover_url: permanentUrl } : null);

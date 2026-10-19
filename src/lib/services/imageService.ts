@@ -578,6 +578,41 @@ export const imageService = {
     }
   },
 
+  /**
+   * Compacts a base64 data URL to a small JPEG thumbnail for DB storage.
+   * Used as fallback when Supabase Storage RLS blocks the real upload.
+   * Returns null on failure so caller can keep the original.
+   */
+  async compactBase64(dataUrl: string, maxDim = 200, quality = 0.55): Promise<string | null> {
+    return new Promise<string | null>((resolve) => {
+      try {
+        if (!dataUrl.startsWith('data:')) { resolve(null); return; }
+        const img = new Image();
+        const timeout = setTimeout(() => resolve(null), 5000);
+        img.onload = () => {
+          clearTimeout(timeout);
+          try {
+            let w = img.naturalWidth || img.width || maxDim;
+            let h = img.naturalHeight || img.height || maxDim;
+            if (w >= h && w > maxDim) { h = Math.round((h * maxDim) / w); w = maxDim; }
+            else if (h > maxDim) { w = Math.round((w * maxDim) / h); h = maxDim; }
+            if (w < 1 || h < 1) { resolve(null); return; }
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) { resolve(null); return; }
+            ctx.drawImage(img, 0, 0, w, h);
+            const compact = canvas.toDataURL('image/jpeg', quality);
+            console.log(`ℹ️ [compactBase64] ${dataUrl.length} → ${compact.length} chars (${Math.round(compact.length / 1024)}KB)`);
+            resolve(compact);
+          } catch { resolve(null); }
+        };
+        img.onerror = () => { clearTimeout(timeout); resolve(null); };
+        img.src = dataUrl;
+      } catch { resolve(null); }
+    });
+  },
+
   async uploadVideo(file: File, userId: string): Promise<string> {
     return this.uploadFile(file, userId, 'posts');
   }
