@@ -29,21 +29,40 @@ export const resolveMimeType = (file: File): string => {
 export async function snapshotFile(rawFile: File): Promise<File> {
   if (!rawFile) throw new Error('الملف غير متوفر');
 
-  let buffer: ArrayBuffer;
+  // If already an in-memory processed File, return immediately
+  if ((rawFile as any).__isSnapshot) return rawFile;
+
+  let buffer: ArrayBuffer | null = null;
   try {
-    if (typeof rawFile.arrayBuffer === 'function') {
-      buffer = await rawFile.arrayBuffer();
-    } else {
-      buffer = await new Promise<ArrayBuffer>((resolve, reject) => {
+    const readPromise = (async () => {
+      if (typeof rawFile.arrayBuffer === 'function') {
+        try {
+          return await rawFile.arrayBuffer();
+        } catch (_) {}
+      }
+      return await new Promise<ArrayBuffer>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as ArrayBuffer);
-        reader.onerror = () => reject(new Error('تعذر قراءة ملف الذاكرة'));
+        reader.onerror = () => reject(new Error('FileReader error'));
         reader.readAsArrayBuffer(rawFile);
       });
-    }
+    })();
+
+    // Safety timeout (3.5s): Android SAF / My Files IPC streams must NEVER hang the app
+    const timeoutPromise = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), 3500)
+    );
+
+    buffer = await Promise.race([readPromise, timeoutPromise]);
   } catch (err: any) {
-    console.warn('[snapshotFile] Error reading file stream:', err);
-    throw new Error('تعذر قراءة الملف من ذاكرة الجهاز. يرجى إعادة اختيار الملف.');
+    console.warn('[snapshotFile] Error or timeout reading file stream:', err);
+  }
+
+  // If reading stream failed or timed out (common with cloud sync/virtual content in Android "Browse"),
+  // return rawFile directly so upload continues smoothly without stalling!
+  if (!buffer || buffer.byteLength === 0) {
+    console.warn('[snapshotFile] Buffer empty or timed out; proceeding with original File directly.');
+    return rawFile;
   }
 
   // Detect real MIME type from Magic Bytes
@@ -89,7 +108,9 @@ export async function snapshotFile(rawFile: File): Promise<File> {
   const cleanName = rawName.includes('.') ? rawName : `${rawName}.${safeExt}`;
 
   const safeBlob = new Blob([buffer], { type: effectiveMime });
-  return new File([safeBlob], cleanName, { type: effectiveMime, lastModified: Date.now() });
+  const snapFile = new File([safeBlob], cleanName, { type: effectiveMime, lastModified: Date.now() });
+  (snapFile as any).__isSnapshot = true;
+  return snapFile;
 }
 
 export const validateFile = (
@@ -141,15 +162,16 @@ export const imageService = {
   },
 
   async compressImage(file: File): Promise<Blob | File> {
-    const effectiveMime = file.type || resolveMimeType(file);
-    if (!effectiveMime.startsWith('image/') || effectiveMime === 'image/svg+xml') {
-      return file;
-    }
+    const doCompress = async (): Promise<Blob | File> => {
+      const effectiveMime = file.type || resolveMimeType(file);
+      if (!effectiveMime.startsWith('image/') || effectiveMime === 'image/svg+xml') {
+        return file;
+      }
 
-    // Fast-path: already small compressed image (< 200KB)
-    if (file.size <= 200 * 1024 && (effectiveMime === 'image/jpeg' || effectiveMime === 'image/webp')) {
-      return file;
-    }
+      // Fast-path: already small compressed image (< 200KB)
+      if (file.size <= 200 * 1024 && (effectiveMime === 'image/jpeg' || effectiveMime === 'image/webp')) {
+        return file;
+      }
 
     // Helper: createImageBitmap with safety timeout (prevents hang on low-memory mobile)
     const safeBitmap = (src: ImageBitmapSource, opts?: ImageBitmapOptions): Promise<ImageBitmap | null> =>
@@ -314,6 +336,13 @@ export const imageService = {
         resolve(file);
       }
     });
+    };
+
+    const timeoutPromise = new Promise<File>((resolve) =>
+      setTimeout(() => resolve(file), 3500)
+    );
+
+    return Promise.race([doCompress(), timeoutPromise]);
   },
 
 
@@ -473,20 +502,24 @@ export const imageService = {
                    (file.name && /\.(heic|heif)$/i.test(file.name));
     if (isHeic) {
       try {
-        const heic2anyModule = await import('heic2any');
-        const heic2any = heic2anyModule.default || heic2anyModule;
-        const convertPromise = heic2any({
-          blob: file,
-          toType: 'image/jpeg',
-          quality: 0.85
-        });
-        const timeoutPromise = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('HEIC conversion timeout (4s)')), 4000)
+        const convertPromise = (async () => {
+          const heic2anyModule = await import('heic2any');
+          const heic2any = heic2anyModule.default || heic2anyModule;
+          return await heic2any({
+            blob: file,
+            toType: 'image/jpeg',
+            quality: 0.85
+          });
+        })();
+        const timeoutPromise = new Promise<null>((resolve) =>
+          setTimeout(() => resolve(null), 3000)
         );
         const converted = await Promise.race([convertPromise, timeoutPromise]);
-        const blob = Array.isArray(converted) ? converted[0] : converted;
-        const newName = (file.name || 'photo').replace(/\.(heic|heif)$/i, '.jpg');
-        file = new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() });
+        if (converted) {
+          const blob = Array.isArray(converted) ? converted[0] : converted;
+          const newName = (file.name || 'photo').replace(/\.(heic|heif)$/i, '.jpg');
+          file = new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() });
+        }
       } catch (heicErr) {
         console.warn('[imageService] HEIC conversion warning (proceeding with original):', heicErr);
       }

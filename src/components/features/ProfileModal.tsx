@@ -235,14 +235,11 @@ export function ProfileModal({
     if (!rawFile || !targetUserId) return;
     setSaveStatus('saving');
     addToast('جاري استلام وتجهيز الصورة... ⏳');
-    let file: File;
+    let file: File = rawFile;
     try {
       file = await snapshotFile(rawFile);
     } catch {
-      addToast('تعذر قراءة الصورة من الجهاز', 'error');
-      setSaveStatus('error');
-      if (targetInput) targetInput.value = '';
-      return;
+      file = rawFile;
     }
 
     try {
@@ -278,14 +275,11 @@ export function ProfileModal({
     if (!rawFile || !targetUserId) return;
     setSaveStatus('saving');
     addToast('جاري استلام وتجهيز الغلاف... ⏳');
-    let file: File;
+    let file: File = rawFile;
     try {
       file = await snapshotFile(rawFile);
     } catch {
-      addToast('تعذر قراءة الغلاف من الجهاز', 'error');
-      setSaveStatus('error');
-      if (targetInput) targetInput.value = '';
-      return;
+      file = rawFile;
     }
 
     try {

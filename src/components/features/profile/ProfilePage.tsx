@@ -225,15 +225,17 @@ export function ProfilePage({
     }
 
     setIsUploadingAvatar(true);
+    // 🛡️ Safety watchdog: never allow the spinner to stay locked forever
+    const safetyTimer = setTimeout(() => {
+      setIsUploadingAvatar(false);
+    }, 10000);
 
-    let file: File;
+    let file: File = rawFile;
     try {
       file = await snapshotFile(rawFile);
     } catch (readErr: any) {
-      console.error("❌ [AvatarUpload] فشل قراءة الملف من الجهاز:", readErr);
-      addToast('تعذر قراءة الصورة من ذاكرة الجهاز، يرجى إعادة المحاولة', 'error');
-      setIsUploadingAvatar(false);
-      return;
+      console.warn("⚠️ [AvatarUpload] snapshotFile warning, using rawFile directly:", readErr);
+      file = rawFile;
     }
 
     // Instant local preview for immediate visual feedback (0ms delay)
@@ -267,6 +269,7 @@ export function ProfilePage({
       console.error("❌ [AvatarUpload] خطأ في الرفع:", err);
       addToast('فشل رفع الصورة: ' + (err.message || ''), 'error');
     } finally {
+      clearTimeout(safetyTimer);
       setIsUploadingAvatar(false);
     }
   };
@@ -292,15 +295,17 @@ export function ProfilePage({
     }
 
     setIsUploadingCover(true);
+    // 🛡️ Safety watchdog: never allow cover spinner to hang
+    const safetyTimer = setTimeout(() => {
+      setIsUploadingCover(false);
+    }, 10000);
 
-    let file: File;
+    let file: File = rawFile;
     try {
       file = await snapshotFile(rawFile);
     } catch (readErr: any) {
-      console.error("❌ [CoverUpload] فشل قراءة الملف من الجهاز:", readErr);
-      addToast('تعذر قراءة صورة الغلاف من ذاكرة الجهاز، يرجى إعادة المحاولة', 'error');
-      setIsUploadingCover(false);
-      return;
+      console.warn("⚠️ [CoverUpload] snapshotFile warning, using rawFile directly:", readErr);
+      file = rawFile;
     }
 
     // Instant local preview
@@ -334,6 +339,7 @@ export function ProfilePage({
       console.error("❌ [CoverUpload] خطأ في الرفع:", err);
       addToast('فشل رفع الغلاف: ' + (err.message || ''), 'error');
     } finally {
+      clearTimeout(safetyTimer);
       setIsUploadingCover(false);
     }
   };
@@ -449,10 +455,16 @@ export function ProfilePage({
     }
 
     try {
-      const file = await snapshotFile(rawFile);
+      let file: File = rawFile;
+      try {
+        file = await snapshotFile(rawFile);
+      } catch (snapErr) {
+        console.warn("⚠️ [CVUpload] snapshotFile warning, using rawFile directly:", snapErr);
+        file = rawFile;
+      }
       setPendingCV(file);
-      setPendingCVName(file.name);
-      addToast(`تم تحديد "${file.name}" 📄 اضغط "حفظ جميع التغييرات" لتثبيته`, 'success');
+      setPendingCVName(file.name || 'سيرة_ذاتية.pdf');
+      addToast(`تم تحديد "${file.name || 'الملف'}" 📄 اضغط "حفظ جميع التغييرات" لتثبيته`, 'success');
     } catch (readErr: any) {
       console.error("❌ [CVUpload] فشل قراءة الملف من الجهاز:", readErr);
       addToast('تعذر قراءة ملف السيرة الذاتية من جهازك', 'error');
