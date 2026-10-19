@@ -784,7 +784,37 @@ export async function pickImageFromGallery(): Promise<File | null> {
     }
   }
 
-  // 2. Mobile Web / Desktop Browser fallback: specific image MIME types (MediaStore oriented)
+  // 2. Web: use File System Access API (showOpenFilePicker) when available.
+  //    On Android Chrome 120+ with Android 13+ this directly opens the Android
+  //    system Photo Picker — NO Browse / DocumentsUI / SAF option appears.
+  if (typeof (window as any).showOpenFilePicker === 'function') {
+    try {
+      const [fileHandle] = await (window as any).showOpenFilePicker({
+        types: [
+          {
+            description: 'Images',
+            accept: {
+              'image/jpeg': ['.jpg', '.jpeg'],
+              'image/png':  ['.png'],
+              'image/webp': ['.webp'],
+            },
+          },
+        ],
+        excludeAcceptAllOption: true, // hides the "All files" option
+        multiple: false,
+      });
+      const file: File = await fileHandle.getFile();
+      return file;
+    } catch (e: any) {
+      // AbortError = user pressed Cancel — treat as null
+      if (e?.name === 'AbortError') return null;
+      // Any other error: fall through to legacy <input> below
+      console.warn('[pickImageFromGallery] showOpenFilePicker error, using input fallback:', e);
+    }
+  }
+
+  // 3. Legacy fallback for older browsers: hidden <input type="file">
+  //    Restrict to explicit MIME types so Android routes to gallery, not file manager.
   return new Promise<File | null>((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -794,26 +824,19 @@ export async function pickImageFromGallery(): Promise<File | null> {
 
     let handled = false;
     const cleanup = () => {
-      if (input.parentNode) {
-        document.body.removeChild(input);
-      }
+      if (input.parentNode) document.body.removeChild(input);
     };
 
     input.onchange = () => {
       if (handled) return;
       handled = true;
-      const file = input.files?.[0] || null;
       cleanup();
-      resolve(file);
+      resolve(input.files?.[0] ?? null);
     };
 
-    // User canceled detection: wait ample time (60s) before timing out
-    const cancelTimeout = setTimeout(() => {
-      if (!handled) {
-        handled = true;
-        cleanup();
-        resolve(null);
-      }
+    // Timeout after 60s (covers slow pickers without hanging forever)
+    setTimeout(() => {
+      if (!handled) { handled = true; cleanup(); resolve(null); }
     }, 60000);
 
     input.click();
