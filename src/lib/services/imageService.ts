@@ -784,11 +784,11 @@ export async function pickImageFromGallery(): Promise<File | null> {
     }
   }
 
-  // 2. Mobile Web / Desktop Browser fallback: specific image MIME types
+  // 2. Mobile Web / Desktop Browser fallback: specific image MIME types (MediaStore oriented)
   return new Promise<File | null>((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/*';
+    input.accept = 'image/jpeg,image/png,image/webp';
     input.style.display = 'none';
     document.body.appendChild(input);
 
@@ -807,19 +807,14 @@ export async function pickImageFromGallery(): Promise<File | null> {
       resolve(file);
     };
 
-    window.addEventListener(
-      'focus',
-      () => {
-        setTimeout(() => {
-          if (!handled && (!input.files || input.files.length === 0)) {
-            handled = true;
-            cleanup();
-            resolve(null);
-          }
-        }, 1000);
-      },
-      { once: true }
-    );
+    // User canceled detection: wait ample time (60s) before timing out
+    const cancelTimeout = setTimeout(() => {
+      if (!handled) {
+        handled = true;
+        cleanup();
+        resolve(null);
+      }
+    }, 60000);
 
     input.click();
   });

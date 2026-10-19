@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Camera, BadgeCheck, Briefcase, Search, Minus, Phone, 
@@ -47,6 +47,45 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   onDirectAvatarPick,
   onDirectCoverPick,
 }) => {
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAvatarButtonClick = async () => {
+    // 1. Native Capacitor App (Android / iOS): Opens native MediaStore Photo Picker directly
+    if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
+      try {
+        const { pickImageFromGallery } = await import('../../../lib/services/imageService');
+        const file = await pickImageFromGallery();
+        if (file && onDirectAvatarPick) {
+          onDirectAvatarPick(file);
+          return;
+        }
+      } catch (err) {
+        console.warn('[ProfileHeader] Native picker fallback:', err);
+      }
+    }
+    // 2. Web / Mobile Chrome: Trigger strict image file input
+    avatarInputRef.current?.click();
+  };
+
+  const handleCoverButtonClick = async () => {
+    // 1. Native Capacitor App (Android / iOS): Opens native MediaStore Photo Picker directly
+    if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
+      try {
+        const { pickImageFromGallery } = await import('../../../lib/services/imageService');
+        const file = await pickImageFromGallery();
+        if (file && onDirectCoverPick) {
+          onDirectCoverPick(file);
+          return;
+        }
+      } catch (err) {
+        console.warn('[ProfileHeader] Native picker fallback:', err);
+      }
+    }
+    // 2. Web / Mobile Chrome: Trigger strict image file input
+    coverInputRef.current?.click();
+  };
+
   const currentRole = formData?.role || profile?.role || 'seeker';
   const isEmployer = currentRole === 'employer';
   const isFreelancer = currentRole === 'freelancer';
@@ -77,28 +116,20 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         )}
         {isMe && !isUploadingCover && (
           <>
-            <label
-              htmlFor="cover-file-input-header"
-              onClick={async (e) => {
-                if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
-                  e.preventDefault();
-                  const { pickImageFromGallery } = await import('../../../lib/services/imageService');
-                  const file = await pickImageFromGallery();
-                  if (file && onDirectCoverPick) {
-                    onDirectCoverPick(file);
-                  }
-                }
-              }}
+            <button
+              type="button"
+              onClick={handleCoverButtonClick}
               className="absolute top-3 right-3 p-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-800 transition-all shadow-md flex items-center gap-1.5 group/btn border border-white/20 dark:border-slate-700 active:scale-95 z-10"
               title="تغيير صورة الغلاف من المعرض"
             >
               <Camera size={13} className="text-[#0a66c2] dark:text-blue-400" />
               <span className="text-[9px] font-black text-slate-600 dark:text-slate-200 uppercase tracking-widest hidden group-hover/btn:block">الاستوديو</span>
-            </label>
+            </button>
             <input
+              ref={coverInputRef}
               id="cover-file-input-header"
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp"
               className="hidden"
               onChange={handleCoverChange}
             />
@@ -126,27 +157,19 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             </div>
             {isMe && !isUploadingAvatar && (
               <>
-                <label
-                  htmlFor="avatar-file-input-header"
-                  onClick={async (e) => {
-                    if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
-                      e.preventDefault();
-                      const { pickImageFromGallery } = await import('../../../lib/services/imageService');
-                      const file = await pickImageFromGallery();
-                      if (file && onDirectAvatarPick) {
-                        onDirectAvatarPick(file);
-                      }
-                    }
-                  }}
+                <button
+                  type="button"
+                  onClick={handleAvatarButtonClick}
                   className="absolute bottom-1 left-1 p-1.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-700 shadow-md transition-all border border-slate-100 dark:border-slate-700 active:scale-95 z-10"
                   title="تغيير الصورة الشخصية من المعرض"
                 >
                   <Camera size={11} className="text-[#0a66c2] dark:text-blue-400" />
-                </label>
+                </button>
                 <input
+                  ref={avatarInputRef}
                   id="avatar-file-input-header"
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp"
                   className="hidden"
                   onChange={handleAvatarChange}
                 />

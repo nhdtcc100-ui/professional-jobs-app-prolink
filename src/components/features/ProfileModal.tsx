@@ -224,34 +224,13 @@ export function ProfileModal({
     };
   }, []);
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    let rawFile = e.target.files?.[0];
-    const targetInput = e.target;
-    if (!rawFile) {
-      await new Promise(r => setTimeout(r, 120));
-      rawFile = targetInput?.files?.[0];
-    }
+  const handleDirectAvatarUpload = async (rawFile: File) => {
     const targetUserId = user?.id || (profile as any)?.id;
     if (!rawFile || !targetUserId) return;
     setSaveStatus('saving');
     addToast('جاري استلام وتجهيز الصورة... ⏳');
-    let file: File = rawFile;
     try {
-      file = await snapshotFile(rawFile);
-    } catch {
-      file = rawFile;
-    }
-
-    try {
-      const { inspectUploadedFile } = await import('../../lib/security/fileInspector');
-      const inspection = await inspectUploadedFile(file, { id: targetUserId }, '/app/avatar-upload-modal');
-      if (!inspection.safe) {
-        addToast(inspection.error || 'تم حظر الملف لدواعي أمنية', 'error');
-        setSaveStatus('error');
-        return;
-      }
-
-      const url = await imageService.processAndUpload(file, targetUserId, 'profiles');
+      const url = await imageService.processAndUpload(rawFile, targetUserId, 'profiles');
       const newData = { ...formData, avatar: url, avatar_url: url };
       setFormData(newData);
       await persistToDatabase(newData);
@@ -259,8 +238,34 @@ export function ProfileModal({
     } catch (err: any) {
       addToast(`خطأ: ${err.message}`, 'error');
       setSaveStatus('error');
-    } finally {
-      if (targetInput) targetInput.value = '';
+    }
+  };
+
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    let rawFile = e.target.files?.[0];
+    const targetInput = e.target;
+    if (!rawFile) {
+      await new Promise(r => setTimeout(r, 120));
+      rawFile = targetInput?.files?.[0];
+    }
+    if (rawFile) await handleDirectAvatarUpload(rawFile);
+    if (targetInput) targetInput.value = '';
+  };
+
+  const handleDirectCoverUpload = async (rawFile: File) => {
+    const targetUserId = user?.id || (profile as any)?.id;
+    if (!rawFile || !targetUserId) return;
+    setSaveStatus('saving');
+    addToast('جاري استلام وتجهيز الغلاف... ⏳');
+    try {
+      const url = await imageService.processAndUpload(rawFile, targetUserId, 'profiles');
+      const newData = { ...formData, coverUrl: url, cover_url: url };
+      setFormData(newData);
+      await persistToDatabase(newData);
+      addToast('تم تحديث الغلاف بنجاح ✨', 'success');
+    } catch (err: any) {
+      addToast(`خطأ: ${err.message}`, 'error');
+      setSaveStatus('error');
     }
   };
 
@@ -271,37 +276,8 @@ export function ProfileModal({
       await new Promise(r => setTimeout(r, 120));
       rawFile = targetInput?.files?.[0];
     }
-    const targetUserId = user?.id || (profile as any)?.id;
-    if (!rawFile || !targetUserId) return;
-    setSaveStatus('saving');
-    addToast('جاري استلام وتجهيز الغلاف... ⏳');
-    let file: File = rawFile;
-    try {
-      file = await snapshotFile(rawFile);
-    } catch {
-      file = rawFile;
-    }
-
-    try {
-      const { inspectUploadedFile } = await import('../../lib/security/fileInspector');
-      const inspection = await inspectUploadedFile(file, { id: targetUserId }, '/app/cover-upload-modal');
-      if (!inspection.safe) {
-        addToast(inspection.error || 'تم حظر الملف لدواعي أمنية', 'error');
-        setSaveStatus('error');
-        return;
-      }
-
-      const url = await imageService.processAndUpload(file, targetUserId, 'profiles');
-      const newData = { ...formData, coverUrl: url, cover_url: url };
-      setFormData(newData);
-      await persistToDatabase(newData);
-      addToast('تم تحديث الغلاف بنجاح ✨', 'success');
-    } catch (err: any) {
-      addToast(`خطأ: ${err.message}`, 'error');
-      setSaveStatus('error');
-    } finally {
-      if (e.target) e.target.value = '';
-    }
+    if (rawFile) await handleDirectCoverUpload(rawFile);
+    if (targetInput) targetInput.value = '';
   };
 
   // ─── CV download ─────────────────────────────────────────────────────────────
@@ -397,6 +373,8 @@ export function ProfileModal({
               isMe={isMe}
               handleCoverChange={handleCoverChange}
               handleAvatarChange={handleAvatarChange}
+              onDirectAvatarPick={handleDirectAvatarUpload}
+              onDirectCoverPick={handleDirectCoverUpload}
               handleFieldChange={handleFieldChange}
               handleDownloadCV={handleDownloadCV}
               setActiveTab={setActiveTab}
