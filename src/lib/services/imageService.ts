@@ -430,63 +430,92 @@ export const imageService = {
     }
 
 
-    // Fallback: convert to compact base64 data URL using FileReader
-    // (avoids URL.createObjectURL which fails on restricted Android WebViews)
-    return new Promise((resolve, reject) => {
+    // ── Fallback: base64 data URL ──
+    // Android SAF (Browse → My Files / Studio) content:// URIs can stall FileReader indefinitely.
+    // Strategy:
+    //  1. Try to materialise the file via fetch(objectURL) → concrete in-memory Blob (Chrome handles SAF natively via fetch)
+    //  2. Fall back to FileReader on the materialised Blob
+    //  3. Hard 25s total timeout — never hang the app regardless
+
+    const safeMaterialize = async (): Promise<Blob> => {
+      // Try fetch(objectURL) first — works for SAF content:// on Android Chrome
+      let objUrl: string | null = null;
       try {
+        objUrl = URL.createObjectURL(file);
+        const res = await Promise.race([
+          fetch(objUrl),
+          new Promise<never>((_, rej) => setTimeout(() => rej(new Error('fetch objectURL timeout')), 8000))
+        ]) as Response;
+        if (res.ok) {
+          const blob = await res.blob();
+          if (blob && blob.size > 0) return blob;
+        }
+      } catch (fetchErr) {
+        console.warn('[imageService] fetch(objectURL) failed, falling back to direct FileReader:', fetchErr);
+      } finally {
+        if (objUrl) { try { URL.revokeObjectURL(objUrl); } catch {} }
+      }
+      // Return original file as Blob
+      return file;
+    };
+
+    const readAsBase64 = (blob: Blob): Promise<string> =>
+      new Promise<string>((res, rej) => {
         const reader = new FileReader();
         reader.onloadend = () => {
-          if (typeof reader.result === 'string') {
-            const resultStr = reader.result;
-            // If image or binary from mobile: downscale via canvas before storing to keep DB payload tiny (< 50KB)
-            if (resultStr.startsWith('data:image/') || resultStr.startsWith('data:application/octet-stream') || resultStr.startsWith('data:;')) {
-              try {
-                const img = new Image();
-                const timeout = setTimeout(() => resolve(resultStr), 3000);
-                img.onload = () => {
-                  clearTimeout(timeout);
-                  try {
-                    const maxDim = 400;
-                    let w = img.naturalWidth || img.width || maxDim;
-                    let h = img.naturalHeight || img.height || maxDim;
-                    if (w > h && w > maxDim) { h = Math.round((h * maxDim) / w); w = maxDim; }
-                    else if (h > maxDim) { w = Math.round((w * maxDim) / h); h = maxDim; }
-                    const canvas = document.createElement('canvas');
-                    canvas.width = w; canvas.height = h;
-                    const ctx = canvas.getContext('2d');
-                    if (ctx) {
-                      ctx.drawImage(img, 0, 0, w, h);
-                      const compact = canvas.toDataURL('image/jpeg', 0.65);
-                      console.log(`ℹ️ [imageService] Compact base64 fallback: ${compact.length} chars`);
-                      resolve(compact);
-                      return;
-                    }
-                  } catch { /* fall through to raw */ }
-                  resolve(resultStr);
-                };
-                img.onerror = () => {
-                  clearTimeout(timeout);
-                  resolve(resultStr);
-                };
-                img.src = resultStr;
-                return;
-              } catch {
-                resolve(resultStr);
-                return;
-              }
-            } else {
-              resolve(resultStr);
-            }
-          } else {
-            reject(new Error('Failed to encode file'));
-          }
+          if (typeof reader.result === 'string') res(reader.result);
+          else rej(new Error('FileReader returned non-string'));
         };
-        reader.onerror = () => reject(new Error('FileReader error'));
-        reader.readAsDataURL(file);
-      } catch (e) {
-        reject(e);
-      }
-    });
+        reader.onerror = () => rej(new Error('FileReader error'));
+        reader.readAsDataURL(blob);
+      });
+
+    const compactCanvas = (dataUrl: string): Promise<string> =>
+      new Promise<string>((res) => {
+        if (!dataUrl.startsWith('data:image/') &&
+            !dataUrl.startsWith('data:application/octet-stream') &&
+            !dataUrl.startsWith('data:;')) {
+          return res(dataUrl);
+        }
+        const img = new Image();
+        const t = setTimeout(() => res(dataUrl), 4000);
+        img.onload = () => {
+          clearTimeout(t);
+          try {
+            const maxDim = 400;
+            let w = img.naturalWidth || img.width || maxDim;
+            let h = img.naturalHeight || img.height || maxDim;
+            if (w >= h && w > maxDim) { h = Math.round((h * maxDim) / w); w = maxDim; }
+            else if (h > maxDim) { w = Math.round((w * maxDim) / h); h = maxDim; }
+            const canvas = document.createElement('canvas');
+            canvas.width = w; canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, 0, 0, w, h);
+              const compact = canvas.toDataURL('image/jpeg', 0.65);
+              console.log(`ℹ️ [imageService] Compact base64: ${compact.length} chars`);
+              return res(compact);
+            }
+          } catch {}
+          res(dataUrl);
+        };
+        img.onerror = () => { clearTimeout(t); res(dataUrl); };
+        img.src = dataUrl;
+      });
+
+    // Hard 25-second total timeout for the entire base64 path
+    const base64Flow = async (): Promise<string> => {
+      const blob = await safeMaterialize();
+      const dataUrl = await readAsBase64(blob);
+      return await compactCanvas(dataUrl);
+    };
+
+    return Promise.race([
+      base64Flow(),
+      new Promise<string>((_, rej) =>
+        setTimeout(() => rej(new Error('Base64 fallback timed out (25s) — file unreadable from Android SAF')), 25000)
+      )
+    ]);
   },
 
   async processAndUpload(file: File, userId: string, bucket = 'profiles'): Promise<string> {

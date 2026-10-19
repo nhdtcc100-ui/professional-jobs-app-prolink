@@ -225,10 +225,11 @@ export function ProfilePage({
     }
 
     setIsUploadingAvatar(true);
-    // 🛡️ Safety watchdog: never allow the spinner to stay locked forever
+    // 🛡️ Safety watchdog: covers the 25s base64 flow + cloud photo download overhead
     const safetyTimer = setTimeout(() => {
       setIsUploadingAvatar(false);
-    }, 10000);
+      addToast('استغرق التحميل وقتاً طويلاً. حاول اختيار صورة أصغر أو من المعرض المحلي.', 'error');
+    }, 45000);
 
     let file: File = rawFile;
     try {
@@ -295,10 +296,11 @@ export function ProfilePage({
     }
 
     setIsUploadingCover(true);
-    // 🛡️ Safety watchdog: never allow cover spinner to hang
+    // 🛡️ Safety watchdog: covers the 25s base64 flow + cloud photo download overhead
     const safetyTimer = setTimeout(() => {
       setIsUploadingCover(false);
-    }, 10000);
+      addToast('استغرق التحميل وقتاً طويلاً. حاول اختيار صورة أصغر أو من المعرض المحلي.', 'error');
+    }, 45000);
 
     let file: File = rawFile;
     try {
