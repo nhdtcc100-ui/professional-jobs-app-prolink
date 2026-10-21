@@ -305,8 +305,9 @@ export function ProfilePage({
 
       setFormData(updatedFormData);
 
+      const { id: _ignoredId, ...cleanUpdates } = updatedFormData;
       const { error } = await profileService.updateProfile(targetUserId, {
-        ...updatedFormData,
+        ...cleanUpdates,
         // Sync both field names so DB always has both updated
         title: updatedFormData.industry || updatedFormData.title || '',
         industry: updatedFormData.industry || updatedFormData.title || '',
