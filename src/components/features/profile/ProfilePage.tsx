@@ -1,9 +1,8 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Briefcase, ArrowRight, Lock, Send, Loader2, CheckCircle2, AlertCircle, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { profileService } from '../../../lib/services/profileService';
-import { imageService, snapshotFile } from '../../../lib/services/imageService';
 import { mobileUploadService } from '../../../lib/services/mobileUploadService';
 import { cvService } from '../../../lib/services/cvService';
 import { PostTransmissionCard } from '../index';
