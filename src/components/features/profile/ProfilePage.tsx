@@ -221,6 +221,55 @@ export function ProfilePage({
   }, [profile]);
 
 
+  // ─── Direct In-Memory Data URL Converter (Fallback for direct database storage) ─
+  const fileToDataUrl = (file: File, maxDim = 800, quality = 0.82): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const rawDataUrl = e.target?.result as string;
+        if (!rawDataUrl) {
+          resolve('');
+          return;
+        }
+
+        // If not an image or already small (<= 150KB), use as-is
+        if (!file.type.startsWith('image/') || file.size <= 150 * 1024) {
+          resolve(rawDataUrl);
+          return;
+        }
+
+        const img = new Image();
+        img.onload = () => {
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w >= h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/jpeg', quality));
+          } else {
+            resolve(rawDataUrl);
+          }
+        };
+        img.onerror = () => resolve(rawDataUrl);
+        img.src = rawDataUrl;
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
   // ─── Direct Lean Supabase Storage Upload (No Canvas, No createImageBitmap, No Hangs) ─────
   const uploadRawFileToStorage = async (
     file: File,
@@ -238,9 +287,9 @@ export function ProfilePage({
       .from(bucket)
       .upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' });
 
-    // 12-second timeout protection: guarantees UI never hangs indefinitely
+    // 8-second timeout protection: guarantees UI never hangs indefinitely
     const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-      setTimeout(() => reject(new Error('انتهت مهلة الرفع، يرجى التحقق من الاتصال والمحاولة ثانية')), 12000)
+      setTimeout(() => reject(new Error('انتهت مهلة الرفع، جاري الحفظ المباشر')), 8000)
     );
 
     const { error } = await Promise.race([uploadPromise, timeoutPromise]);
@@ -252,7 +301,7 @@ export function ProfilePage({
     return `${data.publicUrl}?t=${timestamp}`;
   };
 
-  // 📱 Avatar: 0ms Instant Preview + Direct Raw Background Upload
+  // 📱 Avatar: 0ms Instant Preview + Dual Persistence (Storage OR Direct DB)
   const handleDirectAvatarUpload = (rawFile: File) => {
     if (!rawFile) return;
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
@@ -269,10 +318,27 @@ export function ProfilePage({
 
     (async () => {
       try {
-        const permanentUrl = await uploadRawFileToStorage(rawFile, 'profiles', targetUserId);
-        setFormData(prev => ({ ...prev, avatar: permanentUrl, avatar_url: permanentUrl }));
-        if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, avatar: permanentUrl, avatar_url: permanentUrl } : null);
-        await profileService.updateProfile(targetUserId, { avatar: permanentUrl, avatar_url: permanentUrl });
+        let finalUrl = '';
+
+        // 1. Try Storage first
+        try {
+          finalUrl = await uploadRawFileToStorage(rawFile, 'profiles', targetUserId);
+        } catch (storageErr) {
+          console.warn('[Avatar Storage fallback to DB]', storageErr);
+        }
+
+        // 2. Fallback to direct DB storage as clean Data URL
+        if (!finalUrl) {
+          finalUrl = await fileToDataUrl(rawFile, 800, 0.82);
+        }
+
+        if (!finalUrl) throw new Error('تعذر قراءة الصورة');
+
+        setFormData(prev => ({ ...prev, avatar: finalUrl, avatar_url: finalUrl }));
+        if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, avatar: finalUrl, avatar_url: finalUrl } : null);
+        const { error: dbError } = await profileService.updateProfile(targetUserId, { avatar: finalUrl, avatar_url: finalUrl });
+        if (dbError) throw dbError;
+
         addToast('✅ تم حفظ وتثبيت صورة الحساب بنجاح!', 'success');
       } catch (err: any) {
         console.error('[Avatar Upload Error]', err);
@@ -308,7 +374,7 @@ export function ProfilePage({
     readAndConfirm(rawFile, 'avatar');
   };
 
-  // 📱 Cover: 0ms Instant Preview + Direct Raw Background Upload
+  // 📱 Cover: 0ms Instant Preview + Dual Persistence (Storage OR Direct DB)
   const handleDirectCoverUpload = (rawFile: File) => {
     if (!rawFile) return;
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
@@ -324,10 +390,25 @@ export function ProfilePage({
 
     (async () => {
       try {
-        const permanentUrl = await uploadRawFileToStorage(rawFile, 'profiles', targetUserId);
-        setFormData(prev => ({ ...prev, coverUrl: permanentUrl, cover_url: permanentUrl }));
-        if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, coverUrl: permanentUrl, cover_url: permanentUrl } : null);
-        await profileService.updateProfile(targetUserId, { coverUrl: permanentUrl, cover_url: permanentUrl });
+        let finalUrl = '';
+
+        try {
+          finalUrl = await uploadRawFileToStorage(rawFile, 'profiles', targetUserId);
+        } catch (storageErr) {
+          console.warn('[Cover Storage fallback to DB]', storageErr);
+        }
+
+        if (!finalUrl) {
+          finalUrl = await fileToDataUrl(rawFile, 1200, 0.82);
+        }
+
+        if (!finalUrl) throw new Error('تعذر قراءة صورة الغلاف');
+
+        setFormData(prev => ({ ...prev, coverUrl: finalUrl, cover_url: finalUrl }));
+        if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, coverUrl: finalUrl, cover_url: finalUrl } : null);
+        const { error: dbError } = await profileService.updateProfile(targetUserId, { coverUrl: finalUrl, cover_url: finalUrl });
+        if (dbError) throw dbError;
+
         addToast('✅ تم حفظ وتثبيت صورة الغلاف بنجاح!', 'success');
       } catch (err: any) {
         console.error('[Cover Upload Error]', err);
@@ -443,22 +524,36 @@ export function ProfilePage({
 
     (async () => {
       try {
-        let url: string;
+        let url = '';
         try {
           url = await uploadRawFileToStorage(memFile, 'profiles', targetUserId);
         } catch {
-          url = await uploadRawFileToStorage(memFile, 'documents', targetUserId);
+          try {
+            url = await uploadRawFileToStorage(memFile, 'documents', targetUserId);
+          } catch (storageErr) {
+            console.warn('[CV Storage fallback to DB]', storageErr);
+          }
         }
+
+        // Direct DB persistence fallback if Storage was blocked
+        if (!url) {
+          url = await fileToDataUrl(memFile);
+        }
+
+        if (!url) throw new Error('تعذر قراءة ملف السيرة الذاتية');
+
         setFormData(prev => ({ ...prev, cvUrl: url, cv_url: url }));
         setPendingCV(null);
         setPendingCVName(null);
-        await profileService.updateProfile(targetUserId, { cvUrl: url, cv_url: url });
+        const { error: dbError } = await profileService.updateProfile(targetUserId, { cvUrl: url, cv_url: url });
+        if (dbError) throw dbError;
+
         addToast('✅ تم رفع وتثبيت السيرة الذاتية بنجاح! 🎉', 'success');
         if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, cvUrl: url, cv_url: url } : null);
       } catch (err: any) {
         setPendingCVName(null);
         console.error('[CV Upload Error]', err);
-        addToast('خطأ في رفع السيرة الذاتية: ' + (err?.message || 'تعذر الرفع'), 'error');
+        addToast('خطأ في حفظ السيرة الذاتية: ' + (err?.message || 'تعذر الرفع'), 'error');
       }
     })();
   };
