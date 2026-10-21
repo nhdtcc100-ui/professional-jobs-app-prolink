@@ -216,27 +216,37 @@ export function ProfilePage({
   }, [profile]);
 
 
-  // 📱 Avatar: Telegram/WhatsApp-style — instant preview + background upload
+  // 📱 Avatar: Telegram/WhatsApp-style — 0ms Instant Preview + Silent Background Sync
   const handleDirectAvatarUpload = async (rawFile: File) => {
     if (!rawFile) return;
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
-    if (!targetUserId) { addToast('يجب تسجيل الدخول لتحميل الصورة', 'error'); return; }
+    if (!targetUserId) { addToast('يرجى تسجيل الدخول أولاً لتعديل الصورة', 'error'); return; }
+
+    // ⚡ 1. INSTANT LOCAL PREVIEW (< 1ms) — Shows photo immediately like WhatsApp!
+    try {
+      const localUrl = URL.createObjectURL(rawFile);
+      setFormData(prev => ({ ...prev, avatar: localUrl }));
+      if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, avatar: localUrl } : null);
+    } catch (_) {}
 
     setIsUploadingAvatar(true);
-    try {
-      const { preview, uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'avatar', targetUserId);
-      // ⚡ Instant preview < 16ms (Telegram UX)
-      if (preview) setFormData(prev => ({ ...prev, avatar: preview }));
-      // 🔄 Background upload — non-blocking, user sees preview immediately
-      const permanentUrl = await uploadPromise;
-      setFormData(prev => ({ ...prev, avatar: permanentUrl, avatar_url: permanentUrl }));
-      await profileService.updateProfile(targetUserId, { avatar: permanentUrl, avatar_url: permanentUrl });
-      addToast('✅ تم تحديث صورة الملف الشخصي بنجاح!', 'success');
-      if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, avatar: permanentUrl, avatar_url: permanentUrl } : null);
-      if (onSave) await onSave({ avatar: permanentUrl, avatar_url: permanentUrl });
-    } catch (err: any) {
-      if (err?.message !== 'cancelled') addToast('خطأ في رفع الصورة: ' + (err.message || ''), 'error');
-    } finally { setIsUploadingAvatar(false); }
+
+    // 🔄 2. Non-blocking Background Upload
+    (async () => {
+      try {
+        const { uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'avatar', targetUserId);
+        const permanentUrl = await uploadPromise;
+        setFormData(prev => ({ ...prev, avatar: permanentUrl, avatar_url: permanentUrl }));
+        await profileService.updateProfile(targetUserId, { avatar: permanentUrl, avatar_url: permanentUrl });
+        addToast('✅ تم حفظ وتثبيت صورة الحساب بنجاح!', 'success');
+        if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, avatar: permanentUrl, avatar_url: permanentUrl } : null);
+        if (onSave) onSave({ avatar: permanentUrl, avatar_url: permanentUrl });
+      } catch (err: any) {
+        if (err?.message !== 'cancelled') addToast('خطأ في حفظ الصورة: ' + (err.message || ''), 'error');
+      } finally {
+        setIsUploadingAvatar(false);
+      }
+    })();
   };
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -246,27 +256,37 @@ export function ProfilePage({
   }
 
 
-  // 📱 Cover: Telegram/WhatsApp-style — instant preview + background upload
+  // 📱 Cover: Telegram/WhatsApp-style — 0ms Instant Preview + Silent Background Sync
   const handleDirectCoverUpload = async (rawFile: File) => {
     if (!rawFile) return;
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
-    if (!targetUserId) { addToast('يجب تسجيل الدخول لتحميل صورة الغلاف', 'error'); return; }
+    if (!targetUserId) { addToast('يرجى تسجيل الدخول أولاً لتعديل الغلاف', 'error'); return; }
+
+    // ⚡ 1. INSTANT LOCAL PREVIEW (< 1ms)
+    try {
+      const localUrl = URL.createObjectURL(rawFile);
+      setFormData(prev => ({ ...prev, coverUrl: localUrl, cover_url: localUrl }));
+      if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, coverUrl: localUrl, cover_url: localUrl } : null);
+    } catch (_) {}
 
     setIsUploadingCover(true);
-    try {
-      const { preview, uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'cover', targetUserId);
-      // ⚡ Instant preview < 16ms
-      if (preview) setFormData(prev => ({ ...prev, coverUrl: preview, cover_url: preview }));
-      // 🔄 Background upload
-      const permanentUrl = await uploadPromise;
-      setFormData(prev => ({ ...prev, coverUrl: permanentUrl, cover_url: permanentUrl }));
-      await profileService.updateProfile(targetUserId, { coverUrl: permanentUrl, cover_url: permanentUrl });
-      addToast('✅ تم تحديث صورة الغلاف بنجاح!', 'success');
-      if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, coverUrl: permanentUrl, cover_url: permanentUrl } : null);
-      if (onSave) await onSave({ coverUrl: permanentUrl, cover_url: permanentUrl });
-    } catch (err: any) {
-      if (err?.message !== 'cancelled') addToast('خطأ في رفع صورة الغلاف: ' + (err.message || ''), 'error');
-    } finally { setIsUploadingCover(false); }
+
+    // 🔄 2. Non-blocking Background Upload
+    (async () => {
+      try {
+        const { uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'cover', targetUserId);
+        const permanentUrl = await uploadPromise;
+        setFormData(prev => ({ ...prev, coverUrl: permanentUrl, cover_url: permanentUrl }));
+        await profileService.updateProfile(targetUserId, { coverUrl: permanentUrl, cover_url: permanentUrl });
+        addToast('✅ تم حفظ وتثبيت صورة الغلاف بنجاح!', 'success');
+        if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, coverUrl: permanentUrl, cover_url: permanentUrl } : null);
+        if (onSave) onSave({ coverUrl: permanentUrl, cover_url: permanentUrl });
+      } catch (err: any) {
+        if (err?.message !== 'cancelled') addToast('خطأ في حفظ صورة الغلاف: ' + (err.message || ''), 'error');
+      } finally {
+        setIsUploadingCover(false);
+      }
+    })();
   };
 
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -362,7 +382,7 @@ export function ProfilePage({
   }, [formData, user?.id, appUser?.id, profile?.id, isMe, setAppUser, onSave, addToast]);
 
 
-  // 📱 CV: Telegram/WhatsApp-style — snapshot immediately + background upload
+  // 📱 CV: Telegram/WhatsApp-style — instant optimistic visual attach + background upload
   const handleCVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let rawFile = e.target.files?.[0];
     const targetInput = e.target;
@@ -382,37 +402,41 @@ export function ProfilePage({
     if (!targetUserId) { addToast('يجب تسجيل الدخول لرفع السيرة الذاتية', 'error'); return; }
 
     const fileName = rawFile.name || 'السيرة الذاتية';
-    setPendingCVName(fileName);
-    addToast(`📄 جاري رفع "${fileName}"...`);
+    const fileSizeMB = (rawFile.size / (1024 * 1024)).toFixed(1);
+    setPendingCVName(fileName + ' (' + fileSizeMB + ' MB)');
+    addToast('📄 جاري رفع "' + fileName + '" في الخلفية...');
 
-    try {
-      const { uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'cv', targetUserId, {
-        userContext: {
-          name: user?.name || appUser?.name || profile?.name,
-          email: user?.email || appUser?.email || profile?.email,
-        },
-      });
+    // Non-blocking background upload (Telegram style)
+    (async () => {
+      try {
+        const { uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'cv', targetUserId, {
+          userContext: {
+            name: user?.name || appUser?.name || profile?.name,
+            email: user?.email || appUser?.email || profile?.email,
+          },
+        });
 
-      const url = await uploadPromise;
-      setFormData(prev => ({ ...prev, cvUrl: url, cv_url: url }));
-      setPendingCV(null);
-      setPendingCVName(null);
+        const url = await uploadPromise;
+        setFormData(prev => ({ ...prev, cvUrl: url, cv_url: url }));
+        setPendingCV(null);
+        setPendingCVName(null);
 
-      const { error: dbError } = await profileService.updateProfile(targetUserId, { cvUrl: url, cv_url: url });
-      if (dbError) {
-        addToast('تم رفع السيرة الذاتية لكن ظهرت مشكلة في الحفظ.', 'warning');
-      } else {
-        addToast('✅ تم رفع السيرة الذاتية وحفظها بنجاح! 🎉', 'success');
+        const { error: dbError } = await profileService.updateProfile(targetUserId, { cvUrl: url, cv_url: url });
+        if (dbError) {
+          addToast('تم رفع الملف بنجاح مع تنبيه أثناء الحفظ.', 'warning');
+        } else {
+          addToast('✅ تم رفع وتثبيت السيرة الذاتية بنجاح! 🎉', 'success');
+        }
+        if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, cvUrl: url, cv_url: url } : null);
+        if (onSave) onSave({ cvUrl: url, cv_url: url });
+      } catch (err: any) {
+        setPendingCVName(null);
+        if (err?.message !== 'cancelled') addToast('خطأ في رفع السيرة الذاتية: ' + (err.message || ''), 'error');
+      } finally {
+        if (targetInput) targetInput.value = '';
       }
-      if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, cvUrl: url, cv_url: url } : null);
-      if (onSave) await onSave({ cvUrl: url, cv_url: url });
-    } catch (err: any) {
-      setPendingCVName(null);
-      if (err?.message !== 'cancelled') addToast('خطأ في رفع السيرة الذاتية: ' + (err.message || ''), 'error');
-    } finally {
-      if (targetInput) targetInput.value = '';
-    }
-  }
+    })();
+  };
 
   const handleDownloadCV = () => {
     if (formData.cvUrl) {

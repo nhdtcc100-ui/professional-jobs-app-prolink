@@ -109,9 +109,12 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
         {/* Gradient overlay at bottom for readability */}
         <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/30 to-transparent" />
         {isUploadingCover && (
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center gap-2 z-20 text-white">
-            <Loader2 size={20} className="animate-spin text-white" />
-            <span className="text-xs font-black drop-shadow">جاري حفظ الغلاف...</span>
+          <div className="absolute top-0 inset-x-0 z-20">
+            <div className="h-1 bg-gradient-to-r from-blue-500 via-sky-400 to-blue-600 animate-pulse w-full" />
+            <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-md text-white text-[9px] font-bold px-2.5 py-1 rounded-lg flex items-center gap-1.5 shadow-md">
+              <Loader2 size={12} className="animate-spin text-blue-400" />
+              <span>جاري المزامنة...</span>
+            </div>
           </div>
         )}
         {isMe && !isUploadingCover && (
@@ -149,9 +152,10 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 alt="Avatar"
               />
               {isUploadingAvatar && (
-                <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px] flex flex-col items-center justify-center gap-1 z-20 text-white">
-                  <Loader2 size={22} className="animate-spin text-white" />
-                  <span className="text-[8px] font-black tracking-tight">جاري الحفظ...</span>
+                <div className="absolute inset-0 rounded-3xl border-2 border-blue-500 animate-pulse pointer-events-none z-20">
+                  <div className="absolute top-1.5 right-1.5 bg-blue-600/90 text-white p-1 rounded-full shadow-lg">
+                    <Loader2 size={12} className="animate-spin" />
+                  </div>
                 </div>
               )}
             </div>
