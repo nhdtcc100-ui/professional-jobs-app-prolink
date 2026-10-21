@@ -217,7 +217,7 @@ export function ProfilePage({
 
 
   // 📱 Avatar: Telegram/WhatsApp-style — 0ms Instant Preview + Silent Background Sync
-  const handleDirectAvatarUpload = async (rawFile: File) => {
+  const handleDirectAvatarUpload = (rawFile: File) => {
     if (!rawFile) return;
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
     if (!targetUserId) { addToast('يرجى تسجيل الدخول أولاً لتعديل الصورة', 'error'); return; }
@@ -231,16 +231,17 @@ export function ProfilePage({
 
     setIsUploadingAvatar(true);
 
-    // 🔄 2. Non-blocking Background Upload
+    // 🔄 2. Non-blocking Background Upload — fire & forget (Realtime syncs parent)
     (async () => {
       try {
         const { uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'avatar', targetUserId);
         const permanentUrl = await uploadPromise;
         setFormData(prev => ({ ...prev, avatar: permanentUrl, avatar_url: permanentUrl }));
+        if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, avatar: permanentUrl, avatar_url: permanentUrl } : null);
         await profileService.updateProfile(targetUserId, { avatar: permanentUrl, avatar_url: permanentUrl });
         addToast('✅ تم حفظ وتثبيت صورة الحساب بنجاح!', 'success');
-        if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, avatar: permanentUrl, avatar_url: permanentUrl } : null);
-        if (onSave) onSave({ avatar: permanentUrl, avatar_url: permanentUrl });
+        // NOTE: onSave NOT called here — Supabase Realtime will sync the parent automatically
+        // Calling onSave here caused a double-save loop (profile → useEffect → formData reset)
       } catch (err: any) {
         if (err?.message !== 'cancelled') addToast('خطأ في حفظ الصورة: ' + (err.message || ''), 'error');
       } finally {
@@ -249,27 +250,24 @@ export function ProfilePage({
     })();
   };
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const input = e.currentTarget;
-    const file = input.files?.item(0);
+  // ⚠️ MUST be synchronous — async + await here causes SyntheticEvent nullification
+  // and creates a double-save loop (await → profile update → useEffect → formData reset)
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Read files SYNCHRONOUSLY before any suspension
+    const rawFile = e.currentTarget?.files?.item(0) ?? e.target?.files?.[0];
     console.log("[avatar change]", {
-      filesLength: input.files?.length,
-      name: file?.name,
-      type: file?.type,
-      size: file?.size,
+      filesLength: e.target?.files?.length,
+      name: rawFile?.name,
+      type: rawFile?.type,
+      size: rawFile?.size,
     });
-    let rawFile = e.target.files?.[0];
-    if (!rawFile) {
-      await new Promise(r => setTimeout(r, 80));
-      rawFile = e.target.files?.[0];
-    }
-    if (rawFile) await handleDirectAvatarUpload(rawFile);
-    e.target.value = '';
+    if (rawFile) handleDirectAvatarUpload(rawFile); // fire & forget — no await
+    try { e.target.value = ''; } catch {}
   };
 
 
   // 📱 Cover: Telegram/WhatsApp-style — 0ms Instant Preview + Silent Background Sync
-  const handleDirectCoverUpload = async (rawFile: File) => {
+  const handleDirectCoverUpload = (rawFile: File) => {
     if (!rawFile) return;
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
     if (!targetUserId) { addToast('يرجى تسجيل الدخول أولاً لتعديل الغلاف', 'error'); return; }
@@ -283,16 +281,16 @@ export function ProfilePage({
 
     setIsUploadingCover(true);
 
-    // 🔄 2. Non-blocking Background Upload
+    // 🔄 2. Non-blocking Background Upload — fire & forget (Realtime syncs parent)
     (async () => {
       try {
         const { uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'cover', targetUserId);
         const permanentUrl = await uploadPromise;
         setFormData(prev => ({ ...prev, coverUrl: permanentUrl, cover_url: permanentUrl }));
+        if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, coverUrl: permanentUrl, cover_url: permanentUrl } : null);
         await profileService.updateProfile(targetUserId, { coverUrl: permanentUrl, cover_url: permanentUrl });
         addToast('✅ تم حفظ وتثبيت صورة الغلاف بنجاح!', 'success');
-        if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, coverUrl: permanentUrl, cover_url: permanentUrl } : null);
-        if (onSave) onSave({ coverUrl: permanentUrl, cover_url: permanentUrl });
+        // NOTE: onSave NOT called here — Supabase Realtime will sync the parent automatically
       } catch (err: any) {
         if (err?.message !== 'cancelled') addToast('خطأ في حفظ صورة الغلاف: ' + (err.message || ''), 'error');
       } finally {
@@ -301,22 +299,17 @@ export function ProfilePage({
     })();
   };
 
-  const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const input = e.currentTarget;
-    const file = input.files?.item(0);
+  // ⚠️ MUST be synchronous — same reason as handleAvatarChange above
+  const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawFile = e.currentTarget?.files?.item(0) ?? e.target?.files?.[0];
     console.log("[cover change]", {
-      filesLength: input.files?.length,
-      name: file?.name,
-      type: file?.type,
-      size: file?.size,
+      filesLength: e.target?.files?.length,
+      name: rawFile?.name,
+      type: rawFile?.type,
+      size: rawFile?.size,
     });
-    let rawFile = e.target.files?.[0];
-    if (!rawFile) {
-      await new Promise(r => setTimeout(r, 80));
-      rawFile = e.target.files?.[0];
-    }
-    if (rawFile) await handleDirectCoverUpload(rawFile);
-    e.target.value = '';
+    if (rawFile) handleDirectCoverUpload(rawFile); // fire & forget — no await
+    try { e.target.value = ''; } catch {}
   };
 
   
