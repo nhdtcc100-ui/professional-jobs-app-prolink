@@ -276,16 +276,7 @@ export function ProfilePage({
     e.target.value = '';
   }
 
-  const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    let rawFile = e.target.files?.[0];
-    const targetInput = e.target;
-    if (!rawFile) {
-      await new Promise(r => setTimeout(r, 120));
-      rawFile = targetInput?.files?.[0];
-    }
-    if (rawFile) await handleDirectCoverUpload(rawFile);
-    if (targetInput) targetInput.value = '';
-  };
+  
 
   const handleManualSave = useCallback(async () => {
     const targetUserId = user?.id || appUser?.id || profile?.id || formData?.id;
