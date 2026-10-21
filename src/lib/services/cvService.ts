@@ -131,7 +131,7 @@ export const cvService = {
       } catch (_) {}
 
       // 3. Candidate Buckets in priority order (only first 2 to avoid long blocking)
-      const candidateBuckets = ['resumes', 'profiles'];
+      const candidateBuckets = ['resumes', 'applications'];
       let uploadedUrl: string | null = null;
       let lastStorageError: any = null;
 
@@ -177,7 +177,7 @@ export const cvService = {
       }
 
       // 4. Fallback for files (<= 15MB) — covers almost all CV files on mobile and desktop
-      const MAX_BASE64_BYTES = 15 * 1024 * 1024; // 15 MB
+      const MAX_BASE64_BYTES = 300 * 1024; // 300 KB (prevent DB overflow)
       if (file.size <= MAX_BASE64_BYTES) {
         logger.warn('[cvService] Supabase storage failed; using Base64 fallback for file <= 15MB.');
         try {

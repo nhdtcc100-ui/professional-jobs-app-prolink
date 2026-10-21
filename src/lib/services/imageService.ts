@@ -32,9 +32,16 @@ export async function snapshotFile(rawFile: File): Promise<File> {
   // If already an in-memory processed File, return immediately
   if ((rawFile as any).__isSnapshot) return rawFile;
 
-  const isImage = (rawFile.type && rawFile.type.startsWith('image/')) ||
+  const isDoc = /\.(pdf|doc|docx)$/i.test(rawFile.name || '') ||
+    rawFile.type === 'application/pdf' ||
+    rawFile.type === 'application/msword' ||
+    (rawFile.type && rawFile.type.includes('wordprocessingml'));
+
+  const isImage = !isDoc && (
+    (rawFile.type && rawFile.type.startsWith('image/')) ||
     /\.(jpg|jpeg|png|webp|gif|bmp|heic|heif)$/i.test(rawFile.name || '') ||
-    !rawFile.type;
+    (!rawFile.type && !/\.(pdf|doc|docx)$/i.test(rawFile.name || ''))
+  );
 
   const MAX_DIM = 1000;
 

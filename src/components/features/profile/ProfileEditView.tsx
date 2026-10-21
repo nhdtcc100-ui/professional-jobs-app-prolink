@@ -790,7 +790,7 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
           id="profile-cv-upload-input"
           type="file"
           onChange={handleCVUpload}
-          accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pdf,.doc,.docx"
           className="hidden"
         />
 

@@ -441,7 +441,7 @@ export function ProfilePage({
     }
   }, [formData, user?.id, appUser?.id, profile?.id, isMe, setAppUser, onSave, addToast]);
 
-  // ── CV: Selection Staging — Uploads & Saves cleanly on manual Save ──
+  // ── CV: Direct Upload & Instant Persistence from Mobile Storage ──
   const handleCVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let rawFile = e.target.files?.[0];
     const targetInput = e.target;
@@ -457,20 +457,58 @@ export function ProfilePage({
       return;
     }
 
+    const targetUserId = user?.id || appUser?.id || profile?.id || formData?.id;
+    if (!targetUserId) {
+      addToast('يرجى تسجيل الدخول أولاً لرفع السيرة الذاتية', 'error');
+      return;
+    }
+
+    addToast(`جاري رفع "${rawFile.name || 'السيرة الذاتية'}" من ذاكرة الجهاز... ⏳`);
+
     try {
+      // 1. Snapshot file into in-memory ArrayBuffer before any input clearing
       let file: File = rawFile;
       try {
         file = await snapshotFile(rawFile);
       } catch (snapErr) {
-        console.warn("⚠️ [CVUpload] snapshotFile warning, using rawFile directly:", snapErr);
-        file = rawFile;
+        console.warn("⚠️ [CVUpload] snapshotFile warning:", snapErr);
       }
-      setPendingCV(file);
-      setPendingCVName(file.name || 'سيرة_ذاتية.pdf');
-      addToast(`تم تحديد "${file.name || 'الملف'}" 📄 اضغط "حفظ جميع التغييرات" لتثبيته`, 'success');
+
+      // 2. Upload directly to Supabase Storage
+      const { data: url, error: uploadErr } = await cvService.uploadCV(targetUserId, file, {
+        name: user?.name || appUser?.name || profile?.name,
+        email: user?.email || appUser?.email || profile?.email,
+      });
+
+      if (uploadErr || !url) throw uploadErr || new Error('فشل رفع ملف السيرة الذاتية');
+
+      // 3. Immediately persist to database
+      const updatedFormData = { ...formData, cvUrl: url, cv_url: url };
+      setFormData(updatedFormData);
+      setPendingCV(null);
+      setPendingCVName(null);
+
+      const { error: dbError } = await profileService.updateProfile(targetUserId, {
+        cvUrl: url,
+        cv_url: url,
+      });
+
+      if (dbError) {
+        console.warn('⚠️ [CVUpload] DB update warning:', dbError);
+        addToast('تم رفع الملف بنجاح إلى الخادم.', 'success');
+      } else {
+        addToast('تم رفع وتثبيت السيرة الذاتية في ملفك الشخصي بنجاح! 📄', 'success');
+      }
+
+      if (isMe && setAppUser) {
+        setAppUser((prev: any) => prev ? { ...prev, cvUrl: url, cv_url: url } : null);
+      }
+      if (onSave) {
+        await onSave({ cvUrl: url, cv_url: url });
+      }
     } catch (readErr: any) {
-      console.error("❌ [CVUpload] فشل قراءة الملف من الجهاز:", readErr);
-      addToast('تعذر قراءة ملف السيرة الذاتية من جهازك', 'error');
+      console.error("❌ [CVUpload] فشل رفع الملف من الجهاز:", readErr);
+      addToast('فشل رفع السيرة الذاتية: ' + (readErr.message || ''), 'error');
     } finally {
       if (targetInput) targetInput.value = '';
     }
