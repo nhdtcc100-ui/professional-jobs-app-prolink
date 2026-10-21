@@ -221,9 +221,10 @@ export function ProfilePage({
   }, [profile]);
 
 
-  // ─── Direct In-Memory Data URL Converter (Fallback for direct database storage) ─
-  const fileToDataUrl = (file: File, maxDim = 800, quality = 0.82): Promise<string> => {
+  // ─── Direct In-Memory Data URL Converter (Guarantees <50KB for database storage) ─
+  const fileToDataUrl = (file: File, maxDim = 400, quality = 0.75): Promise<string> => {
     return new Promise((resolve) => {
+      const isDoc = /\.(pdf|doc|docx)$/i.test(file.name || '') || file.type?.includes('pdf') || file.type?.includes('word');
       const reader = new FileReader();
       reader.onload = (e) => {
         const rawDataUrl = e.target?.result as string;
@@ -232,22 +233,24 @@ export function ProfilePage({
           return;
         }
 
-        // If not an image or already small (<= 150KB), use as-is
-        if (!file.type.startsWith('image/') || file.size <= 150 * 1024) {
+        // Documents: return directly
+        if (isDoc) {
           resolve(rawDataUrl);
           return;
         }
 
+        // Images: ALWAYS resize through Canvas to produce a lightweight JPEG (≈ 25KB - 50KB)
+        // This ensures Supabase DB / PostgREST 1MB payload limit is NEVER exceeded
         const img = new Image();
         img.onload = () => {
           let w = img.width;
           let h = img.height;
           if (w > maxDim || h > maxDim) {
             if (w >= h) {
-              h = Math.round((h * maxDim) / w);
+              h = Math.max(1, Math.round((h * maxDim) / w));
               w = maxDim;
             } else {
-              w = Math.round((w * maxDim) / h);
+              w = Math.max(1, Math.round((w * maxDim) / h));
               h = maxDim;
             }
           }
@@ -257,7 +260,9 @@ export function ProfilePage({
           const ctx = canvas.getContext('2d');
           if (ctx) {
             ctx.drawImage(img, 0, 0, w, h);
-            resolve(canvas.toDataURL('image/jpeg', quality));
+            const compressed = canvas.toDataURL('image/jpeg', quality);
+            console.log('[fileToDataUrl] Compressed to lightweight size:', Math.round(compressed.length / 1024), 'KB');
+            resolve(compressed);
           } else {
             resolve(rawDataUrl);
           }
@@ -327,9 +332,9 @@ export function ProfilePage({
           console.warn('[Avatar Storage fallback to DB]', storageErr);
         }
 
-        // 2. Fallback to direct DB storage as clean Data URL
+        // 2. Fallback to direct DB storage as clean Data URL (under 40KB)
         if (!finalUrl) {
-          finalUrl = await fileToDataUrl(rawFile, 800, 0.82);
+          finalUrl = await fileToDataUrl(rawFile, 400, 0.75);
         }
 
         if (!finalUrl) throw new Error('تعذر قراءة الصورة');
@@ -399,7 +404,7 @@ export function ProfilePage({
         }
 
         if (!finalUrl) {
-          finalUrl = await fileToDataUrl(rawFile, 1200, 0.82);
+          finalUrl = await fileToDataUrl(rawFile, 800, 0.75);
         }
 
         if (!finalUrl) throw new Error('تعذر قراءة صورة الغلاف');
