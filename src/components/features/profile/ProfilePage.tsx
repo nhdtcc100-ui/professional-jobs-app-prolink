@@ -231,24 +231,16 @@ export function ProfilePage({
       addToast('استغرق التحميل وقتاً طويلاً. حاول اختيار صورة أصغر أو من المعرض المحلي.', 'error');
     }, 45000);
 
-    let file: File = rawFile;
-    try {
-      file = await snapshotFile(rawFile);
-    } catch (readErr: any) {
-      console.warn("⚠️ [AvatarUpload] snapshotFile warning, using rawFile directly:", readErr);
-      file = rawFile;
-    }
-
     // Instant local preview for immediate visual feedback (0ms delay)
     try {
-      const localUrl = URL.createObjectURL(file);
+      const localUrl = URL.createObjectURL(rawFile);
       setFormData(prev => ({ ...prev, avatar: localUrl }));
     } catch (previewErr) {
-      console.warn("⚠️ [AvatarUpload] تعذر إنشاء معاينة محلية:", previewErr);
+      console.warn("⚠️ [AvatarUpload] preview error:", previewErr);
     }
 
     try {
-      let permanentUrl = await imageService.processAndUpload(file, targetUserId, 'profiles');
+      let permanentUrl = await imageService.processAndUpload(rawFile, targetUserId, 'profiles');
 
       // 🔬 If storage returned a large base64 (Storage RLS blocked), compress to ≤80KB for DB storage
       if (permanentUrl.startsWith('data:') && permanentUrl.length > 80 * 1024) {
@@ -311,24 +303,16 @@ export function ProfilePage({
       addToast('استغرق التحميل وقتاً طويلاً. حاول اختيار صورة أصغر أو من المعرض المحلي.', 'error');
     }, 45000);
 
-    let file: File = rawFile;
+    // Instant local preview for immediate visual feedback (0ms delay)
     try {
-      file = await snapshotFile(rawFile);
-    } catch (readErr: any) {
-      console.warn("⚠️ [CoverUpload] snapshotFile warning, using rawFile directly:", readErr);
-      file = rawFile;
-    }
-
-    // Instant local preview
-    try {
-      const localUrl = URL.createObjectURL(file);
+      const localUrl = URL.createObjectURL(rawFile);
       setFormData(prev => ({ ...prev, coverUrl: localUrl, cover_url: localUrl }));
     } catch (previewErr) {
-      console.warn("⚠️ [CoverUpload] تعذر إنشاء معاينة محلية للغلاف:", previewErr);
+      console.warn("⚠️ [CoverUpload] preview error:", previewErr);
     }
 
     try {
-      let permanentUrl = await imageService.processAndUpload(file, targetUserId, 'profiles');
+      let permanentUrl = await imageService.processAndUpload(rawFile, targetUserId, 'profiles');
 
       // 🔬 If storage returned a large base64 (Storage RLS blocked), compress to ≤80KB for DB storage
       if (permanentUrl.startsWith('data:') && permanentUrl.length > 80 * 1024) {

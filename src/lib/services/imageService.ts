@@ -34,12 +34,66 @@ export async function snapshotFile(rawFile: File): Promise<File> {
 
   const isImage = (rawFile.type && rawFile.type.startsWith('image/')) ||
     /\.(jpg|jpeg|png|webp|gif|bmp|heic|heif)$/i.test(rawFile.name || '') ||
-    !rawFile.type; // Android SAF often returns empty string for type
+    !rawFile.type;
 
-  // 1. FAST-PATH FOR IMAGES: Native Image + Canvas pipeline
-  // Bypasses the slow Android SAF content:// IPC stream completely.
-  // The browser's native Skia engine decodes URL.createObjectURL(rawFile) directly,
-  // then Canvas exports a clean in-memory JPEG Blob in < 250ms!
+  const MAX_DIM = 1000;
+
+  // 1. FAST-PATH: createImageBitmap downscaling directly on hardware decoder (Skia)
+  if (isImage && typeof window !== 'undefined' && typeof window.createImageBitmap === 'function') {
+    try {
+      const bmp = await Promise.race([
+        createImageBitmap(rawFile),
+        new Promise<null>((res) => setTimeout(() => res(null), 8000)),
+      ]);
+
+      if (bmp && bmp.width > 0 && bmp.height > 0) {
+        let w = bmp.width;
+        let h = bmp.height;
+        if (w >= h) {
+          if (w > MAX_DIM) {
+            h = Math.max(1, Math.round((h * MAX_DIM) / w));
+            w = MAX_DIM;
+          }
+        } else {
+          if (h > MAX_DIM) {
+            w = Math.max(1, Math.round((w * MAX_DIM) / h));
+            h = MAX_DIM;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(bmp, 0, 0, w, h);
+          bmp.close();
+
+          const cleanBlob = await new Promise<Blob | null>((res) => {
+            canvas.toBlob(res, 'image/jpeg', 0.82);
+          });
+
+          if (cleanBlob && cleanBlob.size > 0) {
+            const cleanName = (rawFile.name || 'photo.jpg').replace(/\.[^.]+$/, '.jpg');
+            const cleanFile = new File([cleanBlob], cleanName, {
+              type: 'image/jpeg',
+              lastModified: Date.now()
+            });
+            (cleanFile as any).__isSnapshot = true;
+            (cleanFile as any).__isCompressed = true;
+            console.log('[snapshotFile] Instant createImageBitmap materialization:', cleanFile.size, 'bytes');
+            return cleanFile;
+          }
+        } else {
+          bmp.close();
+        }
+      }
+    } catch (bmpErr) {
+      console.warn('[snapshotFile] createImageBitmap fallback to Image element:', bmpErr);
+    }
+  }
+
+  // 2. Second path: Native Image + Canvas pipeline
   if (isImage && typeof window !== 'undefined' && typeof document !== 'undefined') {
     try {
       const materialized = await new Promise<File | null>((resolve) => {
@@ -63,16 +117,14 @@ export async function snapshotFile(rawFile: File): Promise<File> {
           }
         };
 
-        // 4-second safety timer is generous for hardware decoding
         const timer = setTimeout(() => {
           cleanup();
           resolve(null);
-        }, 4000);
+        }, 12000);
 
         img.onload = () => {
           clearTimeout(timer);
           try {
-            const MAX_DIM = 1000;
             let w = img.naturalWidth || img.width || 800;
             let h = img.naturalHeight || img.height || 600;
 
@@ -109,6 +161,7 @@ export async function snapshotFile(rawFile: File): Promise<File> {
                   lastModified: Date.now()
                 });
                 (cleanFile as any).__isSnapshot = true;
+                (cleanFile as any).__isCompressed = true;
                 resolve(cleanFile);
               } else {
                 resolve(null);
@@ -130,124 +183,48 @@ export async function snapshotFile(rawFile: File): Promise<File> {
       });
 
       if (materialized) {
-        console.log(`✅ [snapshotFile] Canvas fast-materialized image in memory: ${materialized.size} bytes`);
+        console.log('[snapshotFile] Image materialization success:', materialized.size, 'bytes');
         return materialized;
       }
     } catch (e) {
-      console.warn('[snapshotFile] Canvas materialization fallback:', e);
+      console.warn('[snapshotFile] Image materialization fallback:', e);
     }
   }
 
-  // 2. Fallback for non-images (PDF / Word) or if Canvas materialization failed:
+  // 3. Fallback for non-images (PDF / Word) or if Canvas materialization failed:
   let buffer: ArrayBuffer | null = null;
   try {
-    const readViaFileReader = (): Promise<ArrayBuffer> => {
-      return new Promise<ArrayBuffer>((resolve, reject) => {
+    if (typeof rawFile.arrayBuffer === 'function') {
+      buffer = await Promise.race([
+        rawFile.arrayBuffer(),
+        new Promise<null>((res) => setTimeout(() => res(null), 10000))
+      ]);
+    }
+    if (!buffer) {
+      buffer = await new Promise<ArrayBuffer | null>((resolve) => {
         const reader = new FileReader();
+        const t = setTimeout(() => resolve(null), 10000);
         reader.onload = () => {
-          if (reader.result instanceof ArrayBuffer) {
-            resolve(reader.result);
-          } else {
-            reject(new Error('FileReader did not return ArrayBuffer'));
-          }
+          clearTimeout(t);
+          resolve(reader.result instanceof ArrayBuffer ? reader.result : null);
         };
-        reader.onerror = () => reject(reader.error || new Error('FileReader error'));
-        reader.onabort = () => reject(new Error('FileReader aborted'));
+        reader.onerror = () => { clearTimeout(t); resolve(null); };
         reader.readAsArrayBuffer(rawFile);
       });
-    };
-
-    const readViaArrayBuffer = async (): Promise<ArrayBuffer> => {
-      if (typeof rawFile.arrayBuffer === 'function') {
-        return await rawFile.arrayBuffer();
-      }
-      throw new Error('arrayBuffer not supported');
-    };
-
-    const timeoutPromise = new Promise<null>((resolve) =>
-      setTimeout(() => resolve(null), 5000)
-    );
-
-    const readPromise = readViaFileReader().catch(() => readViaArrayBuffer());
-    buffer = await Promise.race([readPromise, timeoutPromise]);
-  } catch (err: any) {
+    }
+  } catch (err) {
     console.warn('[snapshotFile] Error reading file stream:', err);
   }
 
-  // Fallback: If FileReader / arrayBuffer failed or timed out, try object URL fetch before giving up
-  if (!buffer || buffer.byteLength === 0) {
-    try {
-      if (typeof URL !== 'undefined' && URL.createObjectURL) {
-        const objUrl = URL.createObjectURL(rawFile);
-        try {
-          const res = await Promise.race([
-            fetch(objUrl),
-            new Promise<Response>((_, rej) => setTimeout(() => rej(new Error('fetch timeout')), 3000))
-          ]);
-          if (res.ok) {
-            buffer = await res.arrayBuffer();
-          }
-        } finally {
-          URL.revokeObjectURL(objUrl);
-        }
-      }
-    } catch (fetchErr) {
-      console.warn('[snapshotFile] objectURL fallback also failed:', fetchErr);
-    }
+  if (buffer && buffer.byteLength > 0) {
+    const effectiveMime = resolveMimeType(rawFile);
+    const snapFile = new File([buffer], rawFile.name || 'file', { type: effectiveMime, lastModified: Date.now() });
+    (snapFile as any).__isSnapshot = true;
+    return snapFile;
   }
 
-  // If reading stream completely failed, proceed with original File directly
-  if (!buffer || buffer.byteLength === 0) {
-    console.warn('[snapshotFile] Buffer empty or timed out; proceeding with original File directly.');
-    return rawFile;
-  }
-
-  // Detect real MIME type from Magic Bytes
-  const bytes = new Uint8Array(buffer.slice(0, 32));
-  let detectedMime = '';
-
-  if (bytes[0] === 0xFF && bytes[1] === 0xD8) {
-    detectedMime = 'image/jpeg';
-  } else if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
-    detectedMime = 'image/png';
-  } else if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
-    detectedMime = 'image/gif';
-  } else if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
-    detectedMime = 'image/webp';
-  } else if (bytes[0] === 0x42 && bytes[1] === 0x4D) {
-    detectedMime = 'image/bmp';
-  } else if (bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46) {
-    detectedMime = 'application/pdf';
-  } else if (bytes.length >= 8 && bytes[4] === 0x66 && bytes[5] === 0x74 && bytes[6] === 0x79 && bytes[7] === 0x70) {
-    detectedMime = 'image/heic';
-  } else if (bytes[0] === 0x50 && bytes[1] === 0x4B) {
-    detectedMime = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-  } else if (bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0) {
-    detectedMime = 'application/msword';
-  }
-
-  const effectiveMime = detectedMime || resolveMimeType(rawFile);
-  const mimeToExt: Record<string, string> = {
-    'image/jpeg': 'jpg',
-    'image/png': 'png',
-    'image/webp': 'webp',
-    'image/gif': 'gif',
-    'image/bmp': 'bmp',
-    'image/heic': 'heic',
-    'image/heif': 'heif',
-    'application/pdf': 'pdf',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
-    'application/msword': 'doc',
-  };
-
-  const rawName = (rawFile.name || 'uploaded_file').replace(/[^\w.-]/g, '_');
-  const safeExt = mimeToExt[effectiveMime] || 'jpg';
-  const cleanName = rawName.includes('.') ? rawName : `${rawName}.${safeExt}`;
-
-  const safeBlob = new Blob([buffer], { type: effectiveMime });
-  const snapFile = new File([safeBlob], cleanName, { type: effectiveMime, lastModified: Date.now() });
-  (snapFile as any).__isSnapshot = true;
-  return snapFile;
+  (rawFile as any).__isSnapshot = true;
+  return rawFile;
 }
 
 export const validateFile = (
@@ -303,6 +280,8 @@ export const imageService = {
    * Produces an in-memory JPEG File typically between 80KB - 200KB.
    */
   async compressImage(file: File): Promise<Blob | File> {
+    if ((file as any).__isCompressed) return file;
+    if (file.size <= 250 * 1024) return file;
     const doCompress = async (): Promise<Blob | File> => {
       const effectiveMime = file.type || resolveMimeType(file);
       if (!effectiveMime.startsWith('image/') || effectiveMime === 'image/svg+xml') {
@@ -658,7 +637,7 @@ export const imageService = {
    */
   async processAndUpload(file: File, userId: string, bucket = 'profiles'): Promise<string> {
     // Step 0: Ensure file is an in-memory snapshot (isolates from SAF lazy streams)
-    let workingFile = await snapshotFile(file);
+    let workingFile = (file as any)?.__isSnapshot ? file : await snapshotFile(file);
 
     // Step 1: Convert HEIC/HEIF -> JPEG
     const isHeic = (workingFile.type && (workingFile.type.includes('heic') || workingFile.type.includes('heif'))) ||
@@ -761,7 +740,7 @@ export async function pickImageFromGallery(): Promise<File | null> {
         quality: 85,
         allowEditing: false,
         resultType: CameraResultType.Uri,
-        source: CameraSource.Photos, // 📸 Directly opens Native Gallery & Albums!
+        source: CameraSource.Photos,
       });
 
       if (photo?.webPath) {
@@ -773,6 +752,7 @@ export async function pickImageFromGallery(): Promise<File | null> {
           lastModified: Date.now()
         });
         (file as any).__isSnapshot = true;
+        (file as any).__isCompressed = true;
         return file;
       }
       return null;
@@ -784,41 +764,12 @@ export async function pickImageFromGallery(): Promise<File | null> {
     }
   }
 
-  // 2. Web: use File System Access API (showOpenFilePicker) when available.
-  //    On Android Chrome 120+ with Android 13+ this directly opens the Android
-  //    system Photo Picker — NO Browse / DocumentsUI / SAF option appears.
-  if (typeof (window as any).showOpenFilePicker === 'function') {
-    try {
-      const [fileHandle] = await (window as any).showOpenFilePicker({
-        types: [
-          {
-            description: 'Images',
-            accept: {
-              'image/jpeg': ['.jpg', '.jpeg'],
-              'image/png':  ['.png'],
-              'image/webp': ['.webp'],
-            },
-          },
-        ],
-        excludeAcceptAllOption: true, // hides the "All files" option
-        multiple: false,
-      });
-      const file: File = await fileHandle.getFile();
-      return file;
-    } catch (e: any) {
-      // AbortError = user pressed Cancel — treat as null
-      if (e?.name === 'AbortError') return null;
-      // Any other error: fall through to legacy <input> below
-      console.warn('[pickImageFromGallery] showOpenFilePicker error, using input fallback:', e);
-    }
-  }
-
-  // 3. Legacy fallback for older browsers: hidden <input type="file">
-  //    Restrict to explicit MIME types so Android routes to gallery, not file manager.
+  // 2. Web fallback:
+  // accept='image/*' opens native Photo Picker on Android 11+ without opening file browser
   return new Promise<File | null>((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/jpeg,image/png,image/webp';
+    input.accept = 'image/*';
     input.style.display = 'none';
     document.body.appendChild(input);
 
@@ -830,14 +781,14 @@ export async function pickImageFromGallery(): Promise<File | null> {
     input.onchange = () => {
       if (handled) return;
       handled = true;
+      const f = input.files?.[0] ?? null;
       cleanup();
-      resolve(input.files?.[0] ?? null);
+      resolve(f);
     };
 
-    // Timeout after 60s (covers slow pickers without hanging forever)
     setTimeout(() => {
       if (!handled) { handled = true; cleanup(); resolve(null); }
-    }, 60000);
+    }, 120000);
 
     input.click();
   });

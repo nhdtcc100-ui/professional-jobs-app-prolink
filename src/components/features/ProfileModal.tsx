@@ -228,6 +228,10 @@ export function ProfileModal({
     const targetUserId = user?.id || (profile as any)?.id;
     if (!rawFile || !targetUserId) return;
     setSaveStatus('saving');
+    try {
+      const localUrl = URL.createObjectURL(rawFile);
+      setFormData(prev => ({ ...prev, avatar: localUrl }));
+    } catch {}
     addToast('جاري استلام وتجهيز الصورة... ⏳');
     try {
       const url = await imageService.processAndUpload(rawFile, targetUserId, 'profiles');
@@ -256,6 +260,10 @@ export function ProfileModal({
     const targetUserId = user?.id || (profile as any)?.id;
     if (!rawFile || !targetUserId) return;
     setSaveStatus('saving');
+    try {
+      const localUrl = URL.createObjectURL(rawFile);
+      setFormData(prev => ({ ...prev, coverUrl: localUrl, cover_url: localUrl }));
+    } catch {}
     addToast('جاري استلام وتجهيز الغلاف... ⏳');
     try {
       const url = await imageService.processAndUpload(rawFile, targetUserId, 'profiles');
