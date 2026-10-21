@@ -221,13 +221,44 @@ export function ProfilePage({
   }, [profile]);
 
 
-  // 📱 Avatar: Telegram/WhatsApp-style — 0ms Instant Preview + Silent Background Sync
+  // ─── Direct Lean Supabase Storage Upload (No Canvas, No createImageBitmap, No Hangs) ─────
+  const uploadRawFileToStorage = async (
+    file: File,
+    bucket: 'profiles' | 'documents',
+    userId: string
+  ): Promise<string> => {
+    const ext = (file.name || 'file').split('.').pop()?.toLowerCase() || (bucket === 'documents' ? 'pdf' : 'jpg');
+    const cleanExt = ext.replace(/[^a-zA-Z0-9]/g, '') || 'jpg';
+    const timestamp = Date.now();
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    const fileName = `${userId}/${timestamp}_${randomSuffix}.${cleanExt}`;
+    const contentType = file.type || (bucket === 'documents' ? 'application/pdf' : 'image/jpeg');
+
+    const uploadPromise = supabase.storage
+      .from(bucket)
+      .upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' });
+
+    // 12-second timeout protection: guarantees UI never hangs indefinitely
+    const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
+      setTimeout(() => reject(new Error('انتهت مهلة الرفع، يرجى التحقق من الاتصال والمحاولة ثانية')), 12000)
+    );
+
+    const { error } = await Promise.race([uploadPromise, timeoutPromise]);
+    if (error) throw error;
+
+    const { data } = supabase.storage.from(bucket).getPublicUrl(fileName);
+    if (!data?.publicUrl) throw new Error('فشل توليد رابط الملف العام');
+
+    return `${data.publicUrl}?t=${timestamp}`;
+  };
+
+  // 📱 Avatar: 0ms Instant Preview + Direct Raw Background Upload
   const handleDirectAvatarUpload = (rawFile: File) => {
     if (!rawFile) return;
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
     if (!targetUserId) { addToast('يرجى تسجيل الدخول أولاً لتعديل الصورة', 'error'); return; }
 
-    // ⚡ 1. INSTANT LOCAL PREVIEW (< 1ms) — Shows photo immediately like WhatsApp!
+    // Instant local preview (< 1ms)
     try {
       const localUrl = URL.createObjectURL(rawFile);
       setFormData(prev => ({ ...prev, avatar: localUrl }));
@@ -236,60 +267,25 @@ export function ProfilePage({
 
     setIsUploadingAvatar(true);
 
-    // 🔄 2. Non-blocking Background Upload — fire & forget (Realtime syncs parent)
     (async () => {
       try {
-        const { uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'avatar', targetUserId);
-        const permanentUrl = await uploadPromise;
+        const permanentUrl = await uploadRawFileToStorage(rawFile, 'profiles', targetUserId);
         setFormData(prev => ({ ...prev, avatar: permanentUrl, avatar_url: permanentUrl }));
         if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, avatar: permanentUrl, avatar_url: permanentUrl } : null);
         await profileService.updateProfile(targetUserId, { avatar: permanentUrl, avatar_url: permanentUrl });
         addToast('✅ تم حفظ وتثبيت صورة الحساب بنجاح!', 'success');
-        // NOTE: onSave NOT called here — Supabase Realtime will sync the parent automatically
-        // Calling onSave here caused a double-save loop (profile → useEffect → formData reset)
       } catch (err: any) {
-        if (err?.message !== 'cancelled') addToast('خطأ في حفظ الصورة: ' + (err.message || ''), 'error');
+        console.error('[Avatar Upload Error]', err);
+        addToast('تعذر حفظ الصورة: ' + (err?.message || 'خطأ غير معروف'), 'error');
       } finally {
         setIsUploadingAvatar(false);
       }
     })();
   };
 
-  // ─── Helper: read any File to stable in-memory copy ───────────────────────
-  // Reads using arrayBuffer() IMMEDIATELY (same sync context as onChange) so
-  // Android Scoped Storage URI grant never expires before we use it.
-  // Then shows the WhatsApp/Telegram-style confirm modal.
-  const getMimeType = (file: File, fileType: ConfirmFileType) => {
-    if (file.type && file.type.trim() !== '') return file.type;
-    const ext = file.name?.split('.').pop()?.toLowerCase();
-    if (ext === 'png') return 'image/png';
-    if (ext === 'webp') return 'image/webp';
-    if (ext === 'gif') return 'image/gif';
-    if (ext === 'heic') return 'image/heic';
-    if (ext === 'pdf') return 'application/pdf';
-    if (ext === 'doc') return 'application/msword';
-    if (ext === 'docx') return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-    return fileType === 'cv' ? 'application/pdf' : 'image/jpeg';
-  };
-
-  const readAndConfirm = (rawFile: File, type: ConfirmFileType) => {
-    const mime = getMimeType(rawFile, type);
-    const meta = {
-      name: rawFile.name || (type === 'cv' ? `cv_${Date.now()}.pdf` : `photo_${Date.now()}.jpg`),
-      type: mime,
-      lastModified: rawFile.lastModified || Date.now(),
-    };
-    rawFile.arrayBuffer()
-      .then(buf => {
-        const memFile = new File([buf], meta.name, { type: meta.type, lastModified: meta.lastModified });
-        (memFile as any).__isSnapshot = true;
-        // Show confirm modal — upload only starts when user taps "Add"
-        setPendingFileUpload({ file: memFile, type });
-      })
-      .catch((err) => {
-        console.warn('[readAndConfirm] arrayBuffer failed, fallback to rawFile:', err);
-        setPendingFileUpload({ file: rawFile, type });
-      });
+  // ─── Modal confirmation trigger (Instant native file passing) ──────────────
+  const readAndConfirm = (file: File, type: ConfirmFileType) => {
+    setPendingFileUpload({ file, type });
   };
 
   const handleConfirmFileUpload = (file: File) => {
@@ -308,20 +304,16 @@ export function ProfilePage({
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawFile = e.currentTarget?.files?.item(0) ?? e.target?.files?.[0];
-    console.log('[avatar change]', { name: rawFile?.name, size: rawFile?.size, type: rawFile?.type });
     if (!rawFile) return;
-    try { e.target.value = ''; } catch {}
     readAndConfirm(rawFile, 'avatar');
   };
 
-
-  // 📱 Cover: Telegram/WhatsApp-style — 0ms Instant Preview + Silent Background Sync
+  // 📱 Cover: 0ms Instant Preview + Direct Raw Background Upload
   const handleDirectCoverUpload = (rawFile: File) => {
     if (!rawFile) return;
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
     if (!targetUserId) { addToast('يرجى تسجيل الدخول أولاً لتعديل الغلاف', 'error'); return; }
 
-    // ⚡ 1. INSTANT LOCAL PREVIEW (< 1ms)
     try {
       const localUrl = URL.createObjectURL(rawFile);
       setFormData(prev => ({ ...prev, coverUrl: localUrl, cover_url: localUrl }));
@@ -330,30 +322,25 @@ export function ProfilePage({
 
     setIsUploadingCover(true);
 
-    // 🔄 2. Non-blocking Background Upload — fire & forget (Realtime syncs parent)
     (async () => {
       try {
-        const { uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'cover', targetUserId);
-        const permanentUrl = await uploadPromise;
+        const permanentUrl = await uploadRawFileToStorage(rawFile, 'profiles', targetUserId);
         setFormData(prev => ({ ...prev, coverUrl: permanentUrl, cover_url: permanentUrl }));
         if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, coverUrl: permanentUrl, cover_url: permanentUrl } : null);
         await profileService.updateProfile(targetUserId, { coverUrl: permanentUrl, cover_url: permanentUrl });
         addToast('✅ تم حفظ وتثبيت صورة الغلاف بنجاح!', 'success');
-        // NOTE: onSave NOT called here — Supabase Realtime will sync the parent automatically
       } catch (err: any) {
-        if (err?.message !== 'cancelled') addToast('خطأ في حفظ صورة الغلاف: ' + (err.message || ''), 'error');
+        console.error('[Cover Upload Error]', err);
+        addToast('تعذر حفظ صورة الغلاف: ' + (err?.message || 'خطأ غير معروف'), 'error');
       } finally {
         setIsUploadingCover(false);
       }
     })();
   };
 
-  // ⚠️ Same Android Scoped Storage fix as handleAvatarChange above.
   const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawFile = e.currentTarget?.files?.item(0) ?? e.target?.files?.[0];
-    console.log('[cover change]', { name: rawFile?.name, size: rawFile?.size, type: rawFile?.type });
     if (!rawFile) return;
-    try { e.target.value = ''; } catch {}
     readAndConfirm(rawFile, 'cover');
   };
 
@@ -444,57 +431,47 @@ export function ProfilePage({
   }, [formData, user?.id, appUser?.id, profile?.id, isMe, setAppUser, onSave, addToast]);
 
 
-  // 📱 CV: Direct background upload from in-memory file (Telegram/WhatsApp style)
+  // 📱 CV: Direct background upload
   const handleDirectCVUpload = (memFile: File) => {
     const targetUserId = user?.id || appUser?.id || profile?.id || formData?.id;
     if (!targetUserId) { addToast('يجب تسجيل الدخول لرفع السيرة الذاتية', 'error'); return; }
 
-    const meta = {
-      name: memFile.name || `cv_${Date.now()}.pdf`,
-      size: memFile.size,
-    };
-    const fileSizeMB = (meta.size / (1024 * 1024)).toFixed(1);
-    setPendingCVName(meta.name + ' (' + fileSizeMB + ' MB)');
-    addToast('📄 جاري رفع "' + meta.name + '" في الخلفية...');
+    const fileName = memFile.name || `cv_${Date.now()}.pdf`;
+    const fileSizeMB = (memFile.size / (1024 * 1024)).toFixed(1);
+    setPendingCVName(`${fileName} (${fileSizeMB} MB)`);
+    addToast(`📄 جاري رفع "${fileName}"...`);
 
     (async () => {
       try {
-        const { uploadPromise } = await mobileUploadService.uploadFile(memFile, 'cv', targetUserId, {
-          userContext: {
-            name: user?.name || appUser?.name || profile?.name,
-            email: user?.email || appUser?.email || profile?.email,
-          },
-        });
-        const url = await uploadPromise;
+        let url: string;
+        try {
+          url = await uploadRawFileToStorage(memFile, 'profiles', targetUserId);
+        } catch {
+          url = await uploadRawFileToStorage(memFile, 'documents', targetUserId);
+        }
         setFormData(prev => ({ ...prev, cvUrl: url, cv_url: url }));
         setPendingCV(null);
         setPendingCVName(null);
-        const { error: dbError } = await profileService.updateProfile(targetUserId, { cvUrl: url, cv_url: url });
-        if (dbError) {
-          addToast('تم رفع الملف بنجاح مع تنبيه أثناء الحفظ.', 'warning');
-        } else {
-          addToast('✅ تم رفع وتثبيت السيرة الذاتية بنجاح! 🎉', 'success');
-        }
+        await profileService.updateProfile(targetUserId, { cvUrl: url, cv_url: url });
+        addToast('✅ تم رفع وتثبيت السيرة الذاتية بنجاح! 🎉', 'success');
         if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, cvUrl: url, cv_url: url } : null);
       } catch (err: any) {
         setPendingCVName(null);
-        if (err?.message !== 'cancelled') addToast('خطأ في رفع السيرة الذاتية: ' + (err.message || ''), 'error');
+        console.error('[CV Upload Error]', err);
+        addToast('خطأ في رفع السيرة الذاتية: ' + (err?.message || 'تعذر الرفع'), 'error');
       }
     })();
   };
 
-  // 📱 CV: Same Android Scoped Storage fix — reads to memory and opens confirm modal
   const handleCVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawFile = e.currentTarget?.files?.item(0) ?? e.target?.files?.[0];
     if (!rawFile) return;
 
     if (rawFile.size > 25 * 1024 * 1024) {
       addToast('حجم الملف يتجاوز الحد الأقصى (25 ميغابايت)', 'error');
-      try { e.target.value = ''; } catch {}
       return;
     }
 
-    try { e.target.value = ''; } catch {}
     readAndConfirm(rawFile, 'cv');
   };
 

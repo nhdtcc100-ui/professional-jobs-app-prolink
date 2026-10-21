@@ -117,22 +117,39 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
             </div>
           </div>
         )}
-        {isMe && !isUploadingCover && (
+        {isMe && (
           <>
             <label
               htmlFor="cover-file-input-header"
-              className="absolute top-3 right-3 p-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-800 transition-all shadow-md flex items-center gap-1.5 group/btn border border-white/20 dark:border-slate-700 active:scale-95 z-10"
+              className={`absolute top-3 right-3 p-2 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-800 transition-all shadow-md flex items-center gap-1.5 group/btn border border-white/20 dark:border-slate-700 active:scale-95 z-10 ${
+                isUploadingCover ? 'opacity-50 pointer-events-none' : ''
+              }`}
               title="تغيير صورة الغلاف من المعرض"
             >
-              <Camera size={13} className="text-[#0a66c2] dark:text-blue-400" />
-              <span className="text-[9px] font-black text-slate-600 dark:text-slate-200 uppercase tracking-widest hidden group-hover/btn:block">تغيير الغلاف</span>
+              {isUploadingCover ? (
+                <Loader2 size={13} className="animate-spin text-blue-500" />
+              ) : (
+                <Camera size={13} className="text-[#0a66c2] dark:text-blue-400" />
+              )}
+              <span className="text-[9px] font-black text-slate-600 dark:text-slate-200 uppercase tracking-widest hidden group-hover/btn:block">
+                تغيير الغلاف
+              </span>
             </label>
             <input
               ref={coverInputRef}
               id="cover-file-input-header"
               type="file"
-              accept="image/jpeg,image/png,image/webp,image/jpg,image/heic,image/*"
-              style={{ position: 'fixed', opacity: 0, width: 1, height: 1, top: -9999, left: -9999, pointerEvents: 'none' }}
+              accept="image/*"
+              style={{
+                position: 'absolute',
+                width: '1px',
+                height: '1px',
+                padding: 0,
+                margin: '-1px',
+                overflow: 'hidden',
+                clip: 'rect(0, 0, 0, 0)',
+                border: 0,
+              }}
               onChange={handleCoverChange}
             />
           </>
@@ -158,21 +175,36 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 </div>
               )}
             </div>
-            {isMe && !isUploadingAvatar && (
+            {isMe && (
               <>
                 <label
                   htmlFor="avatar-file-input-header"
-                  className="absolute bottom-1 left-1 p-1.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-700 shadow-md transition-all border border-slate-100 dark:border-slate-700 active:scale-95 z-10"
+                  className={`absolute bottom-1 left-1 p-1.5 bg-white/90 dark:bg-slate-800/90 backdrop-blur-md rounded-xl cursor-pointer hover:bg-white dark:hover:bg-slate-700 shadow-md transition-all border border-slate-100 dark:border-slate-700 active:scale-95 z-10 ${
+                    isUploadingAvatar ? 'opacity-50 pointer-events-none' : ''
+                  }`}
                   title="تغيير الصورة الشخصية من المعرض"
                 >
-                  <Camera size={11} className="text-[#0a66c2] dark:text-blue-400" />
+                  {isUploadingAvatar ? (
+                    <Loader2 size={11} className="animate-spin text-blue-500" />
+                  ) : (
+                    <Camera size={11} className="text-[#0a66c2] dark:text-blue-400" />
+                  )}
                 </label>
                 <input
                   ref={avatarInputRef}
                   id="avatar-file-input-header"
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,image/jpg,image/heic,image/*"
-                  style={{ position: 'fixed', opacity: 0, width: 1, height: 1, top: -9999, left: -9999, pointerEvents: 'none' }}
+                  accept="image/*"
+                  style={{
+                    position: 'absolute',
+                    width: '1px',
+                    height: '1px',
+                    padding: 0,
+                    margin: '-1px',
+                    overflow: 'hidden',
+                    clip: 'rect(0, 0, 0, 0)',
+                    border: 0,
+                  }}
                   onChange={handleAvatarChange}
                 />
               </>
