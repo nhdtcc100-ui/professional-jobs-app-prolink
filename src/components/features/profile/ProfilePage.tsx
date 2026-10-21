@@ -250,10 +250,11 @@ export function ProfilePage({
     })();
   };
 
-  // ⚠️ MUST be synchronous — async + await here causes SyntheticEvent nullification
-  // and creates a double-save loop (await → profile update → useEffect → formData reset)
+  // ⚠️ MUST be synchronous AND must read file to memory IMMEDIATELY.
+  // Android Scoped Storage (10+) gives a ONE-TIME content:// URI permission.
+  // After any Promise/await boundary the URI is revoked → files from Files app or Studio fail.
+  // Fix: call rawFile.arrayBuffer() synchronously → creates stable in-memory copy.
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Read files SYNCHRONOUSLY before any suspension
     const rawFile = e.currentTarget?.files?.item(0) ?? e.target?.files?.[0];
     console.log("[avatar change]", {
       filesLength: e.target?.files?.length,
@@ -261,8 +262,19 @@ export function ProfilePage({
       type: rawFile?.type,
       size: rawFile?.size,
     });
-    if (rawFile) handleDirectAvatarUpload(rawFile); // fire & forget — no await
+    if (!rawFile) return;
+    // Capture metadata before clearing (some browsers null the File after e.target.value = '')
+    const meta = { name: rawFile.name || `photo_${Date.now()}.jpg`, type: rawFile.type || 'image/jpeg', lastModified: rawFile.lastModified };
     try { e.target.value = ''; } catch {}
+    // 📱 CRITICAL: arrayBuffer() is called synchronously here — the OS file read
+    // is initiated while we still hold the one-time Android URI grant.
+    rawFile.arrayBuffer()
+      .then(buf => {
+        const memFile = new File([buf], meta.name, { type: meta.type, lastModified: meta.lastModified });
+        (memFile as any).__isSnapshot = true; // tells mobileUploadService to skip re-snapshot
+        handleDirectAvatarUpload(memFile);
+      })
+      .catch(() => handleDirectAvatarUpload(rawFile)); // fallback if arrayBuffer unavailable
   };
 
 
@@ -299,7 +311,7 @@ export function ProfilePage({
     })();
   };
 
-  // ⚠️ MUST be synchronous — same reason as handleAvatarChange above
+  // ⚠️ Same Android Scoped Storage fix as handleAvatarChange above.
   const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawFile = e.currentTarget?.files?.item(0) ?? e.target?.files?.[0];
     console.log("[cover change]", {
@@ -308,8 +320,16 @@ export function ProfilePage({
       type: rawFile?.type,
       size: rawFile?.size,
     });
-    if (rawFile) handleDirectCoverUpload(rawFile); // fire & forget — no await
+    if (!rawFile) return;
+    const meta = { name: rawFile.name || `cover_${Date.now()}.jpg`, type: rawFile.type || 'image/jpeg', lastModified: rawFile.lastModified };
     try { e.target.value = ''; } catch {}
+    rawFile.arrayBuffer()
+      .then(buf => {
+        const memFile = new File([buf], meta.name, { type: meta.type, lastModified: meta.lastModified });
+        (memFile as any).__isSnapshot = true;
+        handleDirectCoverUpload(memFile);
+      })
+      .catch(() => handleDirectCoverUpload(rawFile));
   };
 
   
@@ -399,60 +419,68 @@ export function ProfilePage({
   }, [formData, user?.id, appUser?.id, profile?.id, isMe, setAppUser, onSave, addToast]);
 
 
-  // 📱 CV: Telegram/WhatsApp-style — instant optimistic visual attach + background upload
-  const handleCVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    let rawFile = e.target.files?.[0];
-    const targetInput = e.target;
-    if (!rawFile) {
-      await new Promise(r => setTimeout(r, 120));
-      rawFile = targetInput?.files?.[0];
-    }
+  // 📱 CV: same Android Scoped Storage fix — read file to memory IMMEDIATELY
+  const handleCVUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawFile = e.currentTarget?.files?.item(0) ?? e.target?.files?.[0];
     if (!rawFile) return;
 
     if (rawFile.size > 25 * 1024 * 1024) {
       addToast('حجم الملف يتجاوز الحد الأقصى (25 ميغابايت)', 'error');
-      if (targetInput) targetInput.value = '';
+      try { e.target.value = ''; } catch {}
       return;
     }
 
     const targetUserId = user?.id || appUser?.id || profile?.id || formData?.id;
     if (!targetUserId) { addToast('يجب تسجيل الدخول لرفع السيرة الذاتية', 'error'); return; }
 
-    const fileName = rawFile.name || 'السيرة الذاتية';
-    const fileSizeMB = (rawFile.size / (1024 * 1024)).toFixed(1);
-    setPendingCVName(fileName + ' (' + fileSizeMB + ' MB)');
-    addToast('📄 جاري رفع "' + fileName + '" في الخلفية...');
+    const meta = {
+      name: rawFile.name || `cv_${Date.now()}.pdf`,
+      type: rawFile.type || 'application/pdf',
+      lastModified: rawFile.lastModified,
+      size: rawFile.size,
+    };
+    try { e.target.value = ''; } catch {}
 
-    // Non-blocking background upload (Telegram style)
-    (async () => {
-      try {
-        const { uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'cv', targetUserId, {
-          userContext: {
-            name: user?.name || appUser?.name || profile?.name,
-            email: user?.email || appUser?.email || profile?.email,
-          },
-        });
+    const fileSizeMB = (meta.size / (1024 * 1024)).toFixed(1);
+    setPendingCVName(meta.name + ' (' + fileSizeMB + ' MB)');
+    addToast('📄 جاري رفع "' + meta.name + '" في الخلفية...');
 
-        const url = await uploadPromise;
-        setFormData(prev => ({ ...prev, cvUrl: url, cv_url: url }));
-        setPendingCV(null);
+    // CRITICAL: read to memory immediately while Android URI grant is valid
+    rawFile.arrayBuffer()
+      .then(buf => {
+        const memFile = new File([buf], meta.name, { type: meta.type, lastModified: meta.lastModified });
+        (memFile as any).__isSnapshot = true;
+        // Non-blocking background upload (Telegram style)
+        (async () => {
+          try {
+            const { uploadPromise } = await mobileUploadService.uploadFile(memFile, 'cv', targetUserId, {
+              userContext: {
+                name: user?.name || appUser?.name || profile?.name,
+                email: user?.email || appUser?.email || profile?.email,
+              },
+            });
+            const url = await uploadPromise;
+            setFormData(prev => ({ ...prev, cvUrl: url, cv_url: url }));
+            setPendingCV(null);
+            setPendingCVName(null);
+            const { error: dbError } = await profileService.updateProfile(targetUserId, { cvUrl: url, cv_url: url });
+            if (dbError) {
+              addToast('تم رفع الملف بنجاح مع تنبيه أثناء الحفظ.', 'warning');
+            } else {
+              addToast('✅ تم رفع وتثبيت السيرة الذاتية بنجاح! 🎉', 'success');
+            }
+            if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, cvUrl: url, cv_url: url } : null);
+          } catch (err: any) {
+            setPendingCVName(null);
+            if (err?.message !== 'cancelled') addToast('خطأ في رفع السيرة الذاتية: ' + (err.message || ''), 'error');
+          }
+        })();
+      })
+      .catch(() => {
+        // Fallback: use raw file directly (no URI expiry risk for this case)
         setPendingCVName(null);
-
-        const { error: dbError } = await profileService.updateProfile(targetUserId, { cvUrl: url, cv_url: url });
-        if (dbError) {
-          addToast('تم رفع الملف بنجاح مع تنبيه أثناء الحفظ.', 'warning');
-        } else {
-          addToast('✅ تم رفع وتثبيت السيرة الذاتية بنجاح! 🎉', 'success');
-        }
-        if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, cvUrl: url, cv_url: url } : null);
-        if (onSave) onSave({ cvUrl: url, cv_url: url });
-      } catch (err: any) {
-        setPendingCVName(null);
-        if (err?.message !== 'cancelled') addToast('خطأ في رفع السيرة الذاتية: ' + (err.message || ''), 'error');
-      } finally {
-        if (targetInput) targetInput.value = '';
-      }
-    })();
+        addToast('تعذر قراءة الملف من هذا المصدر. حاول بطريقة أخرى.', 'error');
+      });
   };
 
   const handleDownloadCV = () => {

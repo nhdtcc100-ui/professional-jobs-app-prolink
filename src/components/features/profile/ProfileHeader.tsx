@@ -132,7 +132,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               id="cover-file-input-header"
               type="file"
               accept="image/jpeg,image/png,image/webp,image/jpg,image/heic,image/*"
-              className="hidden"
+              style={{ position: 'fixed', opacity: 0, width: 1, height: 1, top: -9999, left: -9999, pointerEvents: 'none' }}
               onChange={handleCoverChange}
             />
           </>
@@ -172,7 +172,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                   id="avatar-file-input-header"
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/jpg,image/heic,image/*"
-                  className="hidden"
+                  style={{ position: 'fixed', opacity: 0, width: 1, height: 1, top: -9999, left: -9999, pointerEvents: 'none' }}
                   onChange={handleAvatarChange}
                 />
               </>
