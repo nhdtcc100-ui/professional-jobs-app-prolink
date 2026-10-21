@@ -791,7 +791,7 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
           type="file"
           onChange={handleCVUpload}
           accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pdf,.doc,.docx"
-          className="hidden"
+          style={{ position: 'fixed', opacity: 0, width: 1, height: 1, top: -9999, left: -9999, pointerEvents: 'none' }}
         />
 
         {pendingCVName && (
