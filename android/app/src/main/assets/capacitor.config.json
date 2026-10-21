@@ -1,0 +1,31 @@
+{
+	"appId": "com.prolink.app",
+	"appName": "ProLink",
+	"webDir": "dist",
+	"server": {
+		"androidScheme": "https"
+	},
+	"android": {
+		"allowMixedContent": true,
+		"captureInput": true,
+		"windowSoftInputMode": "adjustResize"
+	},
+	"plugins": {
+		"Keyboard": {
+			"resize": "body",
+			"style": "dark",
+			"resizeOnFullScreen": true
+		},
+		"StatusBar": {
+			"style": "default",
+			"overlaysWebView": false,
+			"backgroundColor": "#ffffff"
+		},
+		"SplashScreen": {
+			"launchShowDuration": 2000,
+			"backgroundColor": "#0a66c2",
+			"androidSplashResourceName": "splash",
+			"showSpinner": false
+		}
+	}
+}
