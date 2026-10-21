@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Briefcase, ArrowRight, Lock, Send, Loader2, CheckCircle2, AlertCircle, ArrowLeftRight } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { profileService } from '../../../lib/services/profileService';
 import { imageService, snapshotFile } from '../../../lib/services/imageService';
+import { mobileUploadService } from '../../../lib/services/mobileUploadService';
 import { cvService } from '../../../lib/services/cvService';
 import { PostTransmissionCard } from '../index';
 import { AppUser, Post } from '../../../types';
@@ -215,137 +216,65 @@ export function ProfilePage({
     });
   }, [profile]);
 
-  // ── Avatar: Direct Upload & Database Persistence ──
+
+  // 📱 Avatar: Telegram/WhatsApp-style — instant preview + background upload
   const handleDirectAvatarUpload = async (rawFile: File) => {
     if (!rawFile) return;
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
-    if (!targetUserId) {
-      addToast('تعذر تحديد حساب المستخدم لتحديث الصورة', 'error');
-      return;
-    }
+    if (!targetUserId) { addToast('يجب تسجيل الدخول لتحميل الصورة', 'error'); return; }
 
     setIsUploadingAvatar(true);
-    // 🛡️ Safety watchdog: covers the 25s base64 flow + cloud photo download overhead
-    const safetyTimer = setTimeout(() => {
-      setIsUploadingAvatar(false);
-      addToast('استغرق التحميل وقتاً طويلاً. حاول اختيار صورة أصغر أو من المعرض المحلي.', 'error');
-    }, 45000);
-
-    // Instant local preview for immediate visual feedback (0ms delay)
     try {
-      const localUrl = URL.createObjectURL(rawFile);
-      setFormData(prev => ({ ...prev, avatar: localUrl }));
-    } catch (previewErr) {
-      console.warn("⚠️ [AvatarUpload] preview error:", previewErr);
-    }
-
-    try {
-      let permanentUrl = await imageService.processAndUpload(rawFile, targetUserId, 'profiles');
-
-      // 🔬 If storage returned a large base64 (Storage RLS blocked), compress to ≤80KB for DB storage
-      if (permanentUrl.startsWith('data:') && permanentUrl.length > 80 * 1024) {
-        permanentUrl = await imageService.compactBase64(permanentUrl, 200, 0.55) || permanentUrl;
-      }
-
+      const { preview, uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'avatar', targetUserId);
+      // ⚡ Instant preview < 16ms (Telegram UX)
+      if (preview) setFormData(prev => ({ ...prev, avatar: preview }));
+      // 🔄 Background upload — non-blocking, user sees preview immediately
+      const permanentUrl = await uploadPromise;
       setFormData(prev => ({ ...prev, avatar: permanentUrl, avatar_url: permanentUrl }));
-
-      // Save to Supabase DB — if it fails, the local cache from profileService still persists it
-      const { error: dbError } = await profileService.updateProfile(targetUserId, {
-        avatar: permanentUrl,
-        avatar_url: permanentUrl
-      });
-      if (dbError) {
-        console.warn('⚠️ [AvatarUpload] DB update warning (local preview still valid):', dbError);
-        addToast('تم تحديث الصورة محلياً، مع تنبيه أثناء المزامنة مع الخادم.', 'warning');
-      } else {
-        addToast('تم حفظ وتثبيت الصورة الشخصية بنجاح! 📸', 'success');
-      }
-
-      if (isMe && setAppUser) {
-        setAppUser((prev: any) => prev ? { ...prev, avatar: permanentUrl, avatar_url: permanentUrl } : null);
-      }
-      if (onSave) {
-        await onSave({ avatar: permanentUrl, avatar_url: permanentUrl });
-      }
+      await profileService.updateProfile(targetUserId, { avatar: permanentUrl, avatar_url: permanentUrl });
+      addToast('✅ تم تحديث صورة الملف الشخصي بنجاح!', 'success');
+      if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, avatar: permanentUrl, avatar_url: permanentUrl } : null);
+      if (onSave) await onSave({ avatar: permanentUrl, avatar_url: permanentUrl });
     } catch (err: any) {
-      console.error("❌ [AvatarUpload] خطأ في الرفع:", err);
-      addToast('فشل رفع الصورة: ' + (err.message || ''), 'error');
-    } finally {
-      clearTimeout(safetyTimer);
-      setIsUploadingAvatar(false);
-    }
+      if (err?.message !== 'cancelled') addToast('خطأ في رفع الصورة: ' + (err.message || ''), 'error');
+    } finally { setIsUploadingAvatar(false); }
   };
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    let rawFile = e.target.files?.[0];
-    const targetInput = e.target;
-    if (!rawFile) {
-      await new Promise(r => setTimeout(r, 120));
-      rawFile = targetInput?.files?.[0];
-    }
+    const rawFile = e.target.files?.[0];
     if (rawFile) await handleDirectAvatarUpload(rawFile);
-    if (targetInput) targetInput.value = '';
-  };
+    e.target.value = '';
+  }
 
-  // ── Cover: Direct Upload & Database Persistence ──
+
+  // 📱 Cover: Telegram/WhatsApp-style — instant preview + background upload
   const handleDirectCoverUpload = async (rawFile: File) => {
     if (!rawFile) return;
     const targetUserId = user?.id || appUser?.id || (profile as any)?.id;
-    if (!targetUserId) {
-      addToast('تعذر تحديد حساب المستخدم لتحديث الغلاف', 'error');
-      return;
-    }
+    if (!targetUserId) { addToast('يجب تسجيل الدخول لتحميل صورة الغلاف', 'error'); return; }
 
     setIsUploadingCover(true);
-    // 🛡️ Safety watchdog: covers the 25s base64 flow + cloud photo download overhead
-    const safetyTimer = setTimeout(() => {
-      setIsUploadingCover(false);
-      addToast('استغرق التحميل وقتاً طويلاً. حاول اختيار صورة أصغر أو من المعرض المحلي.', 'error');
-    }, 45000);
-
-    // Instant local preview for immediate visual feedback (0ms delay)
     try {
-      const localUrl = URL.createObjectURL(rawFile);
-      setFormData(prev => ({ ...prev, coverUrl: localUrl, cover_url: localUrl }));
-    } catch (previewErr) {
-      console.warn("⚠️ [CoverUpload] preview error:", previewErr);
-    }
-
-    try {
-      let permanentUrl = await imageService.processAndUpload(rawFile, targetUserId, 'profiles');
-
-      // 🔬 If storage returned a large base64 (Storage RLS blocked), compress to ≤80KB for DB storage
-      if (permanentUrl.startsWith('data:') && permanentUrl.length > 80 * 1024) {
-        permanentUrl = await imageService.compactBase64(permanentUrl, 300, 0.55) || permanentUrl;
-      }
-
+      const { preview, uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'cover', targetUserId);
+      // ⚡ Instant preview < 16ms
+      if (preview) setFormData(prev => ({ ...prev, coverUrl: preview, cover_url: preview }));
+      // 🔄 Background upload
+      const permanentUrl = await uploadPromise;
       setFormData(prev => ({ ...prev, coverUrl: permanentUrl, cover_url: permanentUrl }));
-
-      const { error: dbError } = await profileService.updateProfile(targetUserId, {
-        coverUrl: permanentUrl,
-        cover_url: permanentUrl
-      });
-      if (dbError) {
-        console.warn('⚠️ [CoverUpload] DB update warning (local preview still valid):', dbError);
-        addToast('تم تحديث الغلاف محلياً، مع تنبيه أثناء المزامنة مع الخادم.', 'warning');
-      } else {
-        addToast('تم حفظ وتثبيت صورة الغلاف بنجاح! 🖼️', 'success');
-      }
-
-      if (isMe && setAppUser) {
-        setAppUser((prev: any) => prev ? { ...prev, coverUrl: permanentUrl, cover_url: permanentUrl } : null);
-      }
-      if (onSave) {
-        await onSave({ coverUrl: permanentUrl, cover_url: permanentUrl });
-      }
+      await profileService.updateProfile(targetUserId, { coverUrl: permanentUrl, cover_url: permanentUrl });
+      addToast('✅ تم تحديث صورة الغلاف بنجاح!', 'success');
+      if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, coverUrl: permanentUrl, cover_url: permanentUrl } : null);
+      if (onSave) await onSave({ coverUrl: permanentUrl, cover_url: permanentUrl });
     } catch (err: any) {
-      console.error("❌ [CoverUpload] خطأ في الرفع:", err);
-      addToast('فشل رفع الغلاف: ' + (err.message || ''), 'error');
-    } finally {
-      clearTimeout(safetyTimer);
-      setIsUploadingCover(false);
-    }
+      if (err?.message !== 'cancelled') addToast('خطأ في رفع صورة الغلاف: ' + (err.message || ''), 'error');
+    } finally { setIsUploadingCover(false); }
   };
+
+  const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawFile = e.target.files?.[0];
+    if (rawFile) await handleDirectCoverUpload(rawFile);
+    e.target.value = '';
+  }
 
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let rawFile = e.target.files?.[0];
@@ -441,7 +370,8 @@ export function ProfilePage({
     }
   }, [formData, user?.id, appUser?.id, profile?.id, isMe, setAppUser, onSave, addToast]);
 
-  // ── CV: Direct Upload & Instant Persistence from Mobile Storage ──
+
+  // 📱 CV: Telegram/WhatsApp-style — snapshot immediately + background upload
   const handleCVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     let rawFile = e.target.files?.[0];
     const targetInput = e.target;
@@ -452,67 +382,46 @@ export function ProfilePage({
     if (!rawFile) return;
 
     if (rawFile.size > 25 * 1024 * 1024) {
-      addToast('حجم ملف السيرة الذاتية كبير جداً (أقصى حد 25 ميجابايت)', 'error');
+      addToast('حجم الملف يتجاوز الحد الأقصى (25 ميغابايت)', 'error');
       if (targetInput) targetInput.value = '';
       return;
     }
 
     const targetUserId = user?.id || appUser?.id || profile?.id || formData?.id;
-    if (!targetUserId) {
-      addToast('يرجى تسجيل الدخول أولاً لرفع السيرة الذاتية', 'error');
-      return;
-    }
+    if (!targetUserId) { addToast('يجب تسجيل الدخول لرفع السيرة الذاتية', 'error'); return; }
 
-    addToast(`جاري رفع "${rawFile.name || 'السيرة الذاتية'}" من ذاكرة الجهاز... ⏳`);
+    const fileName = rawFile.name || 'السيرة الذاتية';
+    setPendingCVName(fileName);
+    addToast(`📄 جاري رفع "${fileName}"...`);
 
     try {
-      // 1. Snapshot file into in-memory ArrayBuffer before any input clearing
-      let file: File = rawFile;
-      try {
-        file = await snapshotFile(rawFile);
-      } catch (snapErr) {
-        console.warn("⚠️ [CVUpload] snapshotFile warning:", snapErr);
-      }
-
-      // 2. Upload directly to Supabase Storage
-      const { data: url, error: uploadErr } = await cvService.uploadCV(targetUserId, file, {
-        name: user?.name || appUser?.name || profile?.name,
-        email: user?.email || appUser?.email || profile?.email,
+      const { uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'cv', targetUserId, {
+        userContext: {
+          name: user?.name || appUser?.name || profile?.name,
+          email: user?.email || appUser?.email || profile?.email,
+        },
       });
 
-      if (uploadErr || !url) throw uploadErr || new Error('فشل رفع ملف السيرة الذاتية');
-
-      // 3. Immediately persist to database
-      const updatedFormData = { ...formData, cvUrl: url, cv_url: url };
-      setFormData(updatedFormData);
+      const url = await uploadPromise;
+      setFormData(prev => ({ ...prev, cvUrl: url, cv_url: url }));
       setPendingCV(null);
       setPendingCVName(null);
 
-      const { error: dbError } = await profileService.updateProfile(targetUserId, {
-        cvUrl: url,
-        cv_url: url,
-      });
-
+      const { error: dbError } = await profileService.updateProfile(targetUserId, { cvUrl: url, cv_url: url });
       if (dbError) {
-        console.warn('⚠️ [CVUpload] DB update warning:', dbError);
-        addToast('تم رفع الملف بنجاح إلى الخادم.', 'success');
+        addToast('تم رفع السيرة الذاتية لكن ظهرت مشكلة في الحفظ.', 'warning');
       } else {
-        addToast('تم رفع وتثبيت السيرة الذاتية في ملفك الشخصي بنجاح! 📄', 'success');
+        addToast('✅ تم رفع السيرة الذاتية وحفظها بنجاح! 🎉', 'success');
       }
-
-      if (isMe && setAppUser) {
-        setAppUser((prev: any) => prev ? { ...prev, cvUrl: url, cv_url: url } : null);
-      }
-      if (onSave) {
-        await onSave({ cvUrl: url, cv_url: url });
-      }
-    } catch (readErr: any) {
-      console.error("❌ [CVUpload] فشل رفع الملف من الجهاز:", readErr);
-      addToast('فشل رفع السيرة الذاتية: ' + (readErr.message || ''), 'error');
+      if (isMe && setAppUser) setAppUser((prev: any) => prev ? { ...prev, cvUrl: url, cv_url: url } : null);
+      if (onSave) await onSave({ cvUrl: url, cv_url: url });
+    } catch (err: any) {
+      setPendingCVName(null);
+      if (err?.message !== 'cancelled') addToast('خطأ في رفع السيرة الذاتية: ' + (err.message || ''), 'error');
     } finally {
       if (targetInput) targetInput.value = '';
     }
-  };
+  }
 
   const handleDownloadCV = () => {
     if (formData.cvUrl) {
