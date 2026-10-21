@@ -250,10 +250,14 @@ export function ProfilePage({
   };
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawFile = e.target.files?.[0];
+    let rawFile = e.target.files?.[0];
+    if (!rawFile) {
+      await new Promise(r => setTimeout(r, 80));
+      rawFile = e.target.files?.[0];
+    }
     if (rawFile) await handleDirectAvatarUpload(rawFile);
     e.target.value = '';
-  }
+  };
 
 
   // 📱 Cover: Telegram/WhatsApp-style — 0ms Instant Preview + Silent Background Sync
@@ -290,10 +294,14 @@ export function ProfilePage({
   };
 
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawFile = e.target.files?.[0];
+    let rawFile = e.target.files?.[0];
+    if (!rawFile) {
+      await new Promise(r => setTimeout(r, 80));
+      rawFile = e.target.files?.[0];
+    }
     if (rawFile) await handleDirectCoverUpload(rawFile);
     e.target.value = '';
-  }
+  };
 
   
 
