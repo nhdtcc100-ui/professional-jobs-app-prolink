@@ -250,6 +250,14 @@ export function ProfilePage({
   };
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const file = input.files?.item(0);
+    console.log("[avatar change]", {
+      filesLength: input.files?.length,
+      name: file?.name,
+      type: file?.type,
+      size: file?.size,
+    });
     let rawFile = e.target.files?.[0];
     if (!rawFile) {
       await new Promise(r => setTimeout(r, 80));
@@ -294,6 +302,14 @@ export function ProfilePage({
   };
 
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.currentTarget;
+    const file = input.files?.item(0);
+    console.log("[cover change]", {
+      filesLength: input.files?.length,
+      name: file?.name,
+      type: file?.type,
+      size: file?.size,
+    });
     let rawFile = e.target.files?.[0];
     if (!rawFile) {
       await new Promise(r => setTimeout(r, 80));
