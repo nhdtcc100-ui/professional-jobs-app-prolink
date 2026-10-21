@@ -820,14 +820,25 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
                 </p>
               </div>
             </div>
-            <a
-              href={formData.cv_url}
-              target="_blank"
-              rel="noreferrer"
-              className="px-4 py-2 bg-white text-emerald-600 text-[10px] font-black rounded-xl shadow-sm hover:shadow-md transition-all shrink-0"
-            >
-              عرض الملف
-            </a>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  const url = formData.cv_url;
+                  const sep = url.includes('?') ? '&' : '?';
+                  window.open(url + sep + 't=' + Date.now(), '_blank');
+                }}
+                className="px-3 py-2 bg-white text-emerald-600 text-[10px] font-black rounded-xl shadow-sm hover:shadow-md transition-all cursor-pointer"
+              >
+                عرض السيرة
+              </button>
+              <label
+                htmlFor="profile-cv-upload-input"
+                className="px-3 py-2 bg-blue-50 text-blue-600 text-[10px] font-black rounded-xl hover:bg-blue-100 transition-all cursor-pointer"
+              >
+                استبدال الملف
+              </label>
+            </div>
           </div>
         )}
       </GlassCard>

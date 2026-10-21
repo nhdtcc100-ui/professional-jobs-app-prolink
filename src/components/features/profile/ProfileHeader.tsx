@@ -277,7 +277,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 <button
                   onClick={() => {
                     if (formData.cv_url) {
-                      window.open(formData.cv_url, '_blank');
+                      const sep = formData.cv_url.includes('?') ? '&' : '?';
+                      window.open(formData.cv_url + sep + 't=' + Date.now(), '_blank');
                     } else {
                       handleDownloadCV();
                     }
