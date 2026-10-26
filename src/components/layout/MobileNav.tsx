@@ -362,7 +362,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                   <DrawerItem icon={<Building2 size={20} className="text-blue-500" />} label="نظام الموارد البشرية (ERP)" onClick={() => { setActiveTab('erp'); setShowMobileMenu(false); }} color="text-blue-700 dark:text-blue-300" />
                 )}
                 <DrawerItem icon={<MessageSquare size={20} className="text-indigo-500" />} label="المجموعات المهنية 👥" onClick={() => { setActiveTab('groups'); setShowMobileMenu(false); }} color="text-indigo-700 dark:text-indigo-300" />
-                <DrawerItem icon={<Wrench size={20} className="text-blue-500" />} label="سوق الخدمات والمهن 🔧" onClick={() => { setActiveTab('home'); setShowMobileMenu(false); }} color="text-blue-700 dark:text-blue-300" />
+                <DrawerItem icon={<Wrench size={20} className="text-blue-500" />} label="سوق الخدمات والمهن 🔧" onClick={() => { setActiveTab('services'); setShowMobileMenu(false); }} color="text-blue-700 dark:text-blue-300" />
                 {appUser?.isAdmin && (
                   <DrawerItem icon={<Shield size={20} className="text-red-500" />} label="لوحة التحكم العليا" onClick={() => { setShowAdmin(true); setShowMobileMenu(false); }} color="text-red-700 dark:text-red-300" />
                 )}

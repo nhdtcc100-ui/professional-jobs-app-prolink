@@ -94,12 +94,21 @@ function App() {
     setAntiInspectUser(appUser);
   }, [appUser]);
 
-  // \u2500\u2500 \u062e\u0631\u0648\u062c \u0648\u0636\u0639 \u0627\u0644\u0632\u0627\u0626\u0631 \u062a\u0644\u0642\u0627\u0626\u064a\u0627\u064b \u0639\u0646\u062f \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644 \u2500\u2500
+  // ── خروج وضع الزائر تلقائياً عند تسجيل الدخول ──
   useEffect(() => {
     if (user && isGuestMode) {
       exitGuestMode();
     }
   }, [user, isGuestMode, exitGuestMode]);
+
+  // ── requireAuth: يجب أن يكون هنا (قبل أي early return) لاحترام Rules of Hooks ──
+  const requireAuth = useCallback((message?: string) => {
+    if (!appUser) {
+      addToast(message || 'سجّل الدخول للتفاعل مع المحتوى 🔒', 'error');
+      return false;
+    }
+    return true;
+  }, [appUser, addToast]);
 
   const [isApplying, setIsApplying] = useState(false);
   const [applyingJob, setApplyingJob] = useState<Job | null>(null);
@@ -665,7 +674,7 @@ function App() {
           <div className="absolute top-0 w-24 h-24 border-4 border-blue-600 border-t-transparent rounded-[2.5rem] animate-spin" />
           <div className="absolute inset-0 m-auto w-16 h-16 rounded-2xl overflow-hidden shadow-2xl border-2 border-white/40 bg-gradient-to-br from-[#0a2463] via-[#1e4fd9] to-[#002d5b] flex items-center justify-center">
             <img 
-              src="/logo.png" 
+              src={`${import.meta.env.BASE_URL}logo.png`} 
               className="w-full h-full object-cover" 
               alt="منصة عمل" 
               onError={(e) => {
@@ -703,14 +712,7 @@ function App() {
     );
   }
 
-  // ── requireAuth: يمنع الزائر من التفاعل ──
-  const requireAuth = useCallback((message?: string) => {
-    if (!appUser) {
-      addToast(message || 'سجّل الدخول للتفاعل مع المحتوى 🔒', 'error');
-      return false;
-    }
-    return true;
-  }, [appUser, addToast]);
+  // requireAuth تم نقله إلى الأعلى (قبل early returns) لإصلاح React Error #300
 
   // ── Guard: show auth screen if not logged in AND not in guest mode ──
   if (!user && !isGuestMode) {
@@ -942,15 +944,7 @@ function App() {
                     jobs={jobs}
                   />
 
-                  {/* 🔧 سوق الخدمات والمهن الحرة مدمج في الصفحة الرئيسية */}
-                  <HomeServicesSection
-                    appUser={appUser}
-                    onUserClick={(u) => {
-                      setSelectedProfile(u);
-                      setActiveTab('profile');
-                    }}
-                    onRequireAuth={requireAuth}
-                  />
+                  {/* 🔧 سوق الخدمات انتقل لصفحته المستقلة — انقر على أيقونة الخدمات في شريط التنقل */}
 
                   {/* Smart Job Banner — only for seekers with profile data */}
                   <SmartJobBanner

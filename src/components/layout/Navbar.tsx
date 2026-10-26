@@ -61,7 +61,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="relative flex items-center gap-2 md:gap-3">
               <div className="relative w-10 h-10 md:w-12 md:h-12 rounded-2xl shadow-2xl shadow-blue-200/50 group-hover:scale-110 group-hover:rotate-[6deg] transition-all active:scale-90 overflow-hidden border border-white/20 bg-gradient-to-br from-[#0a2463] via-[#1e4fd9] to-[#002d5b]">
                 <img
-                  src="/logo.png"
+                  src={`${import.meta.env.BASE_URL}logo.png`}
                   className="w-full h-full object-cover"
                   alt="عمل"
                   onError={(e) => {
@@ -102,6 +102,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <NavbarItem icon={<Briefcase size={22} />} label="الوظائف" active={activeTab === 'jobs'} onClick={() => setActiveTab('jobs')} />
+          <NavbarItem icon={<Wrench size={22} />} label="الخدمات" active={activeTab === 'services'} onClick={() => setActiveTab('services')} />
           {appUser?.isAdmin && (
             <NavbarItem icon={<Building2 size={22} />} label="الموارد" active={activeTab === 'erp'} onClick={() => setActiveTab('erp')} />
           )}
@@ -206,7 +207,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           onClick={() => { setActiveTab('about'); setSearchQuery(''); }}
         >
           <div className="relative w-10 h-10 rounded-2xl shadow-lg overflow-hidden bg-gradient-to-br from-[#0a2463] via-[#1e4fd9] to-[#002d5b]">
-            <img src="/logo.png" className="w-full h-full object-cover" alt="عمل"
+            <img src={`${import.meta.env.BASE_URL}logo.png`} className="w-full h-full object-cover" alt="عمل"
               onError={(e) => {
                 const el = e.target as HTMLImageElement; el.style.display = 'none';
                 const fb = el.parentElement?.querySelector('.logo-fallback') as HTMLElement;
