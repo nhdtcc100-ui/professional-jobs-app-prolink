@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Briefcase, Phone, PhoneOff, RefreshCw } from 'lucide-react';
 import { supabase } from './lib/supabase';
@@ -26,6 +26,7 @@ import { AlertBanner } from './components/features/security/AlertBanner';
 import { SecurityAlertToast } from './components/features/security/SecurityAlertToast';
 import { initAntiInspect, setAntiInspectUser } from './lib/security/antiInspect';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { GuestBanner } from './components/common/GuestBanner';
 import { isJobPoster, canUserPostAndInteract } from './lib/utils/roleUtils';
 import { JobCategoriesCard } from './components/features/missions/JobCategoriesCard';
 import { getJobCategory, isJobInCategory } from './lib/utils/jobCategoryUtils';
@@ -52,6 +53,7 @@ const AdminDashboard  = lazy(() => import('./components/features/AdminDashboard'
 const ERPView         = lazy(() => import('./components/features/erp/ERPView').then(m => ({ default: m.ERPView })));
 const AboutPage       = lazy(() => import('./components/features/AboutPage').then(m => ({ default: m.AboutPage })));
 const ProfilePage     = lazy(() => import('./components/features/profile/ProfilePage').then(m => ({ default: m.ProfilePage })));
+const ServicesView    = lazy(() => import('./components/features/services/ServicesView').then(m => ({ default: m.ServicesView })));
 
 // Fallback spinner for Suspense
 const TabSkeleton = () => (
@@ -78,7 +80,8 @@ function App() {
     authEmail, setAuthEmail, authPhone, setAuthPhone, authName, setAuthName, authPassword, setAuthPassword,
     myGroups, fetchMyGroups, allGroups, fetchGroups,
     isPublishingArticle,
-    theme, toggleTheme, refreshData
+    theme, toggleTheme, refreshData,
+    isGuestMode, enterGuestMode, exitGuestMode,
   } = useAppContext();
 
   useEffect(() => {
@@ -89,6 +92,13 @@ function App() {
   useEffect(() => {
     setAntiInspectUser(appUser);
   }, [appUser]);
+
+  // \u2500\u2500 \u062e\u0631\u0648\u062c \u0648\u0636\u0639 \u0627\u0644\u0632\u0627\u0626\u0631 \u062a\u0644\u0642\u0627\u0626\u064a\u0627\u064b \u0639\u0646\u062f \u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062f\u062e\u0648\u0644 \u2500\u2500
+  useEffect(() => {
+    if (user && isGuestMode) {
+      exitGuestMode();
+    }
+  }, [user, isGuestMode, exitGuestMode]);
 
   const [isApplying, setIsApplying] = useState(false);
   const [applyingJob, setApplyingJob] = useState<Job | null>(null);
@@ -249,6 +259,13 @@ function App() {
     window.addEventListener('setTab', handleSetTab);
     return () => window.removeEventListener('setTab', handleSetTab);
   }, [setActiveTab]);
+
+  // Handle guest mode exit from anywhere in the app (e.g. mobile drawer)
+  useEffect(() => {
+    const handleExit = () => exitGuestMode();
+    window.addEventListener('prolink:exitGuestMode', handleExit);
+    return () => window.removeEventListener('prolink:exitGuestMode', handleExit);
+  }, [exitGuestMode]);
 
   // ── Call Timeout Logic (WhatsApp Style) ──────────────────────────────────
   useEffect(() => {
@@ -635,7 +652,17 @@ function App() {
     );
   }
 
-  if (!user) {
+  // ── requireAuth: يمنع الزائر من التفاعل ──
+  const requireAuth = useCallback((message?: string) => {
+    if (!appUser) {
+      addToast(message || 'سجّل الدخول للتفاعل مع المحتوى 🔒', 'error');
+      return false;
+    }
+    return true;
+  }, [appUser, addToast]);
+
+  // ── Guard: show auth screen if not logged in AND not in guest mode ──
+  if (!user && !isGuestMode) {
     return (
       <AuthView
         authMode={authMode} setAuthMode={setAuthMode}
@@ -645,11 +672,12 @@ function App() {
         authPhone={authPhone} setAuthPhone={setAuthPhone}
         authName={authName} setAuthName={setAuthName}
         authPassword={authPassword} setAuthPassword={setAuthPassword}
+        onGuestMode={enterGuestMode}
       />
     );
   }
 
-  if (needsRole || isSelectingRole) {
+  if ((needsRole || isSelectingRole) && !isGuestMode) {
     return <RoleSelectionView selectRole={selectRole} appUser={appUser} />;
   }
 
@@ -704,6 +732,12 @@ function App() {
         />
       )}
 
+      {/* ── شريط تنبيه الزائر ── */}
+      {isGuestMode && !user && (
+        <GuestBanner
+          onLogin={() => exitGuestMode()}
+        />
+      )}
 
       <AnimatePresence mode="wait">
         {/* Incoming Call Notification Banner (Ultra-High Priority) */}
@@ -1099,6 +1133,20 @@ function App() {
                 <div className="pb-safe-bottom px-1 md:px-0">
                   <Suspense fallback={<TabSkeleton />}>
                     <NewsView appUser={appUser} />
+                  </Suspense>
+                </div>
+              )}
+              {activeTab === 'services' && (
+                <div className="pb-safe-bottom px-1 md:px-0">
+                  <Suspense fallback={<TabSkeleton />}>
+                    <ServicesView
+                      appUser={appUser}
+                      onUserClick={(u) => {
+                        setSelectedProfile(u);
+                        setActiveTab('profile');
+                      }}
+                      onRequireAuth={requireAuth}
+                    />
                   </Suspense>
                 </div>
               )}

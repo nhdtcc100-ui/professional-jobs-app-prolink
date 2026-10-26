@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Home, Briefcase, Globe, MessageSquare, MoreHorizontal,
-  Users, Info, LogOut, Shield, Phone, Building2, Moon, Sun
+  Users, Info, LogOut, Shield, Phone, Building2, Moon, Sun, Wrench, LogIn
 } from 'lucide-react';
 import { DrawerItem } from './Navigation';
 import { AppUser } from '../../types';
@@ -28,7 +28,7 @@ interface MobileNavProps {
 const NAV_ITEMS = [
   { id: 'home',     icon: Home,          label: 'الرئيسية' },
   { id: 'jobs',     icon: Briefcase,     label: 'الوظائف'  },
-  { id: 'news',     icon: Globe,         label: 'الأخبار'  },
+  { id: 'services', icon: Wrench,        label: 'الخدمات' },
   { id: 'messages', icon: MessageSquare, label: 'الرسائل'  },
   { id: 'more',     icon: MoreHorizontal,label: 'المزيد'   },
 ];
@@ -266,62 +266,86 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 
               {/* Drawer Header */}
               <div className="relative z-10 p-5 border-b border-slate-100/60 dark:border-slate-800/60">
-                <div
-                  className="flex items-center gap-3 cursor-pointer group"
-                  onClick={() => { setSelectedProfile(appUser); setActiveTab('profile'); setShowMobileMenu(false); }}
-                >
-                  {appUser?.avatar ? (
-                    <div className="relative">
-                      <img
-                        src={appUser.avatar}
-                        className="w-12 h-12 rounded-2xl border-2 border-blue-200 dark:border-blue-800 shadow-md object-cover group-hover:scale-105 transition-transform"
-                        alt={appUser?.name}
-                      />
-                      <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900" />
+                {appUser ? (
+                  <>
+                    <div
+                      className="flex items-center gap-3 cursor-pointer group"
+                      onClick={() => { setSelectedProfile(appUser); setActiveTab('profile'); setShowMobileMenu(false); }}
+                    >
+                      {appUser.avatar ? (
+                        <div className="relative">
+                          <img
+                            src={appUser.avatar}
+                            className="w-12 h-12 rounded-2xl border-2 border-blue-200 dark:border-blue-800 shadow-md object-cover group-hover:scale-105 transition-transform"
+                            alt={appUser?.name}
+                          />
+                          <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900" />
+                        </div>
+                      ) : (
+                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-lg font-black shadow-md">
+                          {appUser?.name?.charAt(0) || '?'}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-black text-slate-900 dark:text-white text-sm truncate">{appUser?.name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span
+                            className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full"
+                            style={{
+                              background: appUser?.role === 'employer' ? 'rgba(59,130,246,0.1)' : 'rgba(16,185,129,0.1)',
+                              color: appUser?.role === 'employer' ? '#3b82f6' : '#10b981',
+                            }}
+                          >
+                            {appUser?.role === 'employer' ? 'صاحب عمل 💼' : 'باحث عن عمل 🔍'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-lg font-black shadow-md">
-                      {appUser?.name?.charAt(0) || '?'}
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="font-black text-slate-900 dark:text-white text-sm truncate">{appUser?.name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span
-                        className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full"
-                        style={{
-                          background: appUser?.role === 'employer' ? 'rgba(59,130,246,0.1)' : 'rgba(16,185,129,0.1)',
-                          color: appUser?.role === 'employer' ? '#3b82f6' : '#10b981',
-                        }}
-                      >
-                        {appUser?.role === 'employer' ? 'صاحب عمل 💼' : 'باحث عن عمل 🔍'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Stats */}
-                <div
-                  className="mt-4 grid grid-cols-3 gap-2 p-3 rounded-2xl"
-                  style={{
-                    background: 'rgba(59,130,246,0.05)',
-                    border: '1px solid rgba(59,130,246,0.1)',
-                  }}
-                >
-                  {[
-                    { label: 'المنشورات', value: myPostsCount, color: '#3b82f6' },
-                    { label: appUser?.role === 'employer' ? 'المتقدمون' : 'طلباتي', value: appUser?.role === 'employer' ? applicantsCount : '—', color: '#6366f1' },
-                    { label: 'الاتصالات', value: userConnectionsCount, color: '#8b5cf6' },
-                  ].map(stat => (
-                    <div key={stat.label} className="text-center">
-                      <p className="text-sm font-black" style={{ color: stat.color }}>{stat.value}</p>
-                      <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-0.5">{stat.label}</p>
+                    {/* Stats */}
+                    <div
+                      className="mt-4 grid grid-cols-3 gap-2 p-3 rounded-2xl"
+                      style={{
+                        background: 'rgba(59,130,246,0.05)',
+                        border: '1px solid rgba(59,130,246,0.1)',
+                      }}
+                    >
+                      {[
+                        { label: 'المنشورات', value: myPostsCount, color: '#3b82f6' },
+                        { label: appUser?.role === 'employer' ? 'المتقدمون' : 'طلباتي', value: appUser?.role === 'employer' ? applicantsCount : '—', color: '#6366f1' },
+                        { label: 'الاتصالات', value: userConnectionsCount, color: '#8b5cf6' },
+                      ].map(stat => (
+                        <div key={stat.label} className="text-center">
+                          <p className="text-sm font-black" style={{ color: stat.color }}>{stat.value}</p>
+                          <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-0.5">{stat.label}</p>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </>
+                ) : (
+                  <div className="p-1 text-center">
+                    <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30 mb-3">
+                      <LogIn size={26} />
+                    </div>
+                    <h3 className="font-black text-slate-900 dark:text-white text-base">أهلاً بك في منصة عمل</h3>
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
+                      أنت تتصفح كزائر، سجّل الدخول للتواصل مع المهنيين والتقديم على الوظائف.
+                    </p>
+                    <button
+                      onClick={() => {
+                        setShowMobileMenu(false);
+                        window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'));
+                      }}
+                      className="mt-3 w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-xs rounded-xl shadow-md hover:from-blue-700 hover:to-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <LogIn size={14} />
+                      تسجيل الدخول / إنشاء حساب
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* Drawer Items */}
+                {/* Drawer Items */}
               <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-1.5">
                 {appUser?.isAdmin && (
                   <DrawerItem icon={<Phone size={20} className="text-emerald-500" />} label="المكالمات والاتصال" onClick={() => { setActiveTab('calls'); setShowMobileMenu(false); }} color="text-emerald-700 dark:text-emerald-300" />
@@ -338,6 +362,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                   <DrawerItem icon={<Building2 size={20} className="text-blue-500" />} label="نظام الموارد البشرية (ERP)" onClick={() => { setActiveTab('erp'); setShowMobileMenu(false); }} color="text-blue-700 dark:text-blue-300" />
                 )}
                 <DrawerItem icon={<Globe size={20} className="text-emerald-500" />} label="آخر الأخبار" onClick={() => { setActiveTab('news'); setShowMobileMenu(false); }} color="text-emerald-700 dark:text-emerald-300" />
+                <DrawerItem icon={<Wrench size={20} className="text-blue-500" />} label="سوق الخدمات 🔧" onClick={() => { setActiveTab('services'); setShowMobileMenu(false); }} color="text-blue-700 dark:text-blue-300" />
                 {appUser?.isAdmin && (
                   <DrawerItem icon={<Shield size={20} className="text-red-500" />} label="لوحة التحكم العليا" onClick={() => { setShowAdmin(true); setShowMobileMenu(false); }} color="text-red-700 dark:text-red-300" />
                 )}
@@ -350,8 +375,13 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                     color={theme === 'dark' ? 'text-amber-700 dark:text-amber-300' : 'text-indigo-700 dark:text-indigo-300'}
                   />
                 )}
-                <DrawerItem icon={<LogOut size={20} className="text-red-500" />} label="تسجيل الخروج" onClick={() => { setShowMobileMenu(false); logout(); }} color="text-red-700 dark:text-red-300" />
+                {appUser ? (
+                  <DrawerItem icon={<LogOut size={20} className="text-red-500" />} label="تسجيل الخروج" onClick={() => { setShowMobileMenu(false); logout(); }} color="text-red-700 dark:text-red-300" />
+                ) : (
+                  <DrawerItem icon={<LogIn size={20} className="text-blue-500" />} label="تسجيل الدخول" onClick={() => { setShowMobileMenu(false); window.dispatchEvent(new CustomEvent('prolink:exitGuestMode')); }} color="text-blue-700 dark:text-blue-300" />
+                )}
               </div>
+
 
               {/* Footer */}
               <div className="relative z-10 p-5 border-t border-slate-100/50 dark:border-slate-800/50">

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Users, Briefcase, Globe, MessageSquare, Bell, ChevronDown, Crown, User as UserIcon, Shield, LogOut, Moon, Sun, Phone, Building2 } from 'lucide-react';
+import { Home, Users, Briefcase, Globe, MessageSquare, Bell, ChevronDown, Crown, User as UserIcon, Shield, LogOut, Moon, Sun, Phone, Building2, Wrench, LogIn } from 'lucide-react';
 import { NavbarItem, NavDropdownItem } from './';
 import { AppUser, AppNotification } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
@@ -102,6 +102,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <NavbarItem icon={<Briefcase size={22} />} label="الوظائف" active={activeTab === 'jobs'} onClick={() => setActiveTab('jobs')} />
+          <NavbarItem icon={<Wrench size={22} />} label="الخدمات" active={activeTab === 'services'} onClick={() => setActiveTab('services')} />
           {appUser?.isAdmin && (
             <NavbarItem icon={<Building2 size={22} />} label="الموارد" active={activeTab === 'erp'} onClick={() => setActiveTab('erp')} />
           )}
@@ -136,54 +137,65 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Col 3 — Profile Dropdown (left in RTL) */}
+        {/* Col 3 — Profile Dropdown / Login Button */}
         <div className="flex items-center justify-end h-full">
-          <div className="relative group">
-            <div
-              className="flex items-center gap-2 p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
-              onClick={() => { setSelectedProfile(appUser); setIsEditingProfile(false); setActiveTab('profile'); }}
-            >
-              <img
-                src={appUser?.avatar || `https://ui-avatars.com/api/?name=${appUser?.name || 'User'}&background=random`}
-                className="w-9 h-9 rounded-xl border-2 border-white dark:border-slate-700 shadow-sm object-cover"
-                alt="Profile"
-                referrerPolicy="no-referrer"
-              />
-              <div className="hidden lg:block text-right">
-                <p className="text-[10px] font-black text-slate-800 dark:text-white leading-none">{appUser?.name}</p>
-                <p className="text-[8px] text-blue-600 dark:text-blue-400 font-black uppercase mt-1">
-                  {appUser?.role === 'employer' ? 'صاحب عمل' : 'باحث'}
-                </p>
-              </div>
-              <ChevronDown size={14} className="text-slate-400 dark:text-slate-500" />
-            </div>
-
-            {/* Dropdown */}
-            <div className="absolute top-full left-0 mt-2 hidden group-hover:block transition-all py-2 z-[60]">
-              <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl shadow-2xl p-3 w-60 backdrop-blur-xl ring-1 ring-black/5">
-                <div
-                  className="p-2 mb-2 bg-slate-50 dark:bg-slate-700/50 rounded-xl cursor-pointer"
-                  onClick={() => { setSelectedProfile(appUser); setActiveTab('profile'); }}
-                >
-                  <p className="font-black text-xs text-slate-800 dark:text-white">{appUser?.name}</p>
-                  <p className="text-[9px] text-slate-400 font-bold truncate">{appUser?.email}</p>
+          {appUser ? (
+            <div className="relative group">
+              <div
+                className="flex items-center gap-2 p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
+                onClick={() => { setSelectedProfile(appUser); setIsEditingProfile(false); setActiveTab('profile'); }}
+              >
+                <img
+                  src={appUser?.avatar || `https://ui-avatars.com/api/?name=${appUser?.name || 'User'}&background=random`}
+                  className="w-9 h-9 rounded-xl border-2 border-white dark:border-slate-700 shadow-sm object-cover"
+                  alt="Profile"
+                  referrerPolicy="no-referrer"
+                />
+                <div className="hidden lg:block text-right">
+                  <p className="text-[10px] font-black text-slate-800 dark:text-white leading-none">{appUser?.name}</p>
+                  <p className="text-[8px] text-blue-600 dark:text-blue-400 font-black uppercase mt-1">
+                    {appUser?.role === 'employer' ? 'صاحب عمل' : 'باحث'}
+                  </p>
                 </div>
-                <NavDropdownItem icon={<Crown size={14} className="text-amber-500" />} label={appUser?.isPro ? 'عضوية النخبة' : 'ترقية للحساب الذهبي'} onClick={toggleProRank} color="text-amber-600" />
-                <NavDropdownItem icon={<UserIcon size={14} />} label="تعديل الملف الشخصي" onClick={() => { setSelectedProfile(appUser); setIsEditingProfile(true); setActiveTab('profile'); }} />
-                {toggleTheme && (
-                  <NavDropdownItem
-                    icon={theme === 'dark' ? <Sun size={14} className="text-amber-500" /> : <Moon size={14} className="text-indigo-500" />}
-                    label={theme === 'dark' ? 'الوضع الفاتح ☀️' : 'الوضع الليلي 🌙'}
-                    onClick={toggleTheme}
-                  />
-                )}
-                {appUser?.isAdmin && (
-                  <NavDropdownItem icon={<Shield size={14} className="text-blue-600" />} label="لوحة التحكم العليا" onClick={() => setShowAdmin(true)} color="text-blue-700" />
-                )}
-                <div className="border-t border-slate-50 dark:border-slate-700 my-1.5" />
-                <NavDropdownItem icon={<LogOut size={14} />} label="تسجيل الخروج" onClick={logout} color="text-red-500" />
+                <ChevronDown size={14} className="text-slate-400 dark:text-slate-500" />
+              </div>
+
+              {/* Dropdown */}
+              <div className="absolute top-full left-0 mt-2 hidden group-hover:block transition-all py-2 z-[60]">
+                <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl shadow-2xl p-3 w-60 backdrop-blur-xl ring-1 ring-black/5">
+                  <div
+                    className="p-2 mb-2 bg-slate-50 dark:bg-slate-700/50 rounded-xl cursor-pointer"
+                    onClick={() => { setSelectedProfile(appUser); setActiveTab('profile'); }}
+                  >
+                    <p className="font-black text-xs text-slate-800 dark:text-white">{appUser?.name}</p>
+                    <p className="text-[9px] text-slate-400 font-bold truncate">{appUser?.email}</p>
+                  </div>
+                  <NavDropdownItem icon={<Crown size={14} className="text-amber-500" />} label={appUser?.isPro ? 'عضوية النخبة' : 'ترقية للحساب الذهبي'} onClick={toggleProRank} color="text-amber-600" />
+                  <NavDropdownItem icon={<UserIcon size={14} />} label="تعديل الملف الشخصي" onClick={() => { setSelectedProfile(appUser); setIsEditingProfile(true); setActiveTab('profile'); }} />
+                  {toggleTheme && (
+                    <NavDropdownItem
+                      icon={theme === 'dark' ? <Sun size={14} className="text-amber-500" /> : <Moon size={14} className="text-indigo-500" />}
+                      label={theme === 'dark' ? 'الوضع الفاتح ☀️' : 'الوضع الليلي 🌙'}
+                      onClick={toggleTheme}
+                    />
+                  )}
+                  {appUser?.isAdmin && (
+                    <NavDropdownItem icon={<Shield size={14} className="text-blue-600" />} label="لوحة التحكم العليا" onClick={() => setShowAdmin(true)} color="text-blue-700" />
+                  )}
+                  <div className="border-t border-slate-50 dark:border-slate-700 my-1.5" />
+                  <NavDropdownItem icon={<LogOut size={14} />} label="تسجيل الخروج" onClick={logout} color="text-red-500" />
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'))}
+              className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-md shadow-blue-500/20 transition-all active:scale-95"
+            >
+              <LogIn size={14} />
+              <span>تسجيل الدخول</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -208,33 +220,45 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </div>
 
-        {/* Mobile right: Bell + Avatar */}
+        {/* Mobile right: Bell + Avatar or Login */}
         <div className="flex items-center gap-2 shrink-0">
-          <div className="relative">
+          {appUser ? (
+            <>
+              <div className="relative">
+                <button
+                  onClick={() => setShowNotifications(!showNotifications)}
+                  className="p-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-400 hover:bg-slate-100 rounded-2xl transition-all border border-slate-100/50 dark:border-slate-700/50"
+                >
+                  <Bell size={18} />
+                </button>
+                {unreadNotificationsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 notif-badge-premium text-[8px] rounded-full shadow-md animate-pulse">
+                    {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                  </span>
+                )}
+              </div>
+              <div
+                className="relative group cursor-pointer"
+                onClick={() => { setSelectedProfile(appUser); setActiveTab('profile'); }}
+              >
+                <div className="absolute -inset-1 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl blur opacity-20 group-active:opacity-40 transition-opacity" />
+                <img
+                  src={appUser?.avatar || `https://ui-avatars.com/api/?name=${appUser?.name || 'User'}&background=random`}
+                  className="relative w-9 h-9 rounded-2xl border-2 border-white shadow-md object-cover hover:scale-105 transition-transform"
+                  alt="Profile"
+                  referrerPolicy="no-referrer"
+                />
+              </div>
+            </>
+          ) : (
             <button
-              onClick={() => setShowNotifications(!showNotifications)}
-              className="p-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-400 hover:bg-slate-100 rounded-2xl transition-all border border-slate-100/50 dark:border-slate-700/50"
+              onClick={() => window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'))}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white font-black text-[11px] rounded-xl shadow-sm active:scale-95 transition-all"
             >
-              <Bell size={18} />
+              <LogIn size={13} />
+              <span>دخول</span>
             </button>
-            {unreadNotificationsCount > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 notif-badge-premium text-[8px] rounded-full shadow-md animate-pulse">
-                {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
-              </span>
-            )}
-          </div>
-          <div
-            className="relative group cursor-pointer"
-            onClick={() => { setSelectedProfile(appUser); setActiveTab('profile'); }}
-          >
-            <div className="absolute -inset-1 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl blur opacity-20 group-active:opacity-40 transition-opacity" />
-            <img
-              src={appUser?.avatar || `https://ui-avatars.com/api/?name=${appUser?.name || 'User'}&background=random`}
-              className="relative w-9 h-9 rounded-2xl border-2 border-white shadow-md object-cover hover:scale-105 transition-transform"
-              alt="Profile"
-              referrerPolicy="no-referrer"
-            />
-          </div>
+          )}
         </div>
       </div>
     </nav>

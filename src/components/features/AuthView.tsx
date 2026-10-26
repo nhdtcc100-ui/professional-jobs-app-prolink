@@ -9,10 +9,11 @@ import { supabase } from "../../lib/supabase";
 interface AuthViewProps {
   onSuccess?: () => void;
   handleGoogleLogin?: () => Promise<void>;
+  onGuestMode?: () => void;
   [key: string]: any;
 }
 
-export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, handleGoogleLogin: propGoogleLogin }) => {
+export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, handleGoogleLogin: propGoogleLogin, onGuestMode }) => {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [identifier, setIdentifier] = useState("");
   const [identifierError, setIdentifierError] = useState<string | null>(null);
@@ -553,6 +554,20 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, handleGoogleLogin
               )}
             </button>
           </form>
+
+          {/* ── زر التصفح بدون تسجيل دخول ── */}
+          {onGuestMode && (
+            <div className="mt-4 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={onGuestMode}
+                className="w-full flex items-center justify-center gap-2 py-2.5 text-slate-400 hover:text-slate-600 text-xs font-bold transition-all group"
+              >
+                <span className="text-lg group-hover:scale-110 transition-transform">👁️</span>
+                تصفح بدون تسجيل الدخول
+              </button>
+            </div>
+          )}
         </GlassCard>
       </motion.div>
     </div>

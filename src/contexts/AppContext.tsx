@@ -112,6 +112,10 @@ interface AppContextType {
   deleteAllNotifications: () => Promise<void>;
   userTotalPostsCount: number;
   setUserTotalPostsCount: React.Dispatch<React.SetStateAction<number>>;
+  // ── Guest Mode ──
+  isGuestMode: boolean;
+  enterGuestMode: () => void;
+  exitGuestMode: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -218,6 +222,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [needsRole, setNeedsRole] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
+  // ── Guest Mode State ──
+  const [isGuestMode, setIsGuestMode] = useState(false);
+  const enterGuestMode = useCallback(() => setIsGuestMode(true), []);
+  const exitGuestMode  = useCallback(() => setIsGuestMode(false), []);
 
   const [authMode, setAuthMode] = useState<'login' | 'signup' | 'phone'>('login');
   const [pendingEmailVerification, setPendingEmailVerification] = useState<string | null>(null);
@@ -2025,6 +2033,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     deleteAllNotifications,
     userTotalPostsCount,
     setUserTotalPostsCount,
+    // ── Guest Mode ──
+    isGuestMode,
+    enterGuestMode,
+    exitGuestMode,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
