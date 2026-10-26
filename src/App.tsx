@@ -1133,6 +1133,11 @@ function App() {
                         setActiveTab('profile');
                       }}
                       onApplyJob={(job) => {
+                        if (!appUser || isGuestMode) {
+                          addToast('يجب تسجيل الدخول أو إنشاء حساب للتقديم على هذه الوظيفة 💼', 'info');
+                          exitGuestMode();
+                          return;
+                        }
                         setApplyingJob(job);
                         setIsApplying(false);
                       }} 
@@ -1235,37 +1240,19 @@ function App() {
                 )
               )}
               {activeTab === 'groups' && (
-                !appUser ? (
-                  <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-md mx-auto shadow-xl" dir="rtl">
-                    <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                      <Users size={30} />
-                    </div>
-                    <h3 className="text-base font-black text-slate-800 dark:text-white">المجموعات المهنية مقفلة 🔒</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">
-                      أنت تتصفح كزائر. يرجى تسجيل الدخول للانضمام والتفاعل داخل المجموعات المهنية.
-                    </p>
-                    <button
-                      onClick={() => window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'))}
-                      className="mt-5 w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
-                      <span>تسجيل الدخول الآن</span>
-                    </button>
-                  </div>
-                ) : (
-                  <div className="pb-safe-bottom px-1 md:px-0">
-                    <Suspense fallback={<TabSkeleton />}>
-                      <GroupsView
-                        appUser={appUser}
-                        addToast={addToast}
-                        onSelectGroup={(g) => {
-                          setSelectedChat(null);
-                          setSelectedGroup(g);
-                          setActiveTab('messages');
-                        }}
-                      />
-                    </Suspense>
-                  </div>
-                )
+                <div className="pb-safe-bottom px-1 md:px-0">
+                  <Suspense fallback={<TabSkeleton />}>
+                    <GroupsView
+                      appUser={appUser}
+                      addToast={addToast}
+                      onSelectGroup={(g) => {
+                        setSelectedChat(null);
+                        setSelectedGroup(g);
+                        setActiveTab('messages');
+                      }}
+                    />
+                  </Suspense>
+                </div>
               )}
               {activeTab === 'news' && (
                 <div className="pb-safe-bottom px-1 md:px-0">
@@ -1439,6 +1426,11 @@ function App() {
               setActiveTab(tab);
             }}
             onApplyJob={(job) => {
+              if (!appUser || isGuestMode) {
+                addToast('يجب تسجيل الدخول أو إنشاء حساب للتقديم على هذه الوظيفة 💼', 'info');
+                exitGuestMode();
+                return;
+              }
               setDetailFeed(null);
               setApplyingJob(job);
               setIsApplying(false);

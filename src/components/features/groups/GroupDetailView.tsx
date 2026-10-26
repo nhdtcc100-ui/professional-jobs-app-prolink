@@ -179,7 +179,11 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
   };
 
   const checkMembership = async () => {
-    if (!appUser?.id) return;
+    if (!appUser?.id) {
+      setMembershipStatus('none');
+      setIsAdmin(false);
+      return;
+    }
     const { data, error } = await supabase
       .from('group_members')
       .select('status, role')
@@ -232,7 +236,11 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
   }, [showManageMembers]);
 
   const handleJoin = async () => {
-    if (!appUser?.id) return;
+    if (!appUser?.id) {
+      addToast('يجب تسجيل الدخول أو إنشاء حساب للانضمام للمجموعة 👥', 'info');
+      window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'));
+      return;
+    }
     setIsJoining(true);
     try {
       const isPriv = group.is_private === true;
@@ -327,6 +335,11 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
   };
 
   const sendMessage = async () => {
+    if (!appUser?.id) {
+      addToast('يجب تسجيل الدخول أو إنشاء حساب للتفاعل وإرسال الرسائل 👥', 'info');
+      window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'));
+      return;
+    }
     if (!newMessage.trim() && !pendingFile) return;
     if (isSending) return;
 
@@ -510,7 +523,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
                 className="absolute left-0 mt-2 w-52 bg-white rounded-2xl shadow-2xl border border-slate-100 py-2 z-[60] overflow-hidden"
               >
-                {group.owner_id === appUser.id && (
+                {group.owner_id === appUser?.id && (
                   <button 
                     onClick={() => groupAvatarInputRef.current?.click()}
                     disabled={isUpdatingAvatar}
@@ -558,7 +571,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
           </div>
         ) : messages.map((m, idx) => {
           console.log(`DEBUG: [GroupDetailView] Rendering message index ${idx}, id: ${m.id}`);
-          const isMine = m.author_id === appUser.id;
+          const isMine = !!(appUser?.id && m.author_id === appUser.id);
           const showAvatar = idx === 0 || messages[idx-1].author_id !== m.author_id;
           
           return (
@@ -626,7 +639,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
           );
         })}
         
-        {(membershipStatus === 'none' || membershipStatus === 'pending' || membershipStatus === 'suspended') && (
+        {(membershipStatus === 'suspended' || (group.is_private && (membershipStatus === 'none' || membershipStatus === 'pending'))) && (
           <div className="absolute inset-x-0 bottom-0 top-[64px] bg-white/60 backdrop-blur-md z-[40] flex items-center justify-center p-6">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }} 
@@ -673,77 +686,113 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
       />
 
       {/* Input Area */}
-      <div className={`shrink-0 p-3 bg-white/95 backdrop-blur-md border-t border-slate-100 z-10 space-y-2 ${(membershipStatus === 'none' || membershipStatus === 'pending' || membershipStatus === 'suspended') ? 'opacity-20 pointer-events-none' : ''}`}>
-        <div className="max-w-4xl mx-auto space-y-2">
-          
-          {/* Emoji Panel */}
-          <AnimatePresence>
-            {showEmojis && (
-              <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 10, opacity: 0 }} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex gap-2 flex-wrap no-scrollbar overflow-x-auto max-h-28">
-                {emojis.map(e => <button key={e} onClick={() => setNewMessage(p => p + e)} className="text-xl hover:scale-125 transition-transform">{e}</button>)}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Pending file preview */}
-          <AnimatePresence>
-            {pendingPreview && (
-              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
-                className="relative bg-slate-50 rounded-2xl p-2 border border-slate-200 flex items-center gap-3">
-                {pendingPreview.startsWith('video:') ? (
-                  <div className="flex items-center gap-2 px-2">
-                    <Video size={24} className="text-blue-500" />
-                    <span className="text-xs font-black text-slate-600 truncate max-w-[180px]">{pendingFile?.name}</span>
-                  </div>
-                ) : (
-                  <img src={pendingPreview} className="h-16 w-16 rounded-xl object-cover border border-slate-200 shrink-0" alt="preview" />
-                )}
-                <p className="flex-1 text-[10px] text-slate-400 font-bold uppercase">
-                  {pendingFile ? (pendingFile.size > 1024*1024 ? `${(pendingFile.size/1024/1024).toFixed(1)} MB` : `${(pendingFile.size/1024).toFixed(0)} KB`) : ''}
-                </p>
-                <button onClick={cancelPendingFile} className="p-1.5 hover:bg-red-50 text-red-400 rounded-lg transition-colors shrink-0">
-                  <X size={14} />
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="flex items-center gap-2 bg-slate-100 rounded-2xl p-1.5 focus-within:bg-white focus-within:border-blue-300 border border-transparent transition-all">
-            <input type="file" ref={mediaInputRef} className="hidden" accept="image/*,video/*" onChange={handleAttachment} />
-            <button onClick={() => mediaInputRef.current?.click()} className={`p-2 rounded-xl transition-all shrink-0 ${pendingFile ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-blue-600'}`}>
-              <ImageIcon size={18} />
-            </button>
-            <button onClick={() => setShowEmojis(!showEmojis)} className={`p-2 rounded-xl transition-all shrink-0 ${showEmojis ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}>
-              <Smile size={18} />
-            </button>
-            <textarea 
-              className="flex-1 bg-white border-none outline-none text-sm font-bold text-slate-900 placeholder:text-slate-400 px-2 py-1.5 resize-none min-h-[36px] max-h-32 no-scrollbar leading-relaxed rounded-xl"
-              placeholder={pendingFile ? "أضف وصفاً للمرفق... (اختياري)" : "اكتب رسالة للمجموعة..."}
-              rows={1}
-              value={newMessage}
-              onChange={e => {
-                setNewMessage(e.target.value);
-                e.target.style.height = 'auto';
-                e.target.style.height = e.target.scrollHeight + 'px';
-              }}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-            />
-            <motion.button 
-              whileTap={{ scale: 0.9 }} 
-              onClick={sendMessage} 
-              disabled={isSending || (!newMessage.trim() && !pendingFile)}
-              className={`p-2.5 rounded-xl transition-all shrink-0 ${ (newMessage.trim() || pendingFile) ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-200' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+      {!appUser ? (
+        <div className="shrink-0 p-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 z-20">
+          <div className="max-w-xl mx-auto flex items-center justify-between gap-3 px-4 py-2.5 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-slate-800 dark:to-slate-800 rounded-2xl border border-blue-100 dark:border-slate-700 shadow-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <Users size={16} className="text-blue-600 dark:text-blue-400 shrink-0" />
+              <p className="text-xs font-black text-slate-800 dark:text-slate-200 truncate">
+                أنت تتصفح المجموعة كزائر 🔒 — سجّل الدخول للمشاركة والتفاعل
+              </p>
+            </div>
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'))}
+              className="shrink-0 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-md active:scale-95 transition-all"
             >
-              {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} className="rotate-180" />}
-            </motion.button>
+              تسجيل الدخول / حساب
+            </button>
           </div>
         </div>
-      </div>
+      ) : (membershipStatus === 'none' || membershipStatus === 'pending' || membershipStatus === 'suspended') ? (
+        <div className="shrink-0 p-3 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 z-20">
+          <div className="max-w-xl mx-auto flex items-center justify-between gap-3 px-4 py-2.5 bg-blue-50/70 dark:bg-blue-950/40 rounded-2xl border border-blue-100 dark:border-blue-900/40 shadow-sm">
+            <p className="text-xs font-black text-slate-800 dark:text-slate-200 truncate">
+              {membershipStatus === 'pending' ? 'طلب انضمامك قيد المراجعة ⌛' : 'انضم لهذه المجموعة العامة للتفاعل وإرسال الرسائل'}
+            </p>
+            {membershipStatus === 'none' && (
+              <button
+                onClick={handleJoin}
+                disabled={isJoining}
+                className="shrink-0 px-4 py-2 bg-blue-600 text-white font-black text-xs rounded-xl shadow-md active:scale-95 transition-all flex items-center gap-1.5"
+              >
+                {isJoining ? <Loader2 size={14} className="animate-spin" /> : 'انضم الآن 🚀'}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="shrink-0 p-3 bg-white/95 backdrop-blur-md border-t border-slate-100 z-10 space-y-2">
+          <div className="max-w-4xl mx-auto space-y-2">
+            
+            {/* Emoji Panel */}
+            <AnimatePresence>
+              {showEmojis && (
+                <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 10, opacity: 0 }} className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex gap-2 flex-wrap no-scrollbar overflow-x-auto max-h-28">
+                  {emojis.map(e => <button key={e} onClick={() => setNewMessage(p => p + e)} className="text-xl hover:scale-125 transition-transform">{e}</button>)}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Pending file preview */}
+            <AnimatePresence>
+              {pendingPreview && (
+                <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 8 }}
+                  className="relative bg-slate-50 rounded-2xl p-2 border border-slate-200 flex items-center gap-3">
+                  {pendingPreview.startsWith('video:') ? (
+                    <div className="flex items-center gap-2 px-2">
+                      <Video size={24} className="text-blue-500" />
+                      <span className="text-xs font-black text-slate-600 truncate max-w-[180px]">{pendingFile?.name}</span>
+                    </div>
+                  ) : (
+                    <img src={pendingPreview} className="h-16 w-16 rounded-xl object-cover border border-slate-200 shrink-0" alt="preview" />
+                  )}
+                  <p className="flex-1 text-[10px] text-slate-400 font-bold uppercase">
+                    {pendingFile ? (pendingFile.size > 1024*1024 ? `${(pendingFile.size/1024/1024).toFixed(1)} MB` : `${(pendingFile.size/1024).toFixed(0)} KB`) : ''}
+                  </p>
+                  <button onClick={cancelPendingFile} className="p-1.5 hover:bg-red-50 text-red-400 rounded-lg transition-colors shrink-0">
+                    <X size={14} />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="flex items-center gap-2 bg-slate-100 rounded-2xl p-1.5 focus-within:bg-white focus-within:border-blue-300 border border-transparent transition-all">
+              <input type="file" ref={mediaInputRef} className="hidden" accept="image/*,video/*" onChange={handleAttachment} />
+              <button onClick={() => mediaInputRef.current?.click()} className={`p-2 rounded-xl transition-all shrink-0 ${pendingFile ? 'text-blue-600 bg-blue-50' : 'text-slate-400 hover:text-blue-600'}`}>
+                <ImageIcon size={18} />
+              </button>
+              <button onClick={() => setShowEmojis(!showEmojis)} className={`p-2 rounded-xl transition-all shrink-0 ${showEmojis ? 'text-blue-600 bg-blue-50' : 'text-slate-400'}`}>
+                <Smile size={18} />
+              </button>
+              <textarea 
+                className="flex-1 bg-white border-none outline-none text-sm font-bold text-slate-900 placeholder:text-slate-400 px-2 py-1.5 resize-none min-h-[36px] max-h-32 no-scrollbar leading-relaxed rounded-xl"
+                placeholder={pendingFile ? "أضف وصفاً للمرفق... (اختياري)" : "اكتب رسالة للمجموعة..."}
+                rows={1}
+                value={newMessage}
+                onChange={e => {
+                  setNewMessage(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = e.target.scrollHeight + 'px';
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
+              />
+              <motion.button 
+                whileTap={{ scale: 0.9 }} 
+                onClick={sendMessage} 
+                disabled={isSending || (!newMessage.trim() && !pendingFile)}
+                className={`p-2.5 rounded-xl transition-all shrink-0 ${ (newMessage.trim() || pendingFile) ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md shadow-blue-200' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}
+              >
+                {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} className="rotate-180" />}
+              </motion.button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modals */}
       <AnimatePresence>
@@ -782,7 +831,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
                       </p>
                     </div>
                     
-                    {isAdmin && m.user_id !== appUser.id && (
+                    {isAdmin && m.user_id !== appUser?.id && (
                       <div className="flex items-center gap-1">
                         {m.status === 'accepted' ? (
                           <button onClick={() => handleUpdateMember(m.user_id, 'suspended')} className="p-2 text-amber-500 hover:bg-amber-50 rounded-lg transition-all" title="تعليق">

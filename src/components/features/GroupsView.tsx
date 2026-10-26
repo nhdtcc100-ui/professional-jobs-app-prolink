@@ -34,7 +34,7 @@ export interface GroupsViewProps {
 type GroupsTab = 'discover' | 'my';
 
 export function GroupsView({ addToast, appUser, sharedPost, onClearSharedPost, onSelectGroup }: GroupsViewProps) {
-  const [activeTab, setActiveTab] = useState<GroupsTab>('my');
+  const [activeTab, setActiveTab] = useState<GroupsTab>(appUser ? 'my' : 'discover');
   const [searchQuery, setSearchQuery] = useState('');
   const [previewGroup, setPreviewGroup] = useState<any>(null);
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
@@ -62,8 +62,11 @@ export function GroupsView({ addToast, appUser, sharedPost, onClearSharedPost, o
   const fetchGroups = async () => {
     setLoading(true);
     const { data } = await supabase.from('groups').select('*').eq('is_private', false).order('created_at', { ascending: false });
-    if (data && data.length > 0) setGroups(data);
-    else setGroups(DEMO_GROUPS);
+    if (data && data.length > 0) {
+      setGroups(data.filter((g: any) => !g.is_private));
+    } else {
+      setGroups(DEMO_GROUPS.filter(g => !g.is_private));
+    }
     setLoading(false);
   };
 
@@ -92,8 +95,12 @@ export function GroupsView({ addToast, appUser, sharedPost, onClearSharedPost, o
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!appUser) {
+      addToast('يجب تسجيل الدخول أو إنشاء حساب لإنشاء مجموعة 👥', 'info');
+      window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'));
+      return;
+    }
     if (!createForm.name.trim()) { addToast('أدخل اسم المجموعة', 'error'); return; }
-    if (!appUser) return;
     setCreating(true);
     try {
       const { data: group, error } = await groupService.createGroup(createForm, appUser.id);
@@ -122,7 +129,11 @@ export function GroupsView({ addToast, appUser, sharedPost, onClearSharedPost, o
   };
 
   const handleJoinRequest = async (group: any) => {
-    if (!appUser) return;
+    if (!appUser) {
+      addToast('يجب تسجيل الدخول أو إنشاء حساب للانضمام للمجموعة 👥', 'info');
+      window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'));
+      return;
+    }
     const { data: existing } = await supabase.from('group_members').select('id,status').eq('group_id', group.id).eq('user_id', appUser.id).maybeSingle();
     if (existing) { addToast(existing.status === 'pending' ? 'طلبك قيد الانتظار' : 'أنت عضو بالفعل', 'error'); return; }
     await supabase.from('group_members').insert([{ group_id: group.id, user_id: appUser.id, role: 'member', status: group.is_private ? 'pending' : 'accepted' }]);
@@ -327,20 +338,22 @@ export function GroupsView({ addToast, appUser, sharedPost, onClearSharedPost, o
       {/* Tab Bar */}
       <div className="flex items-center justify-between bg-white dark:bg-slate-900/80 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
         <div className="flex gap-2">
-          <button
-            onClick={() => setActiveTab('my')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-              activeTab === 'my'
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
-          >
-            مجموعاتي ({myGroups.length})
-          </button>
+          {appUser && (
+            <button
+              onClick={() => setActiveTab('my')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+                activeTab === 'my'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                  : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              مجموعاتي ({myGroups.length})
+            </button>
+          )}
           <button
             onClick={() => setActiveTab('discover')}
             className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-              activeTab === 'discover'
+              activeTab === 'discover' || !appUser
                 ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                 : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
             }`}
@@ -351,7 +364,14 @@ export function GroupsView({ addToast, appUser, sharedPost, onClearSharedPost, o
 
         {/* Create button */}
         <button
-          onClick={() => setShowCreatePage(true)}
+          onClick={() => {
+            if (!appUser) {
+              addToast('يجب تسجيل الدخول أو إنشاء حساب لإنشاء مجموعة 👥', 'info');
+              window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'));
+              return;
+            }
+            setShowCreatePage(true);
+          }}
           className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black transition-all shadow-md active:scale-95"
         >
           <Plus size={14} />
@@ -403,10 +423,19 @@ export function GroupsView({ addToast, appUser, sharedPost, onClearSharedPost, o
                           group={g}
                           variant="discover"
                           onClick={() => {
+                            if (!appUser) {
+                              setSelectedGroup(g);
+                              return;
+                            }
                             setPreviewGroup(g);
                             setIsJoinModalOpen(true);
                           }}
                           onJoin={() => {
+                            if (!appUser) {
+                              addToast('يجب تسجيل الدخول أو إنشاء حساب للانضمام للمجموعة 👥', 'info');
+                              window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'));
+                              return;
+                            }
                             setPreviewGroup(g);
                             setIsJoinModalOpen(true);
                           }}
@@ -470,10 +499,19 @@ export function GroupsView({ addToast, appUser, sharedPost, onClearSharedPost, o
               group={g}
               variant="discover"
               onClick={() => {
+                if (!appUser) {
+                  setSelectedGroup(g);
+                  return;
+                }
                 setPreviewGroup(g);
                 setIsJoinModalOpen(true);
               }}
               onJoin={() => {
+                if (!appUser) {
+                  addToast('يجب تسجيل الدخول أو إنشاء حساب للانضمام للمجموعة 👥', 'info');
+                  window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'));
+                  return;
+                }
                 setPreviewGroup(g);
                 setIsJoinModalOpen(true);
               }}
@@ -488,6 +526,11 @@ export function GroupsView({ addToast, appUser, sharedPost, onClearSharedPost, o
         isOpen={isJoinModalOpen}
         onClose={() => setIsJoinModalOpen(false)}
         onJoin={async (grp) => {
+          if (!appUser) {
+            addToast('يجب تسجيل الدخول أو إنشاء حساب للانضمام للمجموعة 👥', 'info');
+            window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'));
+            return;
+          }
           await handleJoinRequest(grp);
           setIsJoinModalOpen(false);
           setSelectedGroup(grp);

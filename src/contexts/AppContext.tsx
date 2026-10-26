@@ -190,6 +190,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   
   const [appUser, setAppUserRaw] = useState<AppUser | null>(() => {
     try {
+      const isGuest = localStorage.getItem('prolink_guest_mode') === 'true';
+      if (isGuest) return null;
       const cached = localStorage.getItem('prolink_cached_user');
       return cached ? JSON.parse(cached) : null;
     } catch (e) {
@@ -231,7 +233,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
   const enterGuestMode = useCallback(() => {
-    try { localStorage.setItem('prolink_guest_mode', 'true'); } catch {}
+    try {
+      localStorage.setItem('prolink_guest_mode', 'true');
+      localStorage.removeItem('prolink_cached_user');
+    } catch {}
+    setAppUserRaw(null);
     setIsGuestMode(true);
   }, []);
   const exitGuestMode  = useCallback(() => {
@@ -1180,7 +1186,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const handleSyncSignal = async (targetUser: AppUser) => {
-    if (!appUser) return;
+    if (!appUser || isGuestMode) {
+      addToast('يجب تسجيل الدخول أو إنشاء حساب لإرسال طلب تواصل أو صداقة 👥', 'info');
+      exitGuestMode();
+      return;
+    }
     const connId = `${appUser.id}_${targetUser.id}`;
     // Optimistic update (bidirectional cleanup)
     setConnections(prev => [
@@ -1429,7 +1439,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const handleApplyJob = async (job: Job, text: string, file: File | null) => {
-    if (!appUser) return;
+    if (!appUser || isGuestMode) {
+      addToast('يجب تسجيل الدخول أو إنشاء حساب للتقديم على هذه الوظيفة 💼', 'info');
+      exitGuestMode();
+      return;
+    }
     // 🚫 Block banned users from applying
     if (appUser.isActive === false) {
       addToast("حسابك محظور ولا يمكنك التقديم على وظائف 🚫", "error");
@@ -2033,7 +2047,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [user?.id, needsRole]);
 
   const value = {
-    user, appUser, loading, needsRole, authLoading, authMode, setAuthMode,
+    user: isGuestMode ? null : user,
+    appUser: isGuestMode ? null : appUser,
+    loading, needsRole, authLoading, authMode, setAuthMode,
     pendingEmailVerification, setPendingEmailVerification,
     posts, jobs, allUsers, connections, seenConnectionIds, setSeenConnectionIds,
     notifications, readNotifIds, setReadNotifIds, readNotifTimestamps,
