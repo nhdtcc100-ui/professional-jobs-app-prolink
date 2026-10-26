@@ -1,6 +1,6 @@
 import React, { useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Layers, RotateCcw, Sparkles } from 'lucide-react';
+import { Layers, RotateCcw, Sparkles, Wrench } from 'lucide-react';
 import { Job } from '../../../types';
 import { JOB_CATEGORIES, getJobCategory, normalizeArabic } from '../../../lib/utils/jobCategoryUtils';
 
@@ -19,6 +19,15 @@ const ALL_ITEM = {
   emoji: '✨',
 };
 
+const SERVICES_ITEM = {
+  id: 'services',
+  label: 'سوق الخدمات',
+  desc: 'المهن والعمل الحر',
+  Icon: Wrench,
+  gradient: 'from-amber-500 to-orange-500',
+  emoji: '🔧',
+};
+
 export const JobCategoriesCard: React.FC<JobCategoriesCardProps> = ({
   selectedCategory,
   onSelectCategory,
@@ -28,7 +37,7 @@ export const JobCategoriesCard: React.FC<JobCategoriesCardProps> = ({
 
   // Count per category using normalized extraction
   const categoryCounts = React.useMemo(() => {
-    const counts: Record<string, number> = { 'الكل': jobs.length };
+    const counts: Record<string, number> = { 'الكل': jobs.length, 'services': 0 };
     JOB_CATEGORIES.forEach(cat => { counts[cat.id] = 0; });
     jobs.forEach(job => {
       const cat = getJobCategory(job);
@@ -41,7 +50,7 @@ export const JobCategoriesCard: React.FC<JobCategoriesCardProps> = ({
     return counts;
   }, [jobs]);
 
-  const allItems = [ALL_ITEM, ...JOB_CATEGORIES];
+  const allItems = [ALL_ITEM, SERVICES_ITEM, ...JOB_CATEGORIES];
 
   const handleSelect = useCallback((id: string) => {
     try { navigator.vibrate?.([8]); } catch (_) {}
@@ -87,7 +96,9 @@ export const JobCategoriesCard: React.FC<JobCategoriesCardProps> = ({
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-0.5">
                 {selectedCategory === 'الكل'
                   ? `${jobs.length} فرصة عمل متاحة`
-                  : `${categoryCounts[selectedCategory] || 0} فرصة متاحة في تخصص "${selectedCategory}"`}
+                  : selectedCategory === 'services'
+                    ? 'سوق الخدمات والمهن الحرة والباحثين عن عمل 🔧'
+                    : `${categoryCounts[selectedCategory] || 0} فرصة متاحة في تخصص "${selectedCategory}"`}
               </p>
             </div>
           </div>
@@ -225,11 +236,11 @@ export const JobCategoriesCard: React.FC<JobCategoriesCardProps> = ({
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 rounded-full bg-indigo-500 animate-ping shrink-0" />
                   <p className="text-xs font-black text-indigo-700 dark:text-indigo-300">
-                    تم تطبيق فلتر «{selectedCategory}»
+                    {selectedCategory === 'services' ? 'تم فتح «سوق الخدمات والمهن الحرة» 🔧' : `تم تطبيق فلتر «${selectedCategory}»`}
                   </p>
                 </div>
                 <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 bg-white/80 dark:bg-slate-800/80 px-2.5 py-0.5 rounded-full border border-indigo-200/60 dark:border-indigo-800/60 shadow-xs">
-                  {categoryCounts[selectedCategory] || 0} فرصة معروضة
+                  {selectedCategory === 'services' ? 'سوق المهن' : `${categoryCounts[selectedCategory] || 0} فرصة معروضة`}
                 </span>
               </div>
             </motion.div>

@@ -73,6 +73,13 @@ const ServiceCard: React.FC<{
                 <h3 className="font-black text-slate-800 dark:text-white text-sm leading-tight truncate">
                   {provider.name}
                 </h3>
+                <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-black border shrink-0 ${
+                  provider.role === 'freelancer'
+                    ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border-amber-200/60 dark:border-amber-800/40'
+                    : 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200/60 dark:border-blue-800/40'
+                }`}>
+                  {provider.role === 'freelancer' ? 'عمل حر 🔧' : 'باحث عن عمل 💼'}
+                </span>
                 {isPro && (
                   <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full text-[8px] font-black border border-amber-100 dark:border-amber-800/50 shrink-0">
                     <Star size={7} className="fill-current" />
@@ -154,7 +161,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
       let query = (supabase as any)
         .from('profiles')
         .select('id, name, avatar_url, title, specialty, location, is_available, role, is_pro, display_title, bio, is_active', { count: 'exact' })
-        .eq('role', 'freelancer')
+        .in('role', ['freelancer', 'seeker', 'job_seeker'])
         .not('is_active', 'eq', false)
         .order('is_available', { ascending: false })
         .order('is_pro', { ascending: false })
@@ -162,32 +169,39 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
         .range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1);
 
       if (searchTitle.trim()) {
+        const titleTerm = searchTitle.trim();
         query = query.or(
-          `title.ilike.%${searchTitle.trim()}%,specialty.ilike.%${searchTitle.trim()}%,display_title.ilike.%${searchTitle.trim()}%`
+          `title.ilike.%${titleTerm}%,specialty.ilike.%${titleTerm}%,display_title.ilike.%${titleTerm}%,name.ilike.%${titleTerm}%`
         );
       }
       if (searchLocation.trim()) {
-        query = query.ilike('location', `%${searchLocation.trim()}%`);
+        const locTerm = searchLocation.trim();
+        query = query.ilike('location', `%${locTerm}%`);
       }
 
       const { data, error, count } = await query;
       if (error) throw error;
 
-      const mapped: AppUser[] = (data || []).map((p: any) => ({
-        id: p.id,
-        name: p.name || 'مجهول',
-        email: '',
-        avatar: p.avatar_url || '',
-        role: 'freelancer',
-        isPro: p.is_pro || false,
-        is_pro: p.is_pro || false,
-        title: p.title || '',
-        displayTitle: p.display_title || p.title || p.specialty || '',
-        specialty: p.specialty || '',
-        location: p.location || '',
-        isAvailable: p.is_available ?? true,
-        bio: p.bio || '',
-      }));
+      const mapped: AppUser[] = (data || []).map((p: any) => {
+        const isFreelancer = p.role === 'freelancer';
+        const displayTitle = p.display_title || p.title || p.specialty || (isFreelancer ? 'مقدم خدمة' : 'باحث عن وظيفة');
+
+        return {
+          id: p.id,
+          name: p.name || 'مجهول',
+          email: '',
+          avatar: p.avatar_url || '',
+          role: (isFreelancer ? 'freelancer' : 'seeker') as any,
+          isPro: p.is_pro || false,
+          is_pro: p.is_pro || false,
+          title: p.title || '',
+          displayTitle,
+          specialty: p.specialty || '',
+          location: p.location || '',
+          isAvailable: p.is_available ?? true,
+          bio: p.bio || '',
+        };
+      });
 
       if (reset) {
         setProviders(mapped);
@@ -248,9 +262,9 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
               <Wrench size={20} className="text-white" />
             </div>
             <div>
-              <h2 className="font-black text-white text-lg leading-tight">سوق الخدمات</h2>
+              <h2 className="font-black text-white text-lg leading-tight">سوق الخدمات والمهن الحرة</h2>
               <p className="text-blue-100 text-[10px] font-bold">
-                {totalCount > 0 ? `${totalCount} مزود خدمة مسجل` : 'ابحث عن حرفيين ومزودي خدمات قريبين منك'}
+                {totalCount > 0 ? `${totalCount} كفاءة متاحة (عمل حر وباحثين عن عمل)` : 'ابحث عن أصحاب المهن والباحثين عن عمل حسب التخصص والمكان'}
               </p>
             </div>
           </div>

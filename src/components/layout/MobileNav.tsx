@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Home, Briefcase, Globe, MessageSquare, MoreHorizontal,
@@ -39,7 +39,17 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   logout, setShowAdmin,
   theme, toggleTheme
 }) => {
-  const { posts, connections, unreadMessagesCount, pendingRequestsCount, userTotalPostsCount } = useAppContext();
+  const { posts, connections, unreadMessagesCount, pendingRequestsCount, userTotalPostsCount, isGuestMode } = useAppContext();
+
+  // Hide messages tab on mobile dock for guests
+  const visibleNavItems = useMemo(() => {
+    return NAV_ITEMS.filter(item => {
+      if (item.id === 'messages' && (!appUser || isGuestMode)) {
+        return false;
+      }
+      return true;
+    });
+  }, [appUser, isGuestMode]);
 
   const userPosts = posts.filter(p => p.authorId === appUser?.id || (p as any).author_id === appUser?.id);
   const myPostsCount = Math.max(userTotalPostsCount || 0, userPosts.length);
@@ -103,7 +113,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
             style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)' }}
           />
 
-          {NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = activeNavId === item.id || (item.id === 'more' && showMobileMenu);
             const isMessages = item.id === 'messages';

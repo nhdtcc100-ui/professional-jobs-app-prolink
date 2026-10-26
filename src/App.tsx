@@ -944,7 +944,37 @@ function App() {
                     jobs={jobs}
                   />
 
-                  {/* 🔧 سوق الخدمات انتقل لصفحته المستقلة — انقر على أيقونة الخدمات في شريط التنقل */}
+                  {/* 🔧 سوق الخدمات ضمن أقسام وتصنيفات الوظائف في الصفحة الرئيسية */}
+                  {selectedJobCategory === 'services' ? (
+                    <div className="mt-2 space-y-4">
+                      <div className="flex items-center justify-between px-4 py-2.5 bg-gradient-to-l from-amber-500/10 via-blue-500/10 to-indigo-500/10 rounded-2xl border border-amber-500/20 shadow-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xl">🔧</span>
+                          <div>
+                            <h4 className="text-xs font-black text-slate-800 dark:text-white">سوق الخدمات والمهن الحرة</h4>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">تصفح وتواصل مع أصحاب المهن والباحثين عن عمل</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setSelectedJobCategory('الكل')}
+                          className="flex items-center gap-1 text-[11px] font-black text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xs transition-all active:scale-95 cursor-pointer"
+                        >
+                          العودة للوظائف ✕
+                        </button>
+                      </div>
+                      <Suspense fallback={<TabSkeleton />}>
+                        <ServicesView
+                          appUser={appUser}
+                          onUserClick={(u) => {
+                            setSelectedProfile(u);
+                            setActiveTab('profile');
+                          }}
+                          onRequireAuth={requireAuth}
+                        />
+                      </Suspense>
+                    </div>
+                  ) : (
+                    <>
 
                   {/* Smart Job Banner — only for seekers with profile data */}
                   <SmartJobBanner
@@ -1083,6 +1113,8 @@ function App() {
                       ));
                     })()}
                   </div>
+                    </>
+                  )}
                 </>
               )}
 

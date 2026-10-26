@@ -223,9 +223,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [needsRole, setNeedsRole] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   // ── Guest Mode State ──
-  const [isGuestMode, setIsGuestMode] = useState(false);
-  const enterGuestMode = useCallback(() => setIsGuestMode(true), []);
-  const exitGuestMode  = useCallback(() => setIsGuestMode(false), []);
+  const [isGuestMode, setIsGuestMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('prolink_guest_mode') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  const enterGuestMode = useCallback(() => {
+    try { localStorage.setItem('prolink_guest_mode', 'true'); } catch {}
+    setIsGuestMode(true);
+  }, []);
+  const exitGuestMode  = useCallback(() => {
+    try { localStorage.removeItem('prolink_guest_mode'); } catch {}
+    setIsGuestMode(false);
+  }, []);
 
   const [authMode, setAuthMode] = useState<'login' | 'signup' | 'phone'>('login');
   const [pendingEmailVerification, setPendingEmailVerification] = useState<string | null>(null);
@@ -798,8 +810,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const fetchAllData = async (silent = false, explicitUserId?: string) => {
+    if (isFetchingAllData.current) return;
     const effectiveUserId = explicitUserId || user?.id;
-    if (!effectiveUserId || isFetchingAllData.current) return;
     isFetchingAllData.current = true;
 
     // Temporarily expose effectiveUserId as local for queries that need it
@@ -878,112 +890,127 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try { localStorage.setItem('prolink_cached_jobs', JSON.stringify(mappedJobs.slice(0, 60))); } catch {}
       }
 
-      // 🚀 Parallel resilient data fetch
-      const [profilesRes, connsRes, notifsRes, msgsRes] = await Promise.allSettled([
-        profileService.fetchProfiles(),
-        networkService.fetchConnections(uid),
-        networkService.fetchNotifications(uid),
-        supabase.from('messages')
-          .select('*')
-          .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
-          .order('created_at', { ascending: false })
-          .limit(300)
-      ]);
+      if (uid) {
+        // 🚀 Parallel resilient data fetch for authenticated user
+        const [profilesRes, connsRes, notifsRes, msgsRes] = await Promise.allSettled([
+          profileService.fetchProfiles(),
+          networkService.fetchConnections(uid),
+          networkService.fetchNotifications(uid),
+          supabase.from('messages')
+            .select('*')
+            .or(`sender_id.eq.${uid},receiver_id.eq.${uid}`)
+            .order('created_at', { ascending: false })
+            .limit(300)
+        ]);
 
-      if (profilesRes.status === 'fulfilled' && profilesRes.value?.data) {
-        setAllUsers((profilesRes.value.data as any[]).map(mapProfile));
-      }
+        if (profilesRes.status === 'fulfilled' && profilesRes.value?.data) {
+          setAllUsers((profilesRes.value.data as any[]).map(mapProfile));
+        }
 
-      if (connsRes.status === 'fulfilled' && connsRes.value?.data) {
-        setConnections((connsRes.value.data as any[]).map(c => ({
-          id: c.id,
-          requesterId: c.requester_id,
-          recipientId: c.recipient_id,
-          status: c.status,
-          timestamp: { toDate: () => new Date(c.created_at) }
-        } as any)));
-      }
+        if (connsRes.status === 'fulfilled' && connsRes.value?.data) {
+          setConnections((connsRes.value.data as any[]).map(c => ({
+            id: c.id,
+            requesterId: c.requester_id,
+            recipientId: c.recipient_id,
+            status: c.status,
+            timestamp: { toDate: () => new Date(c.created_at) }
+          } as any)));
+        }
 
-      if (notifsRes.status === 'fulfilled' && notifsRes.value?.data) {
-        const readNotifSet = (() => {
-          try {
-            const c = localStorage.getItem('prolink_read_notif_ids');
-            return c ? new Set(JSON.parse(c)) : new Set();
-          } catch { return new Set(); }
-        })();
-
-        const notifTimestamps = (() => {
-          try {
-            const c = localStorage.getItem('prolink_read_notif_timestamps');
-            return c ? JSON.parse(c) : {};
-          } catch { return {}; }
-        })();
-
-        const now = Date.now();
-        const oneHour = 60 * 60 * 1000;
-
-        const mapped = (notifsRes.value.data as any[])
-          .map(n => ({
-            id: n.id,
-            userId: n.user_id,
-            type: n.type,
-            fromId: n.from_id,
-            fromName: n.from_name,
-            fromAvatar: n.from_avatar,
-            targetId: n.target_id,
-            read: n.read || readNotifSet.has(n.id),
-            message: n.message,
-            timestamp: { toDate: () => new Date(n.created_at) }
-          }))
-          .filter(n => {
-            const readAt = notifTimestamps[n.id];
-            if (readAt && (now - readAt) > oneHour) return false;
-            return true;
-          });
-
-        setNotifications(mapped as any);
-      }
-
-      if (msgsRes.status === 'fulfilled') {
-        if (msgsRes.value?.error) {
-          console.error('[AppContext] Messages fetch error from Supabase:', msgsRes.value.error);
-        } else if (msgsRes.value?.data) {
-          const rawMsgs = msgsRes.value.data as any[];
-          console.log('[AppContext] Loaded messages from DB count:', rawMsgs.length);
-
-          const readMsgSet = (() => {
+        if (notifsRes.status === 'fulfilled' && notifsRes.value?.data) {
+          const readNotifSet = (() => {
             try {
-              const c = localStorage.getItem('prolink_read_messages');
+              const c = localStorage.getItem('prolink_read_notif_ids');
               return c ? new Set(JSON.parse(c)) : new Set();
             } catch { return new Set(); }
           })();
 
-          const chatSenders = (() => {
+          const notifTimestamps = (() => {
             try {
-              const c = localStorage.getItem('prolink_read_chat_senders');
+              const c = localStorage.getItem('prolink_read_notif_timestamps');
               return c ? JSON.parse(c) : {};
             } catch { return {}; }
           })();
 
-          const sortedMsgs = [...rawMsgs].reverse();
+          const now = Date.now();
+          const oneHour = 60 * 60 * 1000;
 
-          setMessages(sortedMsgs.map(m => {
-            const lastReadAt = chatSenders[m.sender_id];
-            const msgTime = new Date(m.created_at).getTime();
-            const isRead = m.read === true || readMsgSet.has(m.id) || (lastReadAt && msgTime <= lastReadAt);
+          const mapped = (notifsRes.value.data as any[])
+            .map(n => ({
+              id: n.id,
+              userId: n.user_id,
+              type: n.type,
+              fromId: n.from_id,
+              fromName: n.from_name,
+              fromAvatar: n.from_avatar,
+              targetId: n.target_id,
+              read: n.read || readNotifSet.has(n.id),
+              message: n.message,
+              timestamp: { toDate: () => new Date(n.created_at) }
+            }))
+            .filter(n => {
+              const readAt = notifTimestamps[n.id];
+              if (readAt && (now - readAt) > oneHour) return false;
+              return true;
+            });
 
-            return {
-              ...m,
-              senderId: m.sender_id,
-              receiverId: m.receiver_id,
-              read: isRead,
-              timestamp: { toDate: () => new Date(m.created_at) }
-            };
-          }));
+          setNotifications(mapped as any);
         }
-      }
 
-      fetchMyGroups();
+        if (msgsRes.status === 'fulfilled') {
+          if (msgsRes.value?.error) {
+            console.error('[AppContext] Messages fetch error from Supabase:', msgsRes.value.error);
+          } else if (msgsRes.value?.data) {
+            const rawMsgs = msgsRes.value.data as any[];
+            console.log('[AppContext] Loaded messages from DB count:', rawMsgs.length);
+
+            const readMsgSet = (() => {
+              try {
+                const c = localStorage.getItem('prolink_read_messages');
+                return c ? new Set(JSON.parse(c)) : new Set();
+              } catch { return new Set(); }
+            })();
+
+            const chatSenders = (() => {
+              try {
+                const c = localStorage.getItem('prolink_read_chat_senders');
+                return c ? JSON.parse(c) : {};
+              } catch { return {}; }
+            })();
+
+            const sortedMsgs = [...rawMsgs].reverse();
+
+            setMessages(sortedMsgs.map(m => {
+              const lastReadAt = chatSenders[m.sender_id];
+              const msgTime = new Date(m.created_at).getTime();
+              const isRead = m.read === true || readMsgSet.has(m.id) || (lastReadAt && msgTime <= lastReadAt);
+
+              return {
+                ...m,
+                senderId: m.sender_id,
+                receiverId: m.receiver_id,
+                read: isRead,
+                timestamp: { toDate: () => new Date(m.created_at) }
+              };
+            }));
+          }
+        }
+
+        fetchMyGroups();
+      } else {
+        // 🌐 Guest Mode: fetch public profiles only
+        try {
+          const profilesRes = await profileService.fetchProfiles();
+          if (profilesRes?.data) {
+            setAllUsers((profilesRes.data as any[]).map(mapProfile));
+          }
+        } catch (e) {
+          console.warn('[AppContext] Guest fetchProfiles error:', e);
+        }
+        setConnections([]);
+        setNotifications([]);
+        setMessages([]);
+      }
 
       // ✅ Record the last successful fetch time
       const now = Date.now();
@@ -997,6 +1024,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isFetchingAllData.current = false;
     }
   };
+
+  // ─── Guest Mode Auto-fetch ──────────────────────────────────────────────────
+  useEffect(() => {
+    if (isGuestMode && !user) {
+      fetchAllData(true);
+    }
+  }, [isGuestMode, user]);
 
   const [likedPosts, setLikedPosts] = useState<Set<string>>(() => {
     try {

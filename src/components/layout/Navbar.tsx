@@ -41,7 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   theme,
   toggleTheme
 }) => {
-  const { unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount } = useAppContext();
+  const { unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount, isGuestMode } = useAppContext();
 
   return (
     <nav
@@ -102,7 +102,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <NavbarItem icon={<Briefcase size={22} />} label="الوظائف" active={activeTab === 'jobs'} onClick={() => setActiveTab('jobs')} />
-          <NavbarItem icon={<Wrench size={22} />} label="الخدمات" active={activeTab === 'services'} onClick={() => setActiveTab('services')} />
           {appUser?.isAdmin && (
             <NavbarItem icon={<Building2 size={22} />} label="الموارد" active={activeTab === 'erp'} onClick={() => setActiveTab('erp')} />
           )}
@@ -111,29 +110,34 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
           <NavbarItem icon={<Globe size={22} />} label="الأخبار" active={activeTab === 'news'} onClick={() => setActiveTab('news')} />
           
-          {/* Messages Tab with Red Unread Badge */}
-          <div className="relative h-full flex items-center overflow-visible z-20">
-            <NavbarItem icon={<MessageSquare size={22} />} label="الرسائل" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} />
-            {unreadMessagesCount > 0 && (
-              <span className="absolute top-2.5 right-0.5 z-30 min-w-[18px] h-[18px] px-1 bg-red-600 text-white font-black text-[9px] rounded-full animate-bounce pointer-events-none flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-lg">
-                {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
-              </span>
-            )}
-          </div>
+          {/* Messages Tab with Red Unread Badge - only for logged in members */}
+          {!isGuestMode && appUser && (
+            <div className="relative h-full flex items-center overflow-visible z-20">
+              <NavbarItem icon={<MessageSquare size={22} />} label="الرسائل" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} />
+              {unreadMessagesCount > 0 && (
+                <span className="absolute top-2.5 right-0.5 z-30 min-w-[18px] h-[18px] px-1 bg-red-600 text-white font-black text-[9px] rounded-full animate-bounce pointer-events-none flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-lg">
+                  {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                </span>
+              )}
+            </div>
+          )}
 
-          <div className="relative h-full flex items-center overflow-visible z-20">
-            <NavbarItem
-              icon={<Bell size={22} />}
-              label="الإشعارات"
-              active={showNotifications}
-              onClick={() => setShowNotifications(!showNotifications)}
-            />
-            {unreadNotificationsCount > 0 && (
-              <span className="absolute top-2.5 right-0.5 z-30 min-w-[18px] h-[18px] px-1 notif-badge-premium text-[9px] rounded-full animate-bounce pointer-events-none flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-lg">
-                {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
-              </span>
-            )}
-          </div>
+          {/* Notifications Tab - only for logged in members */}
+          {!isGuestMode && appUser && (
+            <div className="relative h-full flex items-center overflow-visible z-20">
+              <NavbarItem
+                icon={<Bell size={22} />}
+                label="الإشعارات"
+                active={showNotifications}
+                onClick={() => setShowNotifications(!showNotifications)}
+              />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute top-2.5 right-0.5 z-30 min-w-[18px] h-[18px] px-1 notif-badge-premium text-[9px] rounded-full animate-bounce pointer-events-none flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-lg">
+                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Col 3 — Profile Dropdown (left in RTL) */}
