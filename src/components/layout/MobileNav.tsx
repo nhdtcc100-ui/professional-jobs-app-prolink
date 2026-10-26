@@ -28,7 +28,7 @@ interface MobileNavProps {
 const NAV_ITEMS = [
   { id: 'home',     icon: Home,          label: 'الرئيسية' },
   { id: 'jobs',     icon: Briefcase,     label: 'الوظائف'  },
-  { id: 'services', icon: Wrench,        label: 'الخدمات' },
+  { id: 'news',     icon: Globe,         label: 'الأخبار'  },
   { id: 'messages', icon: MessageSquare, label: 'الرسائل'  },
   { id: 'more',     icon: MoreHorizontal,label: 'المزيد'   },
 ];
@@ -361,8 +361,8 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                 {appUser?.isAdmin && (
                   <DrawerItem icon={<Building2 size={20} className="text-blue-500" />} label="نظام الموارد البشرية (ERP)" onClick={() => { setActiveTab('erp'); setShowMobileMenu(false); }} color="text-blue-700 dark:text-blue-300" />
                 )}
-                <DrawerItem icon={<Globe size={20} className="text-emerald-500" />} label="آخر الأخبار" onClick={() => { setActiveTab('news'); setShowMobileMenu(false); }} color="text-emerald-700 dark:text-emerald-300" />
-                <DrawerItem icon={<Wrench size={20} className="text-blue-500" />} label="سوق الخدمات 🔧" onClick={() => { setActiveTab('services'); setShowMobileMenu(false); }} color="text-blue-700 dark:text-blue-300" />
+                <DrawerItem icon={<MessageSquare size={20} className="text-indigo-500" />} label="المجموعات المهنية 👥" onClick={() => { setActiveTab('groups'); setShowMobileMenu(false); }} color="text-indigo-700 dark:text-indigo-300" />
+                <DrawerItem icon={<Wrench size={20} className="text-blue-500" />} label="سوق الخدمات والمهن 🔧" onClick={() => { setActiveTab('home'); setShowMobileMenu(false); }} color="text-blue-700 dark:text-blue-300" />
                 {appUser?.isAdmin && (
                   <DrawerItem icon={<Shield size={20} className="text-red-500" />} label="لوحة التحكم العليا" onClick={() => { setShowAdmin(true); setShowMobileMenu(false); }} color="text-red-700 dark:text-red-300" />
                 )}

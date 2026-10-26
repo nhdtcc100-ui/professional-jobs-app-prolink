@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Plus, ArrowRight, Lock, Globe } from 'lucide-react';
+import { Users, Plus, ArrowRight, Lock, Globe, Search, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { groupService } from '../../lib/services/groupService';
-import { GroupCard, GroupDetailView } from './groups';
+import { GroupCard, GroupDetailView, TelegramGroupJoinModal } from './groups';
 import { AppUser } from '../../types';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -34,7 +34,10 @@ export interface GroupsViewProps {
 type GroupsTab = 'discover' | 'my';
 
 export function GroupsView({ addToast, appUser, sharedPost, onClearSharedPost, onSelectGroup }: GroupsViewProps) {
-  const [activeTab, setActiveTab] = useState<GroupsTab>('discover');
+  const [activeTab, setActiveTab] = useState<GroupsTab>('my');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [previewGroup, setPreviewGroup] = useState<any>(null);
+  const [isJoinModalOpen, setIsJoinModalOpen] = useState(false);
   const [showCreatePage, setShowCreatePage] = useState(false);
   const [groups, setGroups] = useState<any[]>([]);
   const [myGroups, setMyGroups] = useState<any[]>([]);
@@ -304,57 +307,197 @@ export function GroupsView({ addToast, appUser, sharedPost, onClearSharedPost, o
   // ── Main Groups View ──
   return (
     <div className="space-y-4" dir="rtl">
+      {/* Search Input for Groups */}
+      <div className="relative">
+        <Search size={16} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="ابحث في مجموعاتك أو عن مجموعات عامة جديدة..."
+          className="w-full pr-10 pl-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-bold text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm"
+        />
+        {searchQuery && (
+          <button onClick={() => setSearchQuery('')} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+            <X size={14} />
+          </button>
+        )}
+      </div>
+
       {/* Tab Bar */}
       <div className="flex items-center justify-between bg-white dark:bg-slate-900/80 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
         <div className="flex gap-2">
-          {(['discover', 'my'] as const).map((key) => (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${activeTab === key ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-            >
-              {key === 'discover' ? 'اكتشاف' : 'مجموعاتي'}
-            </button>
-          ))}
+          <button
+            onClick={() => setActiveTab('my')}
+            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+              activeTab === 'my'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            مجموعاتي ({myGroups.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('discover')}
+            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+              activeTab === 'discover'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
+                : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+            }`}
+          >
+            استكشاف المجموعات العامة 🌐
+          </button>
         </div>
+
         {/* Create button */}
         <button
           onClick={() => setShowCreatePage(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-blue-500/20 active:scale-95"
+          className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black transition-all shadow-md active:scale-95"
         >
           <Plus size={14} />
-          إنشاء
+          إنشاء مجموعة
         </button>
       </div>
 
-      {activeTab === 'my' && (
+      {/* ── حالة البحث النشط: يظهر مجموعات المشترك بها والمجموعات العامة المطابقة ── */}
+      {searchQuery.trim() ? (
+        <div className="space-y-4">
+          {/* نتائج من مجموعاتي */}
+          {(() => {
+            const myMatches = myGroups.filter(g =>
+              (g.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+              (g.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+            );
+            const publicMatches = groups.filter(g =>
+              !myGroups.some(mg => mg.id === g.id) &&
+              ((g.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+               (g.description || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+               (g.category || '').toLowerCase().includes(searchQuery.toLowerCase()))
+            );
+
+            return (
+              <>
+                {myMatches.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-black text-slate-500 mb-2 px-1">مجموعاتك المشترك بها ({myMatches.length})</h4>
+                    <div className="grid grid-cols-1 gap-3">
+                      {myMatches.map(g => (
+                        <GroupCard
+                          key={g.id}
+                          group={g}
+                          variant="my"
+                          onClick={() => { setSelectedGroup(g); fetchPendingRequests(g.id); }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {publicMatches.length > 0 && (
+                  <div>
+                    <h4 className="text-xs font-black text-slate-500 mb-2 px-1">مجموعات عامة مطابقة للبحث ({publicMatches.length})</h4>
+                    <div className="grid grid-cols-1 gap-3">
+                      {publicMatches.map(g => (
+                        <GroupCard
+                          key={g.id}
+                          group={g}
+                          variant="discover"
+                          onClick={() => {
+                            setPreviewGroup(g);
+                            setIsJoinModalOpen(true);
+                          }}
+                          onJoin={() => {
+                            setPreviewGroup(g);
+                            setIsJoinModalOpen(true);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {myMatches.length === 0 && publicMatches.length === 0 && (
+                  <div className="py-16 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800">
+                    <Users size={36} className="mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                    <p className="text-sm font-black text-slate-500">لا توجد مجموعات مطابقة لكلمة "{searchQuery}"</p>
+                    <p className="text-xs text-slate-400 mt-1">جرّب البحث بكلمة أخرى أو أنشئ مجموعتك الخاصة الآن</p>
+                  </div>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      ) : activeTab === 'my' ? (
+        /* ── التبويب الافتراضي: مجموعاتي فقط للمستخدم المسجل ── */
         <div className="grid grid-cols-1 gap-4">
           {myGroups.length === 0 ? (
             <div className="col-span-full py-20 text-center bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-inner">
-              <Users size={64} className="mx-auto text-slate-100 dark:text-slate-800 mb-6 animate-bounce" />
-              <p className="text-slate-400 font-black text-lg uppercase tracking-widest">لم تنضم لأي مجتمع مهني بعد</p>
-              <button onClick={() => setActiveTab('discover')} className="mt-4 bg-blue-600 text-white px-8 py-3 rounded-2xl font-black text-sm shadow-xl shadow-blue-100 hover:scale-105 transition-all">اكتشف الفرص الآن</button>
+              <Users size={56} className="mx-auto text-slate-200 dark:text-slate-700 mb-4 animate-bounce" />
+              <h3 className="text-base font-black text-slate-800 dark:text-white">لم تنضم لأي مجموعة بعد</h3>
+              <p className="text-xs text-slate-400 font-bold mt-1 max-w-sm mx-auto leading-relaxed">
+                تظهر هنا فقط المجموعات التي أنت مشترك بها. ابحث عن مجموعات عامة أو استكشف الفرص للانضمام.
+              </p>
+              <button
+                onClick={() => setActiveTab('discover')}
+                className="mt-5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-2.5 rounded-xl font-black text-xs shadow-lg shadow-blue-500/20 hover:scale-105 active:scale-95 transition-all"
+              >
+                استكشاف المجموعات العامة 🌐
+              </button>
             </div>
-          ) : myGroups.map(g => (
-            <GroupCard key={g.id} group={g} variant="my" onClick={() => { setSelectedGroup(g); fetchPendingRequests(g.id); }} />
-          ))}
+          ) : (
+            myGroups.map(g => (
+              <GroupCard
+                key={g.id}
+                group={g}
+                variant="my"
+                onClick={() => { setSelectedGroup(g); fetchPendingRequests(g.id); }}
+              />
+            ))
+          )}
         </div>
-      )}
-
-      {activeTab === 'discover' && (
+      ) : (
+        /* ── استكشاف المجموعات العامة مع نافذة انضمام تيليجرام ── */
         <div className="grid grid-cols-1 gap-3">
           {loading ? (
             <>
               <Skeleton />
               <Skeleton />
               <Skeleton />
-              <Skeleton />
             </>
           ) : groups.map(g => (
-            <GroupCard key={g.id} group={g} variant="discover" onClick={() => { setSelectedGroup(g); fetchPendingRequests(g.id); }} onJoin={() => handleJoinRequest(g)} />
+            <GroupCard
+              key={g.id}
+              group={g}
+              variant="discover"
+              onClick={() => {
+                setPreviewGroup(g);
+                setIsJoinModalOpen(true);
+              }}
+              onJoin={() => {
+                setPreviewGroup(g);
+                setIsJoinModalOpen(true);
+              }}
+            />
           ))}
         </div>
       )}
+
+      {/* ── نافذة الانضمام للمجموعة بنمط تيليجرام (Telegram Group Join Modal) ── */}
+      <TelegramGroupJoinModal
+        group={previewGroup}
+        isOpen={isJoinModalOpen}
+        onClose={() => setIsJoinModalOpen(false)}
+        onJoin={async (grp) => {
+          await handleJoinRequest(grp);
+          setIsJoinModalOpen(false);
+          setSelectedGroup(grp);
+        }}
+        onOpenChat={(grp) => {
+          setIsJoinModalOpen(false);
+          setSelectedGroup(grp);
+        }}
+        isMember={myGroups.some(g => g.id === previewGroup?.id)}
+      />
     </div>
   );
 }

@@ -102,7 +102,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           <NavbarItem icon={<Briefcase size={22} />} label="الوظائف" active={activeTab === 'jobs'} onClick={() => setActiveTab('jobs')} />
-          <NavbarItem icon={<Wrench size={22} />} label="الخدمات" active={activeTab === 'services'} onClick={() => setActiveTab('services')} />
           {appUser?.isAdmin && (
             <NavbarItem icon={<Building2 size={22} />} label="الموارد" active={activeTab === 'erp'} onClick={() => setActiveTab('erp')} />
           )}

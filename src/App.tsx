@@ -29,6 +29,7 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { GuestBanner } from './components/common/GuestBanner';
 import { isJobPoster, canUserPostAndInteract } from './lib/utils/roleUtils';
 import { JobCategoriesCard } from './components/features/missions/JobCategoriesCard';
+import { HomeServicesSection } from './components/features/services/HomeServicesSection';
 import { getJobCategory, isJobInCategory } from './lib/utils/jobCategoryUtils';
 import { useMobileBackButton } from './lib/hooks/useMobileBackButton';
 
@@ -595,10 +596,60 @@ function App() {
     (j.company || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const filteredUsers = allUsers.filter(u =>
-    (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (u.companyName && u.companyName.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  // Live database lookup when searching to guarantee all users & freelancers are found from database
+  useEffect(() => {
+    if (!searchQuery || searchQuery.trim().length < 2) return;
+    const term = searchQuery.trim();
+    const timeout = setTimeout(async () => {
+      try {
+        const { data } = await (supabase.from('profiles') as any)
+          .select('id, name, avatar_url, role, is_pro, title, display_title, specialty, company_name, location, is_available, bio')
+          .or(`name.ilike.%${term}%,title.ilike.%${term}%,specialty.ilike.%${term}%,display_title.ilike.%${term}%,location.ilike.%${term}%,company_name.ilike.%${term}%`)
+          .limit(30);
+
+        if (data && data.length > 0) {
+          const mapped: AppUser[] = data.map((p: any) => ({
+            id: p.id,
+            name: p.name || 'مجهول',
+            email: p.email || '',
+            avatar: p.avatar_url || '',
+            role: p.role || 'job_seeker',
+            isPro: p.is_pro || false,
+            is_pro: p.is_pro || false,
+            title: p.title || '',
+            displayTitle: p.display_title || p.title || p.specialty || '',
+            specialty: p.specialty || '',
+            companyName: p.company_name || '',
+            location: p.location || '',
+            isAvailable: p.is_available ?? true,
+            bio: p.bio || '',
+          }));
+          setAllUsers(prev => {
+            const existingIds = new Set(prev.map(u => u.id));
+            const newUsers = mapped.filter((m: AppUser) => !existingIds.has(m.id));
+            return newUsers.length > 0 ? [...prev, ...newUsers] : prev;
+          });
+        }
+      } catch (e) {
+        // quiet error handle
+      }
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [searchQuery, setAllUsers]);
+
+  const filteredUsers = allUsers.filter(u => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      (u.name || '').toLowerCase().includes(q) ||
+      (u.companyName && u.companyName.toLowerCase().includes(q)) ||
+      (u.title && u.title.toLowerCase().includes(q)) ||
+      (u.specialty && u.specialty.toLowerCase().includes(q)) ||
+      (u.displayTitle && u.displayTitle.toLowerCase().includes(q)) ||
+      (u.location && u.location.toLowerCase().includes(q)) ||
+      (u.bio && u.bio.toLowerCase().includes(q))
+    );
+  });
 
   const filteredGroups = allGroups.filter(g =>
     (g.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -891,6 +942,16 @@ function App() {
                     jobs={jobs}
                   />
 
+                  {/* 🔧 سوق الخدمات والمهن الحرة مدمج في الصفحة الرئيسية */}
+                  <HomeServicesSection
+                    appUser={appUser}
+                    onUserClick={(u) => {
+                      setSelectedProfile(u);
+                      setActiveTab('profile');
+                    }}
+                    onRequireAuth={requireAuth}
+                  />
+
                   {/* Smart Job Banner — only for seekers with profile data */}
                   <SmartJobBanner
                     jobs={jobs}
@@ -1109,25 +1170,76 @@ function App() {
                 </div>
               )}
                {activeTab === 'messages' && (
-                <div className="pb-safe-bottom md:pb-0 h-full">
-                  <MessagingView 
-                    messages={messages} 
-                    setMessages={setMessages} 
-                    currentUser={appUser} 
-                    allUsers={allUsers} 
-                    connections={connections} 
-                    notifications={notifications}
-                    selectedChat={selectedChat} 
-                    onSelectChat={setSelectedChat}
-                    selectedGroup={selectedGroup}
-                    setSelectedGroup={setSelectedGroup}
-                    myGroups={myGroups}
-                    addToast={addToast}
-                    fetchMyGroups={fetchMyGroups}
-                    setSelectedProfile={setSelectedProfile}
-                    onStartCall={startCall}
-                  />
-                </div>
+                !appUser ? (
+                  <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-md mx-auto shadow-xl" dir="rtl">
+                    <div className="w-16 h-16 bg-blue-50 dark:bg-blue-950/40 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                      <MessageSquare size={30} />
+                    </div>
+                    <h3 className="text-base font-black text-slate-800 dark:text-white">الرسائل والمحادثات مقفلة 🔒</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">
+                      أنت تتصفح كزائر. يرجى تسجيل الدخول للوصول إلى المحادثات والرسائل المباشرة.
+                    </p>
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'))}
+                      className="mt-5 w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                      <span>تسجيل الدخول الآن</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="pb-safe-bottom md:pb-0 h-full">
+                    <MessagingView 
+                      messages={messages} 
+                      setMessages={setMessages} 
+                      currentUser={appUser} 
+                      allUsers={allUsers} 
+                      connections={connections} 
+                      notifications={notifications}
+                      selectedChat={selectedChat} 
+                      onSelectChat={setSelectedChat}
+                      selectedGroup={selectedGroup}
+                      setSelectedGroup={setSelectedGroup}
+                      myGroups={myGroups}
+                      addToast={addToast}
+                      fetchMyGroups={fetchMyGroups}
+                      setSelectedProfile={setSelectedProfile}
+                      onStartCall={startCall}
+                    />
+                  </div>
+                )
+              )}
+              {activeTab === 'groups' && (
+                !appUser ? (
+                  <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-md mx-auto shadow-xl" dir="rtl">
+                    <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                      <Users size={30} />
+                    </div>
+                    <h3 className="text-base font-black text-slate-800 dark:text-white">المجموعات المهنية مقفلة 🔒</h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">
+                      أنت تتصفح كزائر. يرجى تسجيل الدخول للانضمام والتفاعل داخل المجموعات المهنية.
+                    </p>
+                    <button
+                      onClick={() => window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'))}
+                      className="mt-5 w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                      <span>تسجيل الدخول الآن</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="pb-safe-bottom px-1 md:px-0">
+                    <Suspense fallback={<TabSkeleton />}>
+                      <GroupsView
+                        appUser={appUser}
+                        addToast={addToast}
+                        onSelectGroup={(g) => {
+                          setSelectedChat(null);
+                          setSelectedGroup(g);
+                          setActiveTab('messages');
+                        }}
+                      />
+                    </Suspense>
+                  </div>
+                )
               )}
               {activeTab === 'news' && (
                 <div className="pb-safe-bottom px-1 md:px-0">
