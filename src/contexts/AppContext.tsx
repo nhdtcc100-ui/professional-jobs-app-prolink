@@ -1187,7 +1187,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const handleSyncSignal = async (targetUser: AppUser) => {
     if (!appUser || isGuestMode) {
-      addToast('يجب تسجيل الدخول أو إنشاء حساب لإرسال طلب تواصل أو صداقة 👥', 'info');
+      addToast('يجب تسجيل الدخول أو إنشاء حساب لإرسال طلب تواصل أو صداقة 👥', 'info' as any);
       exitGuestMode();
       return;
     }
@@ -1440,7 +1440,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const handleApplyJob = async (job: Job, text: string, file: File | null) => {
     if (!appUser || isGuestMode) {
-      addToast('يجب تسجيل الدخول أو إنشاء حساب للتقديم على هذه الوظيفة 💼', 'info');
+      addToast('يجب تسجيل الدخول أو إنشاء حساب للتقديم على هذه الوظيفة 💼', 'info' as any);
       exitGuestMode();
       return;
     }

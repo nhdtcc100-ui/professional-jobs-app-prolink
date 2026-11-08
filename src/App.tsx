@@ -53,7 +53,7 @@ const GroupsView      = lazy(() => import('./components/features/GroupsView').th
 const AdminDashboard  = lazy(() => import('./components/features/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const ERPView         = lazy(() => import('./components/features/erp/ERPView').then(m => ({ default: m.ERPView })));
 const AboutPage       = lazy(() => import('./components/features/AboutPage').then(m => ({ default: m.AboutPage })));
-const ProfilePage     = lazy(() => import('./components/features/profile/ProfilePage').then(m => ({ default: m.ProfilePage })));
+const ProfilePage     = lazy(() => import('./components/features/profile/ProfilePage').then(m => ({ default: m.ProfilePage })) as any);
 const ServicesView    = lazy(() => import('./components/features/services/ServicesView').then(m => ({ default: m.ServicesView })));
 const SettingsPage    = lazy(() => import('./components/features/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
 
@@ -1135,7 +1135,7 @@ function App() {
                       }}
                       onApplyJob={(job) => {
                         if (!appUser || isGuestMode) {
-                          addToast('يجب تسجيل الدخول أو إنشاء حساب للتقديم على هذه الوظيفة 💼', 'info');
+                          addToast('يجب تسجيل الدخول أو إنشاء حساب للتقديم على هذه الوظيفة 💼', 'info' as any);
                           exitGuestMode();
                           return;
                         }
@@ -1330,7 +1330,7 @@ function App() {
                       onLike={handleLike}
                       onDislike={handleDislike}
                       onAddComment={handleAddComment}
-                      setAppUser={(updated) => {
+                      setAppUser={(updated: any) => {
                         setAppUser(updated as any);
                         setSelectedProfile(updated as any);
                       }}
@@ -1341,7 +1341,7 @@ function App() {
                       }}
                       onCallClick={startCall}
                       onGoToSettings={() => setActiveTab('settings')}
-                      onSave={async (updates) => {
+                      onSave={async (updates: any) => {
                         if (appUser) {
                           const merged = { ...appUser, ...updates };
                           setAppUser(merged as any);
@@ -1443,7 +1443,7 @@ function App() {
             }}
             onApplyJob={(job) => {
               if (!appUser || isGuestMode) {
-                addToast('يجب تسجيل الدخول أو إنشاء حساب للتقديم على هذه الوظيفة 💼', 'info');
+                addToast('يجب تسجيل الدخول أو إنشاء حساب للتقديم على هذه الوظيفة 💼', 'info' as any);
                 exitGuestMode();
                 return;
               }
