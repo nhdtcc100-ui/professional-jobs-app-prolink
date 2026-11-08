@@ -1,7 +1,5 @@
-import React, { useState } from 'react';
-import { motion } from 'motion/react';
-import { ArrowRight } from 'lucide-react';
-import { ProfileInfoCard } from './ProfileInfoCard';
+import React from 'react';
+import { ModernProfileView } from './ModernProfileView';
 import { AppUser, Post } from '../../../types';
 
 interface ProfilePageProps {
@@ -31,37 +29,23 @@ export function ProfilePage({
   isMe,
   user,
   onBack,
+  addToast,
+  setAppUser,
   onMessageClick,
   onCallClick,
-  onGoToSettings,
 }: ProfilePageProps) {
   return (
-    <div className="w-full max-w-2xl mx-auto space-y-4 pb-28 pt-0 md:pt-4" dir="rtl">
-      
-      {/* Back button header */}
-      {onBack && (
-        <div className="flex items-center justify-between px-2 py-1">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-2 px-4 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black hover:bg-slate-50 transition-all border border-slate-100 dark:border-slate-700 shadow-sm"
-          >
-            <ArrowRight size={14} />
-            العودة للرئيسية
-          </button>
-          <p className="text-xs font-black text-slate-400">الملف الشخصي</p>
-        </div>
-      )}
-
-      {/* Single profile info card */}
-      <ProfileInfoCard
-        profile={profile}
-        isMe={isMe}
-        onMessageClick={onMessageClick}
-        onCallClick={() => onCallClick?.(profile)}
-        showCallButton={!isMe}
-        onGoToSettings={onGoToSettings}
-      />
-    </div>
+    <ModernProfileView
+      profile={profile}
+      isMe={isMe}
+      user={user}
+      onBack={onBack}
+      addToast={addToast || (() => {})}
+      setAppUser={setAppUser}
+      onMessageClick={onMessageClick}
+      onCallClick={() => onCallClick?.(profile)}
+      showCallButton={!isMe}
+    />
   );
 }
 
