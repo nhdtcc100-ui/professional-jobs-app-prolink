@@ -3,3 +3,4 @@ export * from './ProfileTabs';
 export * from './ProfileEditView';
 export * from './ProfileActivityView';
 export * from './ProfilePage';
+export * from './ProfileInfoCard';

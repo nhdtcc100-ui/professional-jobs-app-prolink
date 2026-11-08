@@ -60,7 +60,7 @@ interface AppContextType {
   setSelectedProfile: (user: AppUser | null) => void;
   isEditingProfile: boolean;
   setIsEditingProfile: (is: boolean) => void;
-  toasts: { id: number, message: string, type: 'success' | 'error' }[];
+  toasts: { id: number, message: string, type: 'success' | 'error' | 'info' | 'warning' }[];
   showNotifications: boolean;
   setShowNotifications: (show: boolean) => void;
   showAdmin: boolean;
@@ -77,7 +77,7 @@ interface AppContextType {
   toggleTheme: () => void;
   
   // Actions
-  addToast: (message: string, type?: 'success' | 'error') => void;
+  addToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
   handleGoogleLogin: () => Promise<void>;
   handleEmailLogin: (e: React.FormEvent) => Promise<void>;
   handleEmailSignUp: (e: React.FormEvent) => Promise<void>;
@@ -639,7 +639,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setSearchQuery = useCallback((q: string) => _setSearchQuery(sanitizeInput(q)), []);
   const [selectedProfile, setSelectedProfile] = useState<AppUser | null>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [toasts, setToasts] = useState<{ id: number, message: string, type: 'success' | 'error' }[]>([]);
+  const [toasts, setToasts] = useState<{ id: number, message: string, type: 'success' | 'error' | 'info' | 'warning' }[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
   const [selectedChat, setSelectedChat] = useState<AppUser | null>(null);
@@ -677,7 +677,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
   const MIN_REFRESH_INTERVAL = 15 * 60 * 1000; // 15 minutes
 
-  const addToast = (message: string, type: 'success' | 'error' = 'success') => {
+  const addToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'success') => {
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Home, Briefcase, Globe, MessageSquare, MoreHorizontal,
-  Users, Info, LogOut, Shield, Phone, Building2, Moon, Sun, Wrench, LogIn
+  Users, Info, LogOut, Shield, Phone, Building2, Moon, Sun, Wrench, LogIn, Settings
 } from 'lucide-react';
 import { DrawerItem } from './Navigation';
 import { AppUser } from '../../types';
@@ -302,11 +302,11 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                           <span
                             className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full"
                             style={{
-                              background: appUser?.role === 'employer' ? 'rgba(59,130,246,0.1)' : 'rgba(16,185,129,0.1)',
-                              color: appUser?.role === 'employer' ? '#3b82f6' : '#10b981',
+                              background: appUser?.role === 'employer' ? 'rgba(59,130,246,0.1)' : appUser?.role === 'freelancer' ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)',
+                              color: appUser?.role === 'employer' ? '#3b82f6' : appUser?.role === 'freelancer' ? '#f59e0b' : '#10b981',
                             }}
                           >
-                            {appUser?.role === 'employer' ? 'صاحب عمل 💼' : 'باحث عن عمل 🔍'}
+                            {appUser?.role === 'employer' ? 'صاحب عمل 💼' : appUser?.role === 'freelancer' ? 'عمل حر ⚡' : 'باحث عن عمل 🔍'}
                           </span>
                         </div>
                       </div>
@@ -377,6 +377,9 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                   <DrawerItem icon={<Shield size={20} className="text-red-500" />} label="لوحة التحكم العليا" onClick={() => { setShowAdmin(true); setShowMobileMenu(false); }} color="text-red-700 dark:text-red-300" />
                 )}
                 <DrawerItem icon={<Info size={20} className="text-amber-500" />} label="عن منصة عمل أولاً" onClick={() => { setActiveTab('about'); setShowMobileMenu(false); }} color="text-amber-700 dark:text-amber-300" />
+                {appUser && (
+                  <DrawerItem icon={<Settings size={20} className="text-blue-500" />} label="الإعدادات ⚙️" onClick={() => { setActiveTab('settings'); setShowMobileMenu(false); }} color="text-blue-700 dark:text-blue-300" />
+                )}
                 {toggleTheme && (
                   <DrawerItem
                     icon={theme === 'dark' ? <Sun size={20} className="text-amber-500" /> : <Moon size={20} className="text-indigo-500" />}

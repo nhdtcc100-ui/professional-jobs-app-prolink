@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Users, Briefcase, Globe, MessageSquare, Bell, ChevronDown, Crown, User as UserIcon, Shield, LogOut, Moon, Sun, Phone, Building2, Wrench, LogIn } from 'lucide-react';
+import { Home, Users, Briefcase, Globe, MessageSquare, Bell, ChevronDown, Crown, User as UserIcon, Shield, LogOut, Moon, Sun, Phone, Building2, Wrench, LogIn, Settings } from 'lucide-react';
 import { NavbarItem, NavDropdownItem } from './';
 import { AppUser, AppNotification } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
@@ -158,7 +158,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="hidden lg:block text-right">
                   <p className="text-[10px] font-black text-slate-800 dark:text-white leading-none">{appUser?.name}</p>
                   <p className="text-[8px] text-blue-600 dark:text-blue-400 font-black uppercase mt-1">
-                    {appUser?.role === 'employer' ? 'صاحب عمل' : 'باحث'}
+                    {appUser?.role === 'employer' ? 'صاحب عمل' : appUser?.role === 'freelancer' ? 'عمل حر' : 'باحث'}
                   </p>
                 </div>
                 <ChevronDown size={14} className="text-slate-400 dark:text-slate-500" />
@@ -175,7 +175,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <p className="text-[9px] text-slate-400 font-bold truncate">{appUser?.email}</p>
                   </div>
                   <NavDropdownItem icon={<Crown size={14} className="text-amber-500" />} label={appUser?.isPro ? 'عضوية النخبة' : 'ترقية للحساب الذهبي'} onClick={toggleProRank} color="text-amber-600" />
-                  <NavDropdownItem icon={<UserIcon size={14} />} label="تعديل الملف الشخصي" onClick={() => { setSelectedProfile(appUser); setIsEditingProfile(true); setActiveTab('profile'); }} />
+                  <NavDropdownItem icon={<UserIcon size={14} />} label="الملف الشخصي" onClick={() => { setSelectedProfile(appUser); setIsEditingProfile(false); setActiveTab('profile'); }} />
+                  <NavDropdownItem icon={<Settings size={14} />} label="الإعدادات" onClick={() => { setActiveTab('settings'); }} />
                   {toggleTheme && (
                     <NavDropdownItem
                       icon={theme === 'dark' ? <Sun size={14} className="text-amber-500" /> : <Moon size={14} className="text-indigo-500" />}

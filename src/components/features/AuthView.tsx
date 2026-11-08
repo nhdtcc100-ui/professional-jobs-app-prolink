@@ -157,11 +157,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, handleGoogleLogin
       if (res?.error) {
         setError(res.error.message || "حدث خطأ أثناء الاتصال، يرجى المحاولة لاحقاً");
       } else {
-        // إذا كان هناك حساب جديد ومسجل الجلسة، حفظ الحقول الإضافية فوراً
+        // حفظ الدور المحدد والبيانات الإضافية فوراً في البروفايل
         const registeredUserId = res?.data?.user?.id;
         if (registeredUserId) {
           try {
-            await supabase.from('profiles').update({
+            await authService.selectRole(registeredUserId, selectedRole, {
               location: sanitizeInput(location, 100) || null,
               company_name: selectedRole === 'employer' ? sanitizeInput(companyName, 100) : null,
               display_title: displayTitle || null,
@@ -169,9 +169,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, handleGoogleLogin
               freelancer_type: selectedRole === 'freelancer' ? freelancerType : null,
               home_address: (selectedRole === 'freelancer' && freelancerType === 'client') ? sanitizeInput(homeAddress, 200) : null,
               service_request: (selectedRole === 'freelancer' && freelancerType === 'client') ? sanitizeInput(serviceRequest, 500) : null,
-            }).eq('id', registeredUserId);
+            });
           } catch (updateErr) {
-            console.warn('[AuthView] Additional profile fields save warning:', updateErr);
+            console.warn('[AuthView] Role and profile fields save warning:', updateErr);
           }
         }
 
@@ -280,118 +280,120 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, handleGoogleLogin
           </AnimatePresence>
 
           <form onSubmit={handleSubmit} className="space-y-3.5">
-            {mode === "signup" && (
-              <>
-                <div className="space-y-1.5 mb-3">
-                  <label className="block text-[11px] font-black text-slate-700">نوع الحساب (اختر فئتك):</label>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRole("seeker")}
-                      className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
-                        selectedRole === "seeker"
-                          ? "border-blue-600 bg-blue-50 text-blue-900 ring-2 ring-blue-500/20 shadow-sm"
-                          : "border-slate-200 bg-slate-50/60 text-slate-600 hover:border-slate-300"
-                      }`}
-                    >
-                      <span className="text-[11px] font-black block">باحث عن عمل</span>
-                      <span className="text-[9px] text-slate-400 font-bold block mt-0.5">👤 وظائف وCV</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRole("employer")}
-                      className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
-                        selectedRole === "employer"
-                          ? "border-emerald-600 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500/20 shadow-sm"
-                          : "border-slate-200 bg-slate-50/60 text-slate-600 hover:border-slate-300"
-                      }`}
-                    >
-                      <span className="text-[11px] font-black block">صاحب عمل</span>
-                      <span className="text-[9px] text-slate-400 font-bold block mt-0.5">💼 نشر وظائف</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRole("freelancer")}
-                      className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
-                        selectedRole === "freelancer"
-                          ? "border-amber-600 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20 shadow-sm"
-                          : "border-slate-200 bg-slate-50/60 text-slate-600 hover:border-slate-300"
-                      }`}
-                    >
-                      <span className="text-[11px] font-black block">عمل حر / كشفي</span>
-                      <span className="text-[9px] text-slate-400 font-bold block mt-0.5">⚡ فني وميداني</span>
-                    </button>
-                  </div>
+            {/* اختيار نوع الحساب عند تسجيل الدخول أو إنشاء الحساب */}
+            <div className="space-y-1.5 mb-3">
+              <label className="block text-[11px] font-black text-slate-700">نوع الحساب (اختر فئتك):</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedRole("seeker")}
+                  className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                    selectedRole === "seeker"
+                      ? "border-blue-600 bg-blue-50 text-blue-900 ring-2 ring-blue-500/20 shadow-sm"
+                      : "border-slate-200 bg-slate-50/60 text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  <span className="text-[11px] font-black block">باحث عن عمل</span>
+                  <span className="text-[9px] text-slate-400 font-bold block mt-0.5">👤 وظائف وCV</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRole("employer")}
+                  className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                    selectedRole === "employer"
+                      ? "border-emerald-600 bg-emerald-50 text-emerald-900 ring-2 ring-emerald-500/20 shadow-sm"
+                      : "border-slate-200 bg-slate-50/60 text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  <span className="text-[11px] font-black block">صاحب عمل</span>
+                  <span className="text-[9px] text-slate-400 font-bold block mt-0.5">💼 نشر وظائف</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRole("freelancer")}
+                  className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                    selectedRole === "freelancer"
+                      ? "border-amber-600 bg-amber-50 text-amber-900 ring-2 ring-amber-500/20 shadow-sm"
+                      : "border-slate-200 bg-slate-50/60 text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  <span className="text-[11px] font-black block">عمل حر / كشفي</span>
+                  <span className="text-[9px] text-slate-400 font-bold block mt-0.5">⚡ فني وميداني</span>
+                </button>
+              </div>
+            </div>
+
+            {/* تفاصيل العمل الحر إن كان مختاراً */}
+            {selectedRole === "freelancer" && (
+              <div className="p-3 bg-amber-50/80 border border-amber-200/70 rounded-2xl space-y-2.5 mb-2">
+                <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest">نوع الحساب الميداني:</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFreelancerType("technician")}
+                    className={`py-2 px-3 rounded-xl border text-xs font-black transition-all ${
+                      freelancerType === "technician"
+                        ? "bg-amber-500 text-white border-amber-600 shadow-sm"
+                        : "bg-white text-slate-600 border-amber-200"
+                    }`}
+                  >
+                    🔧 فني مقدّم خدمة
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFreelancerType("client")}
+                    className={`py-2 px-3 rounded-xl border text-xs font-black transition-all ${
+                      freelancerType === "client"
+                        ? "bg-amber-500 text-white border-amber-600 shadow-sm"
+                        : "bg-white text-slate-600 border-amber-200"
+                    }`}
+                  >
+                    🏠 طالب خدمة (زبون)
+                  </button>
                 </div>
 
-                {/* تفاصيل العمل الحر إن كان مختاراً */}
-                {selectedRole === "freelancer" && (
-                  <div className="p-3 bg-amber-50/80 border border-amber-200/70 rounded-2xl space-y-2.5 mb-2">
-                    <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest">نوع الحساب الميداني:</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setFreelancerType("technician")}
-                        className={`py-2 px-3 rounded-xl border text-xs font-black transition-all ${
-                          freelancerType === "technician"
-                            ? "bg-amber-500 text-white border-amber-600 shadow-sm"
-                            : "bg-white text-slate-600 border-amber-200"
-                        }`}
-                      >
-                        🔧 فني مقدّم خدمة
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setFreelancerType("client")}
-                        className={`py-2 px-3 rounded-xl border text-xs font-black transition-all ${
-                          freelancerType === "client"
-                            ? "bg-amber-500 text-white border-amber-600 shadow-sm"
-                            : "bg-white text-slate-600 border-amber-200"
-                        }`}
-                      >
-                        🏠 طالب خدمة (زبون)
-                      </button>
+                {freelancerType === "technician" ? (
+                  <div className="space-y-2 pt-1">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-600 mb-1">الاختصاص المهني</label>
+                      <input
+                        type="text"
+                        value={specialty}
+                        onChange={(e) => setSpecialty(e.target.value)}
+                        placeholder="مثال: كهربائي، تبريد وتكييف، سيراميك، بناء..."
+                        className="w-full bg-white border border-amber-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400 font-semibold"
+                      />
                     </div>
-
-                    {freelancerType === "technician" ? (
-                      <div className="space-y-2 pt-1">
-                        <div>
-                          <label className="block text-[10px] font-black text-slate-600 mb-1">الاختصاص المهني</label>
-                          <input
-                            type="text"
-                            value={specialty}
-                            onChange={(e) => setSpecialty(e.target.value)}
-                            placeholder="مثال: كهربائي، تبريد وتكييف، سيراميك، بناء..."
-                            className="w-full bg-white border border-amber-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400 font-semibold"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="space-y-2 pt-1">
-                        <div>
-                          <label className="block text-[10px] font-black text-slate-600 mb-1">عنوان البيت / المنطقة</label>
-                          <input
-                            type="text"
-                            value={homeAddress}
-                            onChange={(e) => setHomeAddress(e.target.value)}
-                            placeholder="مثال: بغداد، المنصور، قرب جامع..."
-                            className="w-full bg-white border border-amber-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400 font-semibold"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[10px] font-black text-slate-600 mb-1">شرح المشكلة / المطلوب</label>
-                          <textarea
-                            value={serviceRequest}
-                            onChange={(e) => setServiceRequest(e.target.value)}
-                            placeholder="شرح المشكلة بالتفصيل للتواصل المباشر..."
-                            rows={2}
-                            className="w-full bg-white border border-amber-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400 font-semibold resize-none"
-                          />
-                        </div>
-                      </div>
-                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-2 pt-1">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-600 mb-1">عنوان البيت / المنطقة</label>
+                      <input
+                        type="text"
+                        value={homeAddress}
+                        onChange={(e) => setHomeAddress(e.target.value)}
+                        placeholder="مثال: بغداد، المنصور، قرب جامع..."
+                        className="w-full bg-white border border-amber-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400 font-semibold"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-600 mb-1">شرح المشكلة / المطلوب</label>
+                      <textarea
+                        value={serviceRequest}
+                        onChange={(e) => setServiceRequest(e.target.value)}
+                        placeholder="شرح المشكلة بالتفصيل للتواصل المباشر..."
+                        rows={2}
+                        className="w-full bg-white border border-amber-200 rounded-xl py-2 px-3 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-400 font-semibold resize-none"
+                      />
+                    </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {mode === "signup" && (
+              <>
 
                 {/* حقول صاحب العمل */}
                 {selectedRole === "employer" && (

@@ -187,13 +187,13 @@ export const authService = {
 
       if (existing) return; // موجود، لا داعي لإعادة الإنشاء
 
-      // إنشاء profile مع role = '' (ليُوجَّه لشاشة اختيار الدور)
+      // إنشاء profile مع الدور المختار
       await supabase.from('profiles').insert({
         id: userId,
         name: sanitizeInput(userData.name, 100),
         email: userData.email,
         phone: userData.phone || '',
-        role: '',      // ← سلسلة فارغة عمداً لجعلها متوافقة مع NOT NULL وتوجيه المستخدم لشاشة اختيار الدور
+        role: userData.role || '',
         is_pro: false,
         bio: ''
       } as any);
@@ -284,6 +284,7 @@ export const authService = {
           name: sanitizeInput(name, 100),
           email: internalEmail,
           phone: cleanPhone,
+          role: role,
         });
       }
 

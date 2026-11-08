@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, Suspense, lazy, useCallback } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { Briefcase, Phone, PhoneOff, RefreshCw } from 'lucide-react';
+import { Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { Post, Job, AppUser } from './types';
 import { SkeletonPostCard } from './components/ui';
@@ -55,6 +55,7 @@ const ERPView         = lazy(() => import('./components/features/erp/ERPView').t
 const AboutPage       = lazy(() => import('./components/features/AboutPage').then(m => ({ default: m.AboutPage })));
 const ProfilePage     = lazy(() => import('./components/features/profile/ProfilePage').then(m => ({ default: m.ProfilePage })));
 const ServicesView    = lazy(() => import('./components/features/services/ServicesView').then(m => ({ default: m.ServicesView })));
+const SettingsPage    = lazy(() => import('./components/features/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
 
 // Fallback spinner for Suspense
 const TabSkeleton = () => (
@@ -1339,6 +1340,7 @@ function App() {
                         setSelectedProfile(null);
                       }}
                       onCallClick={startCall}
+                      onGoToSettings={() => setActiveTab('settings')}
                       onSave={async (updates) => {
                         if (appUser) {
                           const merged = { ...appUser, ...updates };
@@ -1346,6 +1348,20 @@ function App() {
                           setSelectedProfile(merged as any);
                         }
                       }}
+                    />
+                  </Suspense>
+                </div>
+              )}
+              {/* ─── Settings Page ─── */}
+              {activeTab === 'settings' && appUser && (
+                <div className="pb-safe-bottom px-1 md:px-0">
+                  <Suspense fallback={<TabSkeleton />}>
+                    <SettingsPage
+                      user={user || appUser}
+                      appUser={appUser}
+                      addToast={addToast}
+                      setAppUser={(updated) => { setAppUser(updated as any); }}
+                      onBack={() => setActiveTab('home')}
                     />
                   </Suspense>
                 </div>
