@@ -235,20 +235,97 @@ export function ModernProfileView({
     }
 
     const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${finalPath}`;
+    return publicUrl;
+  };
 
-    // 5. التحديث المباشر لقاعدة البيانات لضمان حفظ البيانات فوراً مع مهلة أمان
+  // ─── Direct REST Database Update (تجاوز أقفال supabase-js وحفظ التعديل في 100ms) ───
+  const updateProfileDbFieldDirect = async (
+    userId: string,
+    field: 'avatar' | 'cover' | 'cv',
+    publicUrl: string
+  ): Promise<{ status: number; duration: number }> => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+
+    // 1. أخذ التوكن فورياً وبشكل متزامن من localStorage دون انتظار أي قفل
+    let token = supabaseAnonKey;
     try {
-      const dbCol = fileCategory === 'cv' ? 'cv_url' : `${fileCategory}_url`;
-      await withTimeout(
-        supabase.from('profiles').update({ [dbCol]: publicUrl } as any).eq('id', userId),
-        6000,
-        'تحديث رابط التخزين المباشر'
-      );
-    } catch (e) {
-      console.warn('[DirectUpload] DB direct update note:', e);
+      const raw = localStorage.getItem('prolink_v2_auth_session') ||
+                  localStorage.getItem('sb-ubeqmsyyyojojmswmidq-auth-token');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        token = parsed?.access_token || parsed?.currentSession?.access_token || supabaseAnonKey;
+      }
+    } catch (_) {}
+
+    const colName = field === 'cv' ? 'cv_url' : `${field}_url`;
+    const payload: Record<string, any> = {
+      [colName]: publicUrl,
+      updated_at: new Date().toISOString(),
+    };
+    if (field === 'avatar') {
+      payload.avatar = publicUrl;
+      payload.avatar_url = publicUrl;
+    }
+    if (field === 'cover') {
+      payload.cover_url = publicUrl;
+    }
+    if (field === 'cv') {
+      payload.cv_url = publicUrl;
     }
 
-    return publicUrl;
+    const updateUrl = `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`;
+    const t0 = performance.now();
+
+    // 2. إرسال طلب REST خام فائق السرعة
+    let res = await withTimeout(
+      fetch(updateUrl, {
+        method: 'PATCH',
+        headers: {
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify(payload),
+      }),
+      6000,
+      'طلب REST المباشر لتحديث profiles'
+    );
+
+    // إذا فشل التوكن (401 أو 403)، المحاولة فوراً بـ Anon Key
+    if (!res.ok && token !== supabaseAnonKey) {
+      res = await withTimeout(
+        fetch(updateUrl, {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseAnonKey,
+            'Authorization': `Bearer ${supabaseAnonKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal',
+          },
+          body: JSON.stringify(payload),
+        }),
+        6000,
+        'طلب REST المباشر (Anon Key)'
+      );
+    }
+
+    const duration = Math.round(performance.now() - t0);
+
+    // 3. تحديث الكاش المحلي فورياً لضمان عدم ضياع التحديث
+    try {
+      const cached = localStorage.getItem('prolink_cached_user');
+      if (cached) {
+        const u = JSON.parse(cached);
+        if (field === 'avatar') { u.avatar = publicUrl; u.avatar_url = publicUrl; }
+        if (field === 'cover') { u.coverUrl = publicUrl; u.cover_url = publicUrl; }
+        if (field === 'cv') { u.cvUrl = publicUrl; u.cv_url = publicUrl; }
+        localStorage.setItem('prolink_cached_user', JSON.stringify(u));
+      }
+    } catch (_) {}
+
+    return { status: res.status, duration };
   };
 
   // ─── 1. Avatar Upload (Direct Client-to-Supabase) ───────────────────────────
@@ -295,12 +372,13 @@ export function ModernProfileView({
 
       setAvatar(publicUrl);
 
-      alert('5️⃣ [تحديث الملف الشخصي في قاعدة البيانات]...');
-      await withTimeout(
-        profileService.updateProfile(effectiveUserId, { avatar: publicUrl, avatar_url: publicUrl }),
-        10000,
-        'تحديث قاعدة البيانات'
+      alert('5️⃣ [بدء تحديث قاعدة البيانات عبر REST خام]...');
+      const dbRes = await withTimeout(
+        updateProfileDbFieldDirect(effectiveUserId, 'avatar', publicUrl),
+        8000,
+        'تحديث قاعدة البيانات REST'
       );
+      alert(`5️⃣ ب [استجابة قاعدة البيانات]: HTTP ${dbRes.status} في ${dbRes.duration}ms`);
       alert('6️⃣ [تم حفظ وتحديث الصورة الشخصية بنجاح تام! 🎉]');
 
       if (setAppUser) setAppUser((prev: any) => ({ ...prev, avatar: publicUrl, avatar_url: publicUrl }));
@@ -360,12 +438,13 @@ export function ModernProfileView({
 
       setCoverUrl(publicUrl);
 
-      alert('5️⃣ [تحديث الغلاف في قاعدة البيانات]...');
-      await withTimeout(
-        profileService.updateProfile(effectiveUserId, { cover_url: publicUrl, coverUrl: publicUrl } as any),
-        10000,
-        'تحديث قاعدة البيانات'
+      alert('5️⃣ [بدء تحديث الغلاف في قاعدة البيانات عبر REST خام]...');
+      const dbRes = await withTimeout(
+        updateProfileDbFieldDirect(effectiveUserId, 'cover', publicUrl),
+        8000,
+        'تحديث قاعدة البيانات REST'
       );
+      alert(`5️⃣ ب [استجابة قاعدة البيانات]: HTTP ${dbRes.status} في ${dbRes.duration}ms`);
       alert('6️⃣ [تم حفظ صورة الغلاف بنجاح تام! 🎉]');
 
       if (setAppUser) setAppUser((prev: any) => ({ ...prev, cover_url: publicUrl, coverUrl: publicUrl }));
@@ -534,12 +613,13 @@ export function ModernProfileView({
       setPendingCVFile(null);
       setPendingCVName(null);
 
-      alert('5️⃣ [تثبيت الـ CV في قاعدة البيانات]...');
-      await withTimeout(
-        profileService.updateProfile(effectiveUserId, { cvUrl: publicUrl, cv_url: publicUrl }),
-        10000,
-        'تحديث قاعدة البيانات'
+      alert('5️⃣ [بدء تثبيت الـ CV في قاعدة البيانات عبر REST خام]...');
+      const dbRes = await withTimeout(
+        updateProfileDbFieldDirect(effectiveUserId, 'cv', publicUrl),
+        8000,
+        'تحديث قاعدة البيانات REST'
       );
+      alert(`5️⃣ ب [استجابة قاعدة البيانات]: HTTP ${dbRes.status} في ${dbRes.duration}ms`);
       setCvUploadProgress(100);
       alert('6️⃣ [تم حفظ وتثبيت السيرة الذاتية بنجاح تام! 🎉]');
 

@@ -49,6 +49,6 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     storageKey: 'prolink_v2_auth_session',
     
     // تعطيل نظام الأقفال المسبب للتعليق (No-Op Lock)
-    lock: (_name, _acquireTimeout, fn) => fn()
+    lock: async (_name, _acquireTimeout, fn) => await fn()
   }
 });

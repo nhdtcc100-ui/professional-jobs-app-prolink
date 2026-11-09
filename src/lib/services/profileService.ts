@@ -370,7 +370,16 @@ export const profileService = {
       }
     }
 
-    let result = await supabase.from('profiles').update(dbUpdates).eq('id', userId).select('id');
+    let result: any = null;
+    try {
+      result = await Promise.race([
+        supabase.from('profiles').update(dbUpdates).eq('id', userId).select('id'),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_DB_UPDATE')), 6000))
+      ]);
+    } catch (dbErr) {
+      logger.warn('[profileService] DB update query timed out or failed:', dbErr);
+      result = { error: dbErr, data: [] };
+    }
     
     if (result.error || !result.data || result.data.length === 0) {
       logger.warn(`⚠️ [profileService] Update returned 0 modified rows for user ${userId}. Retrying with upsert...`);
