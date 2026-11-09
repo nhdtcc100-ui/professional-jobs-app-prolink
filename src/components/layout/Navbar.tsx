@@ -3,6 +3,7 @@ import { Home, Users, Briefcase, Globe, MessageSquare, Bell, ChevronDown, Crown,
 import { NavbarItem, NavDropdownItem } from './';
 import { AppUser, AppNotification } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
+import { preloadTab } from '../../lib/lazyPreload';
 
 interface NavbarProps {
   activeTab: string;
@@ -55,7 +56,9 @@ export const Navbar: React.FC<NavbarProps> = ({
         <div className="flex items-center">
           <div
             className="relative group cursor-pointer"
-            onClick={() => { setActiveTab('about'); setSearchQuery(''); }}
+            onMouseEnter={() => preloadTab('about')}
+            onPointerDown={() => { setActiveTab('about'); setSearchQuery(''); }}
+            onClick={(e) => { e.preventDefault(); setActiveTab('about'); setSearchQuery(''); }}
           >
             <div className="absolute inset-0 bg-blue-500 blur-2xl opacity-0 group-hover:opacity-30 transition-opacity animate-pulse" />
             <div className="relative flex items-center gap-2 md:gap-3">
@@ -89,11 +92,24 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Col 2 — Main Nav Icons (perfectly centred) */}
         <div className="flex items-center justify-center gap-0.5 h-full">
-          <NavbarItem icon={<Home size={22} />} label="الرئيسية" active={activeTab === 'home'} onClick={() => { setActiveTab('home'); setSearchQuery(''); }} />
+          <NavbarItem
+            icon={<Home size={22} />}
+            label="الرئيسية"
+            active={activeTab === 'home'}
+            onPointerDown={() => { setActiveTab('home'); setSearchQuery(''); }}
+            onClick={(e) => { e?.preventDefault(); setActiveTab('home'); setSearchQuery(''); }}
+          />
           
           {/* Network Tab with Red Unread Badge */}
           <div className="relative h-full flex items-center">
-            <NavbarItem icon={<Users size={22} />} label="شبكتي" active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
+            <NavbarItem
+              icon={<Users size={22} />}
+              label="شبكتي"
+              active={activeTab === 'network'}
+              onPointerDown={() => setActiveTab('network')}
+              onMouseEnter={() => preloadTab('network')}
+              onClick={(e) => { e?.preventDefault(); setActiveTab('network'); }}
+            />
             {pendingRequestsCount > 0 && (
               <span className="absolute top-3.5 right-1 min-w-[16px] h-4 px-1 bg-red-600 text-white font-black text-[9px] rounded-full animate-bounce pointer-events-none flex items-center justify-center border border-white dark:border-slate-800 shadow-md">
                 {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
@@ -101,19 +117,52 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
-          <NavbarItem icon={<Briefcase size={22} />} label="الوظائف" active={activeTab === 'jobs'} onClick={() => setActiveTab('jobs')} />
+          <NavbarItem
+            icon={<Briefcase size={22} />}
+            label="الوظائف"
+            active={activeTab === 'jobs'}
+            onPointerDown={() => setActiveTab('jobs')}
+            onMouseEnter={() => preloadTab('jobs')}
+            onClick={(e) => { e?.preventDefault(); setActiveTab('jobs'); }}
+          />
           {appUser?.isAdmin && (
-            <NavbarItem icon={<Building2 size={22} />} label="الموارد" active={activeTab === 'erp'} onClick={() => setActiveTab('erp')} />
+            <NavbarItem
+              icon={<Building2 size={22} />}
+              label="الموارد"
+              active={activeTab === 'erp'}
+              onPointerDown={() => setActiveTab('erp')}
+              onMouseEnter={() => preloadTab('erp')}
+              onClick={(e) => { e?.preventDefault(); setActiveTab('erp'); }}
+            />
           )}
           {appUser?.isAdmin && (
-            <NavbarItem icon={<Phone size={22} />} label="المكالمات" active={activeTab === 'calls'} onClick={() => setActiveTab('calls')} />
+            <NavbarItem
+              icon={<Phone size={22} />}
+              label="المكالمات"
+              active={activeTab === 'calls'}
+              onPointerDown={() => setActiveTab('calls')}
+              onClick={(e) => { e?.preventDefault(); setActiveTab('calls'); }}
+            />
           )}
-          <NavbarItem icon={<Globe size={22} />} label="الأخبار" active={activeTab === 'news'} onClick={() => setActiveTab('news')} />
+          <NavbarItem
+            icon={<Globe size={22} />}
+            label="الأخبار"
+            active={activeTab === 'news'}
+            onPointerDown={() => setActiveTab('news')}
+            onMouseEnter={() => preloadTab('news')}
+            onClick={(e) => { e?.preventDefault(); setActiveTab('news'); }}
+          />
           
           {/* Messages Tab with Red Unread Badge - only for logged in members */}
           {!isGuestMode && appUser && (
             <div className="relative h-full flex items-center overflow-visible z-20">
-              <NavbarItem icon={<MessageSquare size={22} />} label="الرسائل" active={activeTab === 'messages'} onClick={() => setActiveTab('messages')} />
+              <NavbarItem
+                icon={<MessageSquare size={22} />}
+                label="الرسائل"
+                active={activeTab === 'messages'}
+                onPointerDown={() => setActiveTab('messages')}
+                onClick={(e) => { e?.preventDefault(); setActiveTab('messages'); }}
+              />
               {unreadMessagesCount > 0 && (
                 <span className="absolute top-2.5 right-0.5 z-30 min-w-[18px] h-[18px] px-1 bg-red-600 text-white font-black text-[9px] rounded-full animate-bounce pointer-events-none flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-lg">
                   {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
@@ -129,7 +178,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                 icon={<Bell size={22} />}
                 label="الإشعارات"
                 active={showNotifications}
-                onClick={() => setShowNotifications(!showNotifications)}
+                onPointerDown={() => setShowNotifications(!showNotifications)}
+                onClick={(e) => { e?.preventDefault(); setShowNotifications(!showNotifications); }}
               />
               {unreadNotificationsCount > 0 && (
                 <span className="absolute top-2.5 right-0.5 z-30 min-w-[18px] h-[18px] px-1 notif-badge-premium text-[9px] rounded-full animate-bounce pointer-events-none flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-lg">
@@ -169,14 +219,24 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <div className="bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl shadow-2xl p-3 w-60 backdrop-blur-xl ring-1 ring-black/5">
                   <div
                     className="p-2 mb-2 bg-slate-50 dark:bg-slate-700/50 rounded-xl cursor-pointer"
-                    onClick={() => { setSelectedProfile(appUser); setActiveTab('profile'); }}
+                    onMouseEnter={() => preloadTab('profile')}
+                    onPointerDown={() => { setSelectedProfile(appUser); setActiveTab('profile'); }}
+                    onClick={(e) => { e.preventDefault(); setSelectedProfile(appUser); setActiveTab('profile'); }}
                   >
                     <p className="font-black text-xs text-slate-800 dark:text-white">{appUser?.name}</p>
                     <p className="text-[9px] text-slate-400 font-bold truncate">{appUser?.email}</p>
                   </div>
                   <NavDropdownItem icon={<Crown size={14} className="text-amber-500" />} label={appUser?.isPro ? 'عضوية النخبة' : 'ترقية للحساب الذهبي'} onClick={toggleProRank} color="text-amber-600" />
-                  <NavDropdownItem icon={<UserIcon size={14} />} label="الملف الشخصي" onClick={() => { setSelectedProfile(appUser); setIsEditingProfile(false); setActiveTab('profile'); }} />
-                  <NavDropdownItem icon={<Settings size={14} />} label="الإعدادات" onClick={() => { setActiveTab('settings'); }} />
+                  <NavDropdownItem
+                    icon={<UserIcon size={14} />}
+                    label="الملف الشخصي"
+                    onClick={() => { setSelectedProfile(appUser); setIsEditingProfile(false); setActiveTab('profile'); }}
+                  />
+                  <NavDropdownItem
+                    icon={<Settings size={14} />}
+                    label="الإعدادات"
+                    onClick={() => { setActiveTab('settings'); }}
+                  />
                   {toggleTheme && (
                     <NavDropdownItem
                       icon={theme === 'dark' ? <Sun size={14} className="text-amber-500" /> : <Moon size={14} className="text-indigo-500" />}

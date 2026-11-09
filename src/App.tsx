@@ -1,5 +1,18 @@
 import React, { useState, useEffect, useRef, Suspense, lazy, useCallback } from 'react';
-import { AnimatePresence, motion } from 'motion/react';
+import { AnimatePresence, motion, MotionConfig } from 'motion/react';
+import {
+  loadMissionsView,
+  loadNetworkView,
+  loadNewsView,
+  loadGroupsView,
+  loadAdminDashboard,
+  loadERPView,
+  loadAboutPage,
+  loadProfilePage,
+  loadServicesView,
+  loadSettingsPage,
+  preloadTab
+} from './lib/lazyPreload';
 import { Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { Post, Job, AppUser } from './types';
@@ -45,17 +58,17 @@ declare global {
 
 import { MessagingView } from './components/features/MessagingView';
 
-// 🚀 Lazy-loaded heavy feature views
-const MissionsView    = lazy(() => import('./components/features/MissionsView').then(m => ({ default: m.MissionsView })));
-const NetworkView     = lazy(() => import('./components/features/NetworkView').then(m => ({ default: m.NetworkView })));
-const NewsView        = lazy(() => import('./components/features/NewsView').then(m => ({ default: m.NewsView })));
-const GroupsView      = lazy(() => import('./components/features/GroupsView').then(m => ({ default: m.GroupsView })));
-const AdminDashboard  = lazy(() => import('./components/features/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
-const ERPView         = lazy(() => import('./components/features/erp/ERPView').then(m => ({ default: m.ERPView })));
-const AboutPage       = lazy(() => import('./components/features/AboutPage').then(m => ({ default: m.AboutPage })));
-const ProfilePage     = lazy(() => import('./components/features/profile/ProfilePage').then(m => ({ default: m.ProfilePage })) as any);
-const ServicesView    = lazy(() => import('./components/features/services/ServicesView').then(m => ({ default: m.ServicesView })));
-const SettingsPage    = lazy(() => import('./components/features/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
+// 🚀 Lazy-loaded heavy feature views (integrated with preloadTab)
+const MissionsView    = lazy(() => loadMissionsView().then(m => ({ default: m.MissionsView })));
+const NetworkView     = lazy(() => loadNetworkView().then(m => ({ default: m.NetworkView })));
+const NewsView        = lazy(() => loadNewsView().then(m => ({ default: m.NewsView })));
+const GroupsView      = lazy(() => loadGroupsView().then(m => ({ default: m.GroupsView })));
+const AdminDashboard  = lazy(() => loadAdminDashboard().then(m => ({ default: m.AdminDashboard })));
+const ERPView         = lazy(() => loadERPView().then(m => ({ default: m.ERPView })));
+const AboutPage       = lazy(() => loadAboutPage().then(m => ({ default: m.AboutPage })));
+const ProfilePage     = lazy(() => loadProfilePage().then(m => ({ default: m.ProfilePage })) as any);
+const ServicesView    = lazy(() => loadServicesView().then(m => ({ default: m.ServicesView })));
+const SettingsPage    = lazy(() => loadSettingsPage().then(m => ({ default: m.SettingsPage })));
 
 // Fallback spinner for Suspense
 const TabSkeleton = () => (
@@ -85,6 +98,15 @@ function App() {
     theme, toggleTheme, refreshData,
     isGuestMode, enterGuestMode, exitGuestMode,
   } = useAppContext();
+
+  // ⚡ Keep-alive visited tabs tracker for instant navigation and scroll preservation
+  const [visitedTabs, setVisitedTabs] = useState<Record<string, boolean>>({ [activeTab || 'home']: true });
+
+  useEffect(() => {
+    if (activeTab && !visitedTabs[activeTab]) {
+      setVisitedTabs(prev => ({ ...prev, [activeTab]: true }));
+    }
+  }, [activeTab, visitedTabs]);
 
   useEffect(() => {
     fetchGroups();
@@ -934,7 +956,12 @@ function App() {
             />
           ) : (
             <>
-              {activeTab === 'home' && (
+              {/* ⚡ Keep-Alive: Home Feed */}
+              <div
+                key="keepalive-tab-home"
+                className={activeTab === 'home' ? 'space-y-4' : 'hidden'}
+                aria-hidden={activeTab !== 'home'}
+              >
                 <>
                   <NewsCarousel appUser={appUser} onViewAll={() => setActiveTab('news')} />
 
@@ -1117,10 +1144,15 @@ function App() {
                     </>
                   )}
                 </>
-              )}
+              </div>
 
-              {activeTab === 'jobs' && (
-                <div className="pb-safe-bottom px-1 md:px-0">
+              {/* ⚡ Keep-Alive: Jobs View */}
+              {visitedTabs.jobs && (
+                <div
+                  key="keepalive-tab-jobs"
+                  className={activeTab === 'jobs' ? 'pb-safe-bottom px-1 md:px-0' : 'hidden'}
+                  aria-hidden={activeTab !== 'jobs'}
+                >
                   <Suspense fallback={<TabSkeleton />}>
                     <MissionsView 
                       jobs={jobs} 
@@ -1147,32 +1179,45 @@ function App() {
                 </div>
               )}
               {activeTab === 'post-job' && (
-                !isJobPoster(appUser) ? (
-                  <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-lg mx-auto shadow-xl" dir="rtl">
-                    <div className="w-14 h-14 bg-amber-500/10 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                      <Briefcase size={28} />
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                >
+                  {!isJobPoster(appUser) ? (
+                    <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-lg mx-auto shadow-xl" dir="rtl">
+                      <div className="w-14 h-14 bg-amber-500/10 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <Briefcase size={28} />
+                      </div>
+                      <h3 className="text-base font-black text-slate-800 dark:text-white">نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 💼</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">حسابك مسجل كـ (باحث عن عمل). يمكن للحسابات الفردية التصفح والتقديم على الفرص بدلاً من نشرها.</p>
+                      <button onClick={() => setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all">الرجوع للرئيسية</button>
                     </div>
-                    <h3 className="text-base font-black text-slate-800 dark:text-white">نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 💼</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">حسابك مسجل كـ (باحث عن عمل). يمكن للحسابات الفردية التصفح والتقديم على الفرص بدلاً من نشرها.</p>
-                    <button onClick={() => setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all">الرجوع للرئيسية</button>
-                  </div>
-                ) : (
-                  <div className="pb-safe-bottom px-1 md:px-0">
-                    <JobPostForm
-                      show={true}
-                      asPage={true}
-                      formData={pageJobFormData}
-                      setFormData={setPageJobFormData}
-                      onSubmit={handlePostJobFromPage}
-                      isPosting={isPostingJobPage}
-                      onClose={() => setActiveTab('home')}
-                      appUser={appUser}
-                    />
-                  </div>
-                )
+                  ) : (
+                    <div className="pb-safe-bottom px-1 md:px-0">
+                      <JobPostForm
+                        show={true}
+                        asPage={true}
+                        formData={pageJobFormData}
+                        setFormData={setPageJobFormData}
+                        onSubmit={handlePostJobFromPage}
+                        isPosting={isPostingJobPage}
+                        onClose={() => setActiveTab('home')}
+                        appUser={appUser}
+                      />
+                    </div>
+                  )}
+                </motion.div>
               )}
-              {activeTab === 'network' && (
-                <div className="pb-safe-bottom px-1 md:px-0">
+
+              {/* ⚡ Keep-Alive: Network View */}
+              {visitedTabs.network && (
+                <div
+                  key="keepalive-tab-network"
+                  className={activeTab === 'network' ? 'pb-safe-bottom px-1 md:px-0' : 'hidden'}
+                  aria-hidden={activeTab !== 'network'}
+                >
                   <Suspense fallback={<TabSkeleton />}>
                     <NetworkView 
                       users={allUsers} 
@@ -1190,7 +1235,13 @@ function App() {
               )}
 
               {activeTab === 'calls' && appUser?.isAdmin && (
-                <div className="pb-safe-bottom px-1 md:px-0">
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="pb-safe-bottom px-1 md:px-0"
+                >
                   <Suspense fallback={<TabSkeleton />}>
                     <CallsView 
                       appUser={appUser} 
@@ -1199,27 +1250,41 @@ function App() {
                       onSelectChat={(u) => { setSelectedChat(u); setActiveTab('messages'); }}
                     />
                   </Suspense>
-                </div>
+                </motion.div>
               )}
-               {activeTab === 'messages' && (
+              {/* ⚡ Keep-Alive: Messages View */}
+              {visitedTabs.messages && (
                 !appUser ? (
-                  <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-md mx-auto shadow-xl" dir="rtl">
-                    <div className="w-16 h-16 bg-blue-50 dark:bg-blue-950/40 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                      <MessageSquare size={30} />
-                    </div>
-                    <h3 className="text-base font-black text-slate-800 dark:text-white">الرسائل والمحادثات مقفلة 🔒</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">
-                      أنت تتصفح كزائر. يرجى تسجيل الدخول للوصول إلى المحادثات والرسائل المباشرة.
-                    </p>
-                    <button
-                      onClick={() => window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'))}
-                      className="mt-5 w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                  activeTab === 'messages' && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.18, ease: 'easeOut' }}
+                      className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-md mx-auto shadow-xl"
+                      dir="rtl"
                     >
-                      <span>تسجيل الدخول الآن</span>
-                    </button>
-                  </div>
+                      <div className="w-16 h-16 bg-blue-50 dark:bg-blue-950/40 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <MessageSquare size={30} />
+                      </div>
+                      <h3 className="text-base font-black text-slate-800 dark:text-white">الرسائل والمحادثات مقفلة 🔒</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">
+                        أنت تتصفح كزائر. يرجى تسجيل الدخول للوصول إلى المحادثات والرسائل المباشرة.
+                      </p>
+                      <button
+                        onClick={() => window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'))}
+                        className="mt-5 w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                      >
+                        <span>تسجيل الدخول الآن</span>
+                      </button>
+                    </motion.div>
+                  )
                 ) : (
-                  <div className="pb-safe-bottom md:pb-0 h-full">
+                  <div
+                    key="keepalive-tab-messages"
+                    className={activeTab === 'messages' ? 'pb-safe-bottom md:pb-0 h-full' : 'hidden'}
+                    aria-hidden={activeTab !== 'messages'}
+                  >
                     <MessagingView 
                       messages={messages} 
                       setMessages={setMessages} 
@@ -1240,8 +1305,15 @@ function App() {
                   </div>
                 )
               )}
+
               {activeTab === 'groups' && (
-                <div className="pb-safe-bottom px-1 md:px-0">
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="pb-safe-bottom px-1 md:px-0"
+                >
                   <Suspense fallback={<TabSkeleton />}>
                     <GroupsView
                       appUser={appUser}
@@ -1253,17 +1325,30 @@ function App() {
                       }}
                     />
                   </Suspense>
-                </div>
+                </motion.div>
               )}
-              {activeTab === 'news' && (
-                <div className="pb-safe-bottom px-1 md:px-0">
+
+              {/* ⚡ Keep-Alive: News View */}
+              {visitedTabs.news && (
+                <div
+                  key="keepalive-tab-news"
+                  className={activeTab === 'news' ? 'pb-safe-bottom px-1 md:px-0' : 'hidden'}
+                  aria-hidden={activeTab !== 'news'}
+                >
                   <Suspense fallback={<TabSkeleton />}>
                     <NewsView appUser={appUser} />
                   </Suspense>
                 </div>
               )}
+
               {activeTab === 'services' && (
-                <div className="pb-safe-bottom px-1 md:px-0">
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="pb-safe-bottom px-1 md:px-0"
+                >
                   <Suspense fallback={<TabSkeleton />}>
                     <ServicesView
                       appUser={appUser}
@@ -1274,29 +1359,43 @@ function App() {
                       onRequireAuth={requireAuth}
                     />
                   </Suspense>
-                </div>
+                </motion.div>
               )}
+
               {activeTab === 'erp' && (
-                appUser?.isAdmin ? (
-                  <div className="pb-safe-bottom px-1 md:px-0">
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="pb-safe-bottom px-1 md:px-0"
+                >
+                  {appUser?.isAdmin ? (
                     <Suspense fallback={<TabSkeleton />}>
                       <ERPView appUser={appUser} addToast={addToast} />
                     </Suspense>
-                  </div>
-                ) : (
-                  // 🚫 منع وصول غير الأدمن للـ ERP بشكل صريح — الحماية على مستوى UI
-                  <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-lg mx-auto shadow-xl" dir="rtl">
-                    <div className="w-14 h-14 bg-red-500/10 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                      <Briefcase size={28} />
+                  ) : (
+                    // 🚫 منع وصول غير الأدمن للـ ERP بشكل صريح — الحماية على مستوى UI
+                    <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-lg mx-auto shadow-xl" dir="rtl">
+                      <div className="w-14 h-14 bg-red-500/10 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <Briefcase size={28} />
+                      </div>
+                      <h3 className="text-base font-black text-slate-800 dark:text-white">نظام الموارد البشرية (ERP) — مخصص للإدارة فقط 🔒</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">حسابك الحالي ليس لديه صلاحية الوصول لهذا النظام. هذا النظام مخصص فقط للإدارة العليا.</p>
+                      <button onClick={() => setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all">الرجوع للرئيسية</button>
                     </div>
-                    <h3 className="text-base font-black text-slate-800 dark:text-white">نظام الموارد البشرية (ERP) — مخصص للإدارة فقط 🔒</h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">حسابك الحالي ليس لديه صلاحية الوصول لهذا النظام. هذا النظام مخصص فقط للإدارة العليا.</p>
-                    <button onClick={() => setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all">الرجوع للرئيسية</button>
-                  </div>
-                )
+                  )}
+                </motion.div>
               )}
+
               {activeTab === 'about' && (
-                <div className="pb-safe-bottom px-1 md:px-0">
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="pb-safe-bottom px-1 md:px-0"
+                >
                   <Suspense fallback={<TabSkeleton />}>
                     <AboutPage 
                       onBack={() => setActiveTab('home')} 
@@ -1307,10 +1406,17 @@ function App() {
                       }}
                     />
                   </Suspense>
-                </div>
+                </motion.div>
               )}
+
               {activeTab === 'profile' && (selectedProfile || appUser) && (
-                <div className="pb-safe-bottom px-1 md:px-0">
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="pb-safe-bottom px-1 md:px-0"
+                >
                   <Suspense fallback={<TabSkeleton />}>
                     <ProfilePage
                       profile={selectedProfile || appUser!}
@@ -1350,11 +1456,18 @@ function App() {
                       }}
                     />
                   </Suspense>
-                </div>
+                </motion.div>
               )}
+
               {/* ─── Settings Page ─── */}
               {activeTab === 'settings' && appUser && (
-                <div className="pb-safe-bottom px-1 md:px-0">
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="pb-safe-bottom px-1 md:px-0"
+                >
                   <Suspense fallback={<TabSkeleton />}>
                     <SettingsPage
                       user={user || appUser}
@@ -1364,7 +1477,7 @@ function App() {
                       onBack={() => setActiveTab('home')}
                     />
                   </Suspense>
-                </div>
+                </motion.div>
               )}
             </>
           )}
@@ -1531,7 +1644,9 @@ function App() {
 
 const AppRoot: React.FC = () => (
   <ErrorBoundary>
-    <App />
+    <MotionConfig reducedMotion="user">
+      <App />
+    </MotionConfig>
   </ErrorBoundary>
 );
 

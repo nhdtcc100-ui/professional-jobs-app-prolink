@@ -12,28 +12,81 @@ import { generateUUID } from '../security/distributedId';
 const MAX_POST_LENGTH = 5000;
 const MAX_ECHO_LENGTH = 3000;
 
+const POST_COLUMNS = 'id, author_id, author_name, author_avatar, author_title, content, image_url, video_url, likes_count, comments_count, is_echo, original_post_id, original_author_name, original_author_avatar, original_content, created_at';
+
+interface CacheEntry {
+  data: any[];
+  timestamp: number;
+}
+let postsCache: CacheEntry | null = null;
+const CACHE_TTL_MS = 20000; // 20 seconds
+
 export const postService = {
   /**
-   * Home Feed: Only posts from last 3 days (72 hours).
-   * Sorted by recency + engagement.
+   * Invalidate feed cache after creates/updates
    */
-  async fetchPosts(limit = 50) {
+  invalidateCache() {
+    postsCache = null;
+  },
+
+  /**
+   * Home Feed: Only posts from last 3 days (72 hours).
+   * Sorted by recency + engagement with Stale-While-Revalidate caching.
+   */
+  async fetchPosts(limit = 50, forceRefresh = false) {
+    const now = Date.now();
+    if (!forceRefresh && postsCache && (now - postsCache.timestamp < CACHE_TTL_MS)) {
+      return { data: postsCache.data, error: null };
+    }
+
     try {
-      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+      const threeDaysAgo = new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase.from('posts')
-        .select('*')
-        .gte('created_at', threeDaysAgo)           // ✅ Only last 3 days for home feed
+        .select(POST_COLUMNS)
+        .gte('created_at', threeDaysAgo)
         .order('created_at', { ascending: false })
         .limit(Math.min(limit, 100));
 
       if (error) {
-        console.error("[fetchPosts] Supabase Error:", error);
-        return { data: [], error };
+        // Fallback to select('*') in case specific column schema varies
+        const fallback = await supabase.from('posts')
+          .select('*')
+          .gte('created_at', threeDaysAgo)
+          .order('created_at', { ascending: false })
+          .limit(Math.min(limit, 100));
+
+        if (fallback.error) {
+          console.error("[fetchPosts] Supabase Error:", fallback.error);
+          return { data: postsCache?.data || [], error: fallback.error };
+        }
+        postsCache = { data: fallback.data || [], timestamp: now };
+        return { data: fallback.data || [], error: null };
       }
 
+      postsCache = { data: data || [], timestamp: now };
       return { data: data || [], error: null };
     } catch (err) {
       console.error("[fetchPosts] Exception caught:", err);
+      return { data: postsCache?.data || [], error: err };
+    }
+  },
+
+  /**
+   * ⚡ Cursor-based pagination for feed
+   */
+  async fetchPostsBefore(cursorDate: string, limit = 20) {
+    try {
+      const { data, error } = await supabase.from('posts')
+        .select(POST_COLUMNS)
+        .lt('created_at', cursorDate)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) {
+        return { data: [], error };
+      }
+      return { data: data || [], error: null };
+    } catch (err) {
       return { data: [], error: err };
     }
   },
@@ -101,12 +154,17 @@ export const postService = {
               const res = await (supabase.from('posts') as any).insert([rowToInsert]);
               if (res.error && (res.error.code === '42703' || res.error.message?.includes('dislikes_count'))) {
                 const { dislikes_count, ...fallbackRow } = rowToInsert;
-                return (supabase.from('posts') as any).insert([fallbackRow]);
+                const fbRes = await (supabase.from('posts') as any).insert([fallbackRow]);
+                if (!fbRes.error) this.invalidateCache();
+                return fbRes;
               }
+              if (!res.error) this.invalidateCache();
               return res;
             } catch {
               const { dislikes_count, ...fallbackRow } = rowToInsert;
-              return (supabase.from('posts') as any).insert([fallbackRow]);
+              const fbRes = await (supabase.from('posts') as any).insert([fallbackRow]);
+              if (!fbRes.error) this.invalidateCache();
+              return fbRes;
             }
           }, { scope: 'createPost' });
         },
@@ -220,6 +278,7 @@ export const postService = {
    * RLS on Supabase also enforces this at the DB level.
    */
   async deletePost(postId: string, authorId: string) {
+    this.invalidateCache();
     return (supabase.from('posts') as any)
       .delete()
       .eq('id', postId)

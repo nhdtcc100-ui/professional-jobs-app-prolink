@@ -8,6 +8,7 @@ import { DrawerItem } from './Navigation';
 import { AppUser } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 import { supabase } from '../../lib/supabase';
+import { preloadTab } from '../../lib/lazyPreload';
 
 interface MobileNavProps {
   activeTab: string;
@@ -125,18 +126,26 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                 : 0;
 
             return (
-              <button
+              <motion.button
                 key={item.id}
                 data-dock-btn=""
-                onClick={() => {
+                type="button"
+                whileTap={{ scale: 0.92 }}
+                onPointerDown={() => {
+                  preloadTab(item.id);
                   try { navigator.vibrate?.([8]); } catch (_) {}
-                  // التنقل بين الصفحات يبقى سريعاً فورياً وبدون أي تأخير
                   if (item.id === 'more') {
                     setShowMobileMenu(true);
                   } else {
                     setShowMobileMenu(false);
                     setActiveTab(item.id);
                   }
+                }}
+                onMouseEnter={() => {
+                  preloadTab(item.id);
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
                 }}
                 className="relative flex flex-col items-center justify-center flex-1 h-13 select-none cursor-pointer focus:outline-none bg-transparent border-0 p-0"
                 style={{ zIndex: 2 }}
@@ -147,12 +156,12 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                   <motion.div
                     layoutId="minimal-luxury-active-bubble"
                     className="relative flex flex-col items-center justify-center"
-                    // انتقال الأيقونات بشكل بطيء جداً وانسيابي للغاية بينما الصفحات سريعة
+                    // انتقال الأيقونات بسبرينغ فائق السلاسة والاستجابة
                     transition={{
                       type: 'spring',
-                      stiffness: 75,
-                      damping: 20,
-                      mass: 1.4,
+                      stiffness: 450,
+                      damping: 32,
+                      mass: 1.0,
                     }}
                   >
                     {/* Glowing warm halo underneath */}
@@ -224,7 +233,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                     </span>
                   </div>
                 )}
-              </button>
+              </motion.button>
             );
           })}
         </nav>
@@ -280,6 +289,8 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                   <>
                     <div
                       className="flex items-center gap-3 cursor-pointer group"
+                      onMouseEnter={() => preloadTab('profile')}
+                      onPointerDown={() => { setSelectedProfile(appUser); setActiveTab('profile'); setShowMobileMenu(false); }}
                       onClick={() => { setSelectedProfile(appUser); setActiveTab('profile'); setShowMobileMenu(false); }}
                     >
                       {appUser.avatar ? (
@@ -358,10 +369,21 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                 {/* Drawer Items */}
               <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-1.5">
                 {appUser?.isAdmin && (
-                  <DrawerItem icon={<Phone size={20} className="text-emerald-500" />} label="المكالمات والاتصال" onClick={() => { setActiveTab('calls'); setShowMobileMenu(false); }} color="text-emerald-700 dark:text-emerald-300" />
+                  <DrawerItem
+                    icon={<Phone size={20} className="text-emerald-500" />}
+                    label="المكالمات والاتصال"
+                    onClick={() => { setActiveTab('calls'); setShowMobileMenu(false); }}
+                    color="text-emerald-700 dark:text-emerald-300"
+                  />
                 )}
                 <div className="relative">
-                  <DrawerItem icon={<Users size={20} className="text-violet-500" />} label="شبكتي المهنية" onClick={() => { setActiveTab('network'); setShowMobileMenu(false); }} color="text-violet-700 dark:text-violet-300" />
+                  <DrawerItem
+                    icon={<Users size={20} className="text-violet-500" />}
+                    label="شبكتي المهنية"
+                    onMouseEnter={() => preloadTab('network')}
+                    onClick={() => { setActiveTab('network'); setShowMobileMenu(false); }}
+                    color="text-violet-700 dark:text-violet-300"
+                  />
                   {pendingRequestsCount > 0 && (
                     <span className="absolute top-3 left-4 px-2 py-0.5 bg-red-500 text-white font-black text-[9px] rounded-full shadow">
                       {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount} جديد
@@ -369,16 +391,51 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                   )}
                 </div>
                 {appUser?.isAdmin && (
-                  <DrawerItem icon={<Building2 size={20} className="text-blue-500" />} label="نظام الموارد البشرية (ERP)" onClick={() => { setActiveTab('erp'); setShowMobileMenu(false); }} color="text-blue-700 dark:text-blue-300" />
+                  <DrawerItem
+                    icon={<Building2 size={20} className="text-blue-500" />}
+                    label="نظام الموارد البشرية (ERP)"
+                    onMouseEnter={() => preloadTab('erp')}
+                    onClick={() => { setActiveTab('erp'); setShowMobileMenu(false); }}
+                    color="text-blue-700 dark:text-blue-300"
+                  />
                 )}
-                <DrawerItem icon={<MessageSquare size={20} className="text-indigo-500" />} label="المجموعات المهنية 👥" onClick={() => { setActiveTab('groups'); setShowMobileMenu(false); }} color="text-indigo-700 dark:text-indigo-300" />
-                <DrawerItem icon={<Wrench size={20} className="text-blue-500" />} label="سوق الخدمات والمهن 🔧" onClick={() => { setActiveTab('services'); setShowMobileMenu(false); }} color="text-blue-700 dark:text-blue-300" />
+                <DrawerItem
+                  icon={<MessageSquare size={20} className="text-indigo-500" />}
+                  label="المجموعات المهنية 👥"
+                  onMouseEnter={() => preloadTab('groups')}
+                  onClick={() => { setActiveTab('groups'); setShowMobileMenu(false); }}
+                  color="text-indigo-700 dark:text-indigo-300"
+                />
+                <DrawerItem
+                  icon={<Wrench size={20} className="text-blue-500" />}
+                  label="سوق الخدمات والمهن 🔧"
+                  onMouseEnter={() => preloadTab('services')}
+                  onClick={() => { setActiveTab('services'); setShowMobileMenu(false); }}
+                  color="text-blue-700 dark:text-blue-300"
+                />
                 {appUser?.isAdmin && (
-                  <DrawerItem icon={<Shield size={20} className="text-red-500" />} label="لوحة التحكم العليا" onClick={() => { setShowAdmin(true); setShowMobileMenu(false); }} color="text-red-700 dark:text-red-300" />
+                  <DrawerItem
+                    icon={<Shield size={20} className="text-red-500" />}
+                    label="لوحة التحكم العليا"
+                    onClick={() => { setShowAdmin(true); setShowMobileMenu(false); }}
+                    color="text-red-700 dark:text-red-300"
+                  />
                 )}
-                <DrawerItem icon={<Info size={20} className="text-amber-500" />} label="عن منصة عمل أولاً" onClick={() => { setActiveTab('about'); setShowMobileMenu(false); }} color="text-amber-700 dark:text-amber-300" />
+                <DrawerItem
+                  icon={<Info size={20} className="text-amber-500" />}
+                  label="عن منصة عمل أولاً"
+                  onMouseEnter={() => preloadTab('about')}
+                  onClick={() => { setActiveTab('about'); setShowMobileMenu(false); }}
+                  color="text-amber-700 dark:text-amber-300"
+                />
                 {appUser && (
-                  <DrawerItem icon={<Settings size={20} className="text-blue-500" />} label="الإعدادات ⚙️" onClick={() => { setActiveTab('settings'); setShowMobileMenu(false); }} color="text-blue-700 dark:text-blue-300" />
+                  <DrawerItem
+                    icon={<Settings size={20} className="text-blue-500" />}
+                    label="الإعدادات ⚙️"
+                    onMouseEnter={() => preloadTab('settings')}
+                    onClick={() => { setActiveTab('settings'); setShowMobileMenu(false); }}
+                    color="text-blue-700 dark:text-blue-300"
+                  />
                 )}
                 {toggleTheme && (
                   <DrawerItem

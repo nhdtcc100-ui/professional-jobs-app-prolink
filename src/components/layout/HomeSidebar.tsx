@@ -2,6 +2,7 @@ import React from 'react';
 import { Info, ArrowLeft, Globe, Sparkles, Building2, ShieldCheck, X, Calendar } from 'lucide-react';
 import { GlassCard } from '../ui';
 import { AppUser } from '../../types';
+import { preloadTab } from '../../lib/lazyPreload';
 
 interface NewsDetailModalProps {
   item: any;
@@ -79,6 +80,8 @@ export const HomeSidebar: React.FC<HomeSidebarProps> = ({ appUser, setSelectedPr
 
           <button
             onClick={handleOpenAboutPage}
+            onMouseEnter={() => preloadTab('about')}
+            onPointerDown={handleOpenAboutPage}
             className="w-full flex items-center justify-between p-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all text-xs font-black"
           >
             <span className="uppercase tracking-wider">عرض التفاصيل الكاملة</span>

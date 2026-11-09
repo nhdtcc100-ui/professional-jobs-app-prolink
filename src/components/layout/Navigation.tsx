@@ -2,28 +2,54 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Users, Plus } from 'lucide-react';
 
-export function NavbarItem({ icon, label, active, onClick, badge }: any) {
+export interface NavbarItemProps {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  onClick?: (e?: any) => void;
+  onPointerDown?: (e?: any) => void;
+  onMouseEnter?: () => void;
+  badge?: number;
+}
+
+export function NavbarItem({ icon, label, active, onClick, onPointerDown, onMouseEnter, badge }: NavbarItemProps) {
   return (
-    <div
+    <motion.button
+      type="button"
+      whileTap={{ scale: 0.94 }}
       onClick={onClick}
-      className={`relative flex flex-col items-center justify-center px-3.5 cursor-pointer h-full transition-all group select-none`}
+      onPointerDown={onPointerDown}
+      onMouseEnter={onMouseEnter}
+      className={`relative flex flex-col items-center justify-center px-3.5 cursor-pointer h-full transition-all group select-none bg-transparent border-0 outline-none`}
     >
-      {/* Active background pill */}
+      {/* Active background pill with smooth layoutId animation */}
       {active && (
-        <div
+        <motion.div
+          layoutId="navbar-active-pill"
           className="absolute inset-x-1 inset-y-2 rounded-xl pointer-events-none"
           style={{
             background: 'rgba(59,130,246,0.08)',
             border: '1px solid rgba(59,130,246,0.12)',
           }}
+          transition={{
+            type: 'spring',
+            stiffness: 500,
+            damping: 35,
+          }}
         />
       )}
 
-      {/* Active bottom accent bar */}
+      {/* Active bottom accent bar with smooth layoutId animation */}
       {active && (
-        <div
-          className="absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-t-full"
+        <motion.div
+          layoutId="navbar-active-bar"
+          className="absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-t-full pointer-events-none"
           style={{ background: 'linear-gradient(90deg, #3b82f6, #6366f1)' }}
+          transition={{
+            type: 'spring',
+            stiffness: 500,
+            damping: 35,
+          }}
         />
       )}
 
@@ -31,14 +57,14 @@ export function NavbarItem({ icon, label, active, onClick, badge }: any) {
         <span className={active ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}>
           {icon}
         </span>
-        {badge > 0 && (
+        {badge !== undefined && badge > 0 && (
           <span className="absolute -top-1.5 -right-1.5 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white dark:border-slate-900 animate-bounce pointer-events-none z-20" />
         )}
       </div>
       <span className={`text-[9px] mt-0.5 hidden lg:block font-black whitespace-nowrap tracking-tight transition-colors ${
         active ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'
       }`}>{label}</span>
-    </div>
+    </motion.button>
   );
 }
 
@@ -108,12 +134,28 @@ export function MobileNavItem({
   );
 }
 
-export function DrawerItem({ icon, label, onClick, color = 'text-slate-700 dark:text-slate-200' }: { icon: React.ReactNode, label: string, onClick: () => void, color?: string }) {
+export function DrawerItem({
+  icon,
+  label,
+  onClick,
+  onPointerDown,
+  onMouseEnter,
+  color = 'text-slate-700 dark:text-slate-200'
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  onPointerDown?: () => void;
+  onMouseEnter?: () => void;
+  color?: string;
+}) {
   return (
     <motion.div 
       whileHover={{ x: -6 }}
       whileTap={{ scale: 0.97 }}
       onClick={onClick} 
+      onPointerDown={onPointerDown}
+      onMouseEnter={onMouseEnter}
       className="flex items-center gap-4 p-3.5 bg-white dark:bg-slate-800/60 rounded-2xl cursor-pointer transition-all border border-slate-100 dark:border-slate-700/50 shadow-sm hover:shadow-md group mb-2"
     >
       <div className="p-2 rounded-xl bg-slate-50 dark:bg-slate-700/60 group-hover:scale-110 transition-transform">

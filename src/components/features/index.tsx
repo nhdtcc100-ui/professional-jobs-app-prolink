@@ -1,13 +1,9 @@
 export * from './ProfileModal';
 export * from './PostTransmissionCard';
+export { NewsCarousel } from './NewsView';
 export * from './MessagingView';
-export * from './GroupsView';
-export * from './MissionsView';
-export * from './NetworkView';
-export * from './NewsView';
 export * from './PostBox';
 export * from './RelocateModal';
-export * from './AdminDashboard';
 export * from './ToastContainer';
 export * from './SearchView';
 export * from './ApplyJobModal';
@@ -21,7 +17,6 @@ export * from './CallsView';
 export * from './PostNewsCard';
 export { default as PostDetailModal } from './PostDetailModal';
 export * from './EmailVerificationScreen';
-export * from './AboutPage';
 export * from './DetailFeedPage';
 export * from './EditPostModal';
 
