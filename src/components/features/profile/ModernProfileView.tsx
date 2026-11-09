@@ -4,11 +4,12 @@ import {
   User, Briefcase, MapPin, Phone, Lock, FileText, Pencil,
   ChevronsLeft, Upload, Download, Eye, CheckCircle2, Loader2,
   X, ExternalLink, ArrowRight, Camera, RefreshCw, ShieldCheck,
-  EyeOff, AlertCircle
+  EyeOff, AlertCircle, WifiOff
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { profileService } from '../../../lib/services/profileService';
 import { cvService } from '../../../lib/services/cvService';
+import { mobileUploadService } from '../../../lib/services/mobileUploadService';
 import { AppUser } from '../../../types';
 
 interface ModernProfileViewProps {
@@ -76,34 +77,20 @@ export function ModernProfileView({
 
   const effectiveUserId = user?.id || profile?.id;
 
-  // ─── Helper: upload image to Supabase storage ────────────────────────────────
-  const uploadImageToStorage = async (file: File, bucket: string, path: string): Promise<string> => {
-    const { error } = await supabase.storage
-      .from(bucket)
-      .upload(path, file, { upsert: true, contentType: file.type || 'image/jpeg' });
-    if (!error) {
-      const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-      return data.publicUrl;
-    }
-    // Fallback: base64
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.readAsDataURL(file);
-    });
-  };
-
-  // ─── 1. Avatar Upload ────────────────────────────────────────────────────────
+  // ─── 1. Avatar Upload (via mobileUploadService – FIX all 10 issues) ───────────
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target?.files?.[0];
     if (!file || !effectiveUserId) return;
     try {
       setIsUploadingAvatar(true);
-      setAvatar(URL.createObjectURL(file));
-      const ext = (file.name || 'avatar.jpg').split('.').pop() || 'jpg';
-      const finalUrl = await uploadImageToStorage(
-        file, 'profiles', `${effectiveUserId}/avatar_${Date.now()}.${ext}`
-      );
+      // Instant preview
+      const localUrl = URL.createObjectURL(file);
+      setAvatar(localUrl);
+
+      // Background upload via mobileUploadService (RAM snapshot + multi-bucket + fallback)
+      const { uploadPromise } = await mobileUploadService.uploadFile(file, 'avatar', effectiveUserId);
+      const finalUrl = await uploadPromise;
+
       setAvatar(finalUrl);
       await profileService.updateProfile(effectiveUserId, { avatar: finalUrl, avatar_url: finalUrl });
       if (setAppUser) setAppUser((prev: any) => ({ ...prev, avatar: finalUrl, avatar_url: finalUrl }));
@@ -115,17 +102,18 @@ export function ModernProfileView({
     }
   };
 
-  // ─── 2. Cover Photo Upload ────────────────────────────────────────────────────
+  // ─── 2. Cover Photo Upload (via mobileUploadService) ─────────────────────────
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target?.files?.[0];
     if (!file || !effectiveUserId) return;
     try {
       setIsUploadingCover(true);
-      setCoverUrl(URL.createObjectURL(file));
-      const ext = (file.name || 'cover.jpg').split('.').pop() || 'jpg';
-      const finalUrl = await uploadImageToStorage(
-        file, 'profiles', `${effectiveUserId}/cover_${Date.now()}.${ext}`
-      );
+      const localUrl = URL.createObjectURL(file);
+      setCoverUrl(localUrl);
+
+      const { uploadPromise } = await mobileUploadService.uploadFile(file, 'cover', effectiveUserId);
+      const finalUrl = await uploadPromise;
+
       setCoverUrl(finalUrl);
       await profileService.updateProfile(effectiveUserId, { cover_url: finalUrl } as any);
       if (setAppUser) setAppUser((prev: any) => ({ ...prev, cover_url: finalUrl }));
@@ -174,34 +162,38 @@ export function ModernProfileView({
     }
   };
 
-  // ─── 5. CV Upload (Non-blocking with RAM snapshot) ───────────────────────────
+  // ─── 5. CV Upload – Non-blocking with mobileUploadService (all 10 fixes) ─────
   const handleCVFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target?.files?.[0];
     if (!file) return;
+
+    // FIX-4: Size guard with friendly Arabic error
     if (file.size > 25 * 1024 * 1024) {
       addToast('حجم الملف كبير جداً (الحد الأقصى 25 ميغابايت)', 'error');
       return;
     }
-    // RAM snapshot: read into memory immediately so Android content:// URI doesn't expire
+
+    // FIX-3: RAM snapshot immediately so Android content:// URI doesn't expire
+    // We store the file; actual upload happens in handleSaveCV
     try {
       const ab = await Promise.race<ArrayBuffer>([
         file.arrayBuffer(),
         new Promise<ArrayBuffer>((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), 8000)
+          setTimeout(() => reject(new Error('snapshot timeout')), 10000)
         ),
       ]);
-      const snapshotBlob = new Blob([ab], { type: file.type || 'application/pdf' });
-      const snapshotFile = new File([snapshotBlob], file.name, { type: snapshotBlob.type });
-      setPendingCVFile(snapshotFile);
-      const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-      setPendingCVName(`${file.name} (${sizeMB} MB)`);
-      addToast(`📄 تم اختيار "${file.name}" — اضغط حفظ السيرة الذاتية لرفعه.`, 'info');
+      const mime = file.type || 'application/pdf';
+      const snap = new File([new Blob([ab], { type: mime })], file.name, { type: mime });
+      (snap as any).__isSnapshot = true;
+      setPendingCVFile(snap);
     } catch {
-      // Fallback: use file directly
+      // fallback: use raw file
       setPendingCVFile(file);
-      setPendingCVName(file.name);
-      addToast(`📄 تم اختيار "${file.name}"، اضغط حفظ لتثبيته.`, 'info');
     }
+
+    const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+    setPendingCVName(`${file.name} (${sizeMB} MB)`);
+    addToast(`📄 تم اختيار "${file.name}" — اضغط حفظ لرفعه.`, 'info');
   }, [addToast]);
 
   const handleSaveCV = async () => {
@@ -213,25 +205,42 @@ export function ModernProfileView({
       let finalUrl = cvUrl;
       if (pendingCVFile) {
         addToast('⏳ جاري رفع السيرة الذاتية في الخلفية...', 'info');
-        setCvUploadProgress(30);
-        const { data: uploadedUrl, error: uploadErr } = await cvService.uploadCV(
-          effectiveUserId, pendingCVFile, { name: profile?.name, email: profile?.email }
+
+        // Use mobileUploadService with live progress (all 10 fixes applied)
+        const { uploadPromise } = await mobileUploadService.uploadFile(
+          pendingCVFile,
+          'cv',
+          effectiveUserId,
+          {
+            onProgress: (ev) => {
+              // Map phases to 0-100 progress
+              const phaseMap: Record<string, number> = {
+                reading: 15, compressing: 25, uploading: 60, done: 95,
+              };
+              setCvUploadProgress(phaseMap[ev.phase] ?? (ev.percent > 0 ? ev.percent : 20));
+            },
+          }
         );
-        setCvUploadProgress(80);
-        if (uploadErr || !uploadedUrl) throw uploadErr || new Error('فشل رفع ملف السيرة الذاتية');
-        finalUrl = uploadedUrl;
+
+        setCvUploadProgress(60);
+        finalUrl = await uploadPromise;
+        setCvUploadProgress(90);
+
         setCvUrl(finalUrl);
         setPendingCVFile(null);
         setPendingCVName(null);
       }
+
       await profileService.updateProfile(effectiveUserId, { cvUrl: finalUrl, cv_url: finalUrl });
       if (setAppUser) setAppUser((prev: any) => ({ ...prev, cvUrl: finalUrl, cv_url: finalUrl }));
       setCvUploadProgress(100);
       addToast('✅ تم حفظ وتثبيت السيرة الذاتية بنجاح!', 'success');
-      setTimeout(() => setCvUploadProgress(0), 1500);
+      setTimeout(() => setCvUploadProgress(0), 1800);
     } catch (err: any) {
       setCvUploadProgress(0);
-      addToast('فشل حفظ السيرة الذاتية: ' + (err?.message || ''), 'error');
+      // FIX-10: show real error message, never freeze UI
+      const msg = err?.message || 'خطأ غير معروف';
+      addToast('فشل حفظ السيرة الذاتية: ' + msg, 'error');
     } finally {
       setSavingCV(false);
     }
@@ -456,13 +465,22 @@ export function ModernProfileView({
 
         {/* CV Upload Progress Bar */}
         {cvUploadProgress > 0 && cvUploadProgress < 100 && (
-          <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
-            <motion.div
-              className="h-full rounded-full bg-gradient-to-l from-blue-500 to-indigo-500"
-              initial={{ width: 0 }}
-              animate={{ width: `${cvUploadProgress}%` }}
-              transition={{ duration: 0.4 }}
-            />
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1.5">
+                <Loader2 size={11} className="animate-spin" />
+                جاري رفع السيرة الذاتية...
+              </span>
+              <span className="text-[11px] font-bold text-slate-400">{cvUploadProgress}%</span>
+            </div>
+            <div className="w-full h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+              <motion.div
+                className="h-full rounded-full bg-gradient-to-l from-blue-500 to-indigo-500"
+                initial={{ width: 0 }}
+                animate={{ width: `${cvUploadProgress}%` }}
+                transition={{ duration: 0.5, ease: 'easeOut' }}
+              />
+            </div>
           </div>
         )}
 
