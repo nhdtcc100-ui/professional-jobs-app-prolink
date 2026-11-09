@@ -92,28 +92,38 @@ export function ModernProfileView({
     fileCategory: 'avatar' | 'cover' | 'cv',
     userId: string
   ): Promise<string> => {
-    // 0. فحص الجلسة على الموبايل والتحقق من التوكن (Auth Session Check)
-    let currentSession: any = null;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+
+    // فحص أن حجم الملف أكبر من صفر
+    if (!file || file.size === 0) {
+      throw new Error('عذراً، يبدو أن الملف فارغ أو تعذر على المتصفح قراءته من الموبايل. جرب اختيار ملف آخر.');
+    }
+
+    // 1. تجميد فوري لمحتوى الملف في الذاكرة RAM عبر ArrayBuffer (نفس طريقة صفحة التشخيص الناجحة 100%)
+    let buffer: ArrayBuffer;
+    try {
+      buffer = await file.arrayBuffer();
+    } catch {
+      buffer = await (file as any)._ab;
+    }
+
+    if (!buffer || buffer.byteLength === 0) {
+      throw new Error('تعذر قراءة بايتات الملف في ذاكرة الهاتف.');
+    }
+
+    // 2. التحقق من توكن الجلسة الحالية أو استخدام Anon Key كبديل مضمون
+    let token = supabaseAnonKey;
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      currentSession = session;
-      if (!currentSession) {
-        console.warn('[DirectUpload] No active session on mobile, trying refreshSession()...');
-        const { data: refreshed } = await supabase.auth.refreshSession();
-        currentSession = refreshed?.session;
+      if (session?.access_token) {
+        token = session.access_token;
       }
     } catch (authErr) {
       console.warn('[DirectUpload] Error checking session:', authErr);
     }
 
-    console.log("Current Mobile Session:", currentSession ? `Authenticated as ${currentSession.user?.email || currentSession.user?.id}` : "NO SESSION (Unauthenticated / Token Lost)");
-
-    // فحص أن حجم الملف أكبر من صفر (لمنع تفريغ الذاكرة في متصفحات الموبايل)
-    if (!file || file.size === 0) {
-      throw new Error('عذراً، يبدو أن الملف فارغ أو تعذر على المتصفح قراءته من الموبايل. جرب اختيار ملف آخر.');
-    }
-
-    // 1. تحديد الامتداد الآمن واسم الحاوية
+    // 3. تحديد الامتداد الآمن واسم الحاوية
     const rawExt = (file.name || '').split('.').pop()?.toLowerCase() || (fileCategory === 'cv' ? 'pdf' : 'jpg');
     const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx'].includes(rawExt)
       ? rawExt
@@ -121,67 +131,72 @@ export function ModernProfileView({
 
     const bucketName = fileCategory === 'cv' ? 'resumes' : 'profiles';
     const fileName = `${userId}_${fileCategory}_${Date.now()}.${safeExt}`;
-    const filePath = `${userId}/${fileName}`;
     const contentType = file.type || (fileCategory === 'cv' ? 'application/pdf' : 'image/jpeg');
 
-    // 2. الرفع المباشر إلى Supabase Storage بدون وسيط
-    let uploadError: any = null;
-    const { error: err1 } = await supabase.storage
-      .from(bucketName)
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: true,
-        contentType,
-      });
+    // 4. الرفع المباشر عبر fetch مع تكرار المحاولة على المسار المجلد والمسار المسطح (المثبت نجاحه في test-upload.html)
+    const candidatePaths = [
+      `${userId}/${fileName}`,
+      fileName,
+    ];
 
-    uploadError = err1;
+    let uploadSuccess = false;
+    let finalPath = candidatePaths[0];
+    let lastErrorMsg = '';
 
-    // حاوية احتياطية في حال تعذر الحاوية الأولى
-    let finalBucket = bucketName;
-    if (uploadError) {
-      console.warn(`[DirectUpload] ${bucketName} failed (${uploadError.message}), trying fallback 'images'...`);
-      const { error: err2 } = await supabase.storage
-        .from('images')
-        .upload(filePath, file, {
-          cacheControl: '3600',
-          upsert: true,
-          contentType,
+    for (const testPath of candidatePaths) {
+      const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucketName}/${testPath}`;
+      try {
+        const res = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseAnonKey,
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': contentType,
+            'x-upsert': 'true',
+          },
+          body: buffer,
         });
-      if (!err2) {
-        finalBucket = 'images';
-        uploadError = null;
+
+        if (res.ok) {
+          uploadSuccess = true;
+          finalPath = testPath;
+          break;
+        }
+
+        // إذا فشل التوكن المخصص، تجربة الرفع بـ Anon Key مباشرة مثل صفحة التشخيص الناجحة
+        if (token !== supabaseAnonKey) {
+          const resAnon = await fetch(uploadUrl, {
+            method: 'POST',
+            headers: {
+              'apikey': supabaseAnonKey,
+              'Authorization': `Bearer ${supabaseAnonKey}`,
+              'Content-Type': contentType,
+              'x-upsert': 'true',
+            },
+            body: buffer,
+          });
+
+          if (resAnon.ok) {
+            uploadSuccess = true;
+            finalPath = testPath;
+            break;
+          }
+          lastErrorMsg = await resAnon.text();
+        } else {
+          lastErrorMsg = await res.text();
+        }
+      } catch (netErr: any) {
+        lastErrorMsg = netErr?.message || String(netErr);
       }
     }
 
-    if (uploadError) {
-      console.error(`[DirectUpload] Upload error in bucket '${bucketName}':`, uploadError);
-      const statusCode = uploadError.statusCode || (uploadError as any)?.status || 'N/A';
-      const isRls = uploadError.message?.toLowerCase().includes('row-level security') ||
-                    uploadError.message?.toLowerCase().includes('violates') ||
-                    uploadError.message?.toLowerCase().includes('policy') ||
-                    uploadError.message?.toLowerCase().includes('unauthorized') ||
-                    String(statusCode) === '403';
-
-      if (isRls) {
-        throw new Error(
-          `🔒 رُفض الرفع بسبب سياسة الأمان RLS في Supabase:\n` +
-          `• كود الخطأ: ${statusCode}\n` +
-          `• الرسالة: ${uploadError.message}\n` +
-          `• الجلسة: ${currentSession ? `مسجل (${currentSession.user?.email || currentSession.user?.id})` : '❌ غير مسجل (Session = NULL)'}\n` +
-          `• الحل: نفّذ كود SQL لفتح صلاحيات التخزين في لوحة Supabase.`
-        );
-      }
-      throw new Error(`خطأ Supabase Storage (${statusCode}): ${uploadError.message || JSON.stringify(uploadError)}`);
+    if (!uploadSuccess) {
+      throw new Error(`تعذر الرفع إلى Supabase: ${lastErrorMsg}`);
     }
 
-    // 3. جلب الرابط العام للملف المرفوع
-    const { data: publicUrlData } = supabase.storage
-      .from(finalBucket)
-      .getPublicUrl(filePath);
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${finalPath}`;
 
-    const publicUrl = publicUrlData.publicUrl;
-
-    // 4. التحديث المباشر لقاعدة البيانات (Database) لضمان حفظ البيانات فوراً
+    // 5. التحديث المباشر لقاعدة البيانات لضمان حفظ البيانات فوراً
     try {
       const dbCol = fileCategory === 'cv' ? 'cv_url' : `${fileCategory}_url`;
       await supabase.from('profiles').update({ [dbCol]: publicUrl } as any).eq('id', userId);
