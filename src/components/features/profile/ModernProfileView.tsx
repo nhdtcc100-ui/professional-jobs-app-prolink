@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   User, Briefcase, MapPin, Phone, Lock, FileText, Pencil,
@@ -86,6 +86,27 @@ export function ModernProfileView({
 
   const effectiveUserId = user?.id || profile?.id;
 
+  // ─── Timeout Wrapper لمنع أي تعليق في الموبايل ─────────────────────────────
+  const withTimeout = <T,>(p: PromiseLike<T> | Promise<T>, ms: number, label: string): Promise<T> =>
+    Promise.race([
+      Promise.resolve(p),
+      new Promise<T>((_, reject) =>
+        setTimeout(() => reject(new Error(`TIMEOUT: ${label} تجاوز ${ms / 1000} ثانية وتوقف`)), ms)
+      ),
+    ]);
+
+  // ─── كشف إعادة تحميل الصفحة من نظام التشغيل أثناء فتح الاستوديو ──────────────
+  useEffect(() => {
+    try {
+      const lastPicked = sessionStorage.getItem('prolink_file_picked');
+      if (lastPicked) {
+        sessionStorage.removeItem('prolink_file_picked');
+        const elapsed = Math.round((Date.now() - Number(lastPicked)) / 1000);
+        alert(`⚠️ تنبيه إعادة تحميل: أعاد نظام الهاتف تشغيل الصفحة بعد ${elapsed} ثانية من فتح الاستوديو (Memory Reclamation)!`);
+      }
+    } catch (_) {}
+  }, []);
+
   // ─── Direct Client-to-Supabase Mobile Upload ─────────────────────────────────
   const handleMobileDirectUpload = async (
     file: File,
@@ -100,27 +121,32 @@ export function ModernProfileView({
       throw new Error('عذراً، يبدو أن الملف فارغ أو تعذر على المتصفح قراءته من الموبايل. جرب اختيار ملف آخر.');
     }
 
-    // 1. تجميد فوري لمحتوى الملف في الذاكرة RAM عبر ArrayBuffer (نفس طريقة صفحة التشخيص الناجحة 100%)
+    // 1. تجميد فوري لمحتوى الملف في الذاكرة RAM عبر ArrayBuffer مع مهلة أمان
     let buffer: ArrayBuffer;
     try {
-      buffer = await file.arrayBuffer();
-    } catch {
-      buffer = await (file as any)._ab;
+      if ((file as any)._ab) {
+        buffer = (file as any)._ab;
+      } else {
+        buffer = await withTimeout(file.arrayBuffer(), 8000, 'قراءة محتوى الملف إلى RAM');
+      }
+    } catch (err: any) {
+      throw new Error(`تعذر قراءة بايتات الملف في ذاكرة الهاتف: ${err?.message || err}`);
     }
 
     if (!buffer || buffer.byteLength === 0) {
-      throw new Error('تعذر قراءة بايتات الملف في ذاكرة الهاتف.');
+      throw new Error('تعذر قراءة بايتات الملف في ذاكرة الهاتف (0 بايت).');
     }
 
-    // 2. التحقق من توكن الجلسة الحالية أو استخدام Anon Key كبديل مضمون
+    // 2. التحقق من توكن الجلسة مع مهلة 3 ثوانٍ فقط لمنع أي تعليق
     let token = supabaseAnonKey;
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.access_token) {
-        token = session.access_token;
+      const sessRes = await withTimeout(supabase.auth.getSession(), 3000, 'فحص الجلسة');
+      if (sessRes?.data?.session?.access_token) {
+        token = sessRes.data.session.access_token;
       }
     } catch (authErr) {
-      console.warn('[DirectUpload] Error checking session:', authErr);
+      console.warn('[DirectUpload] Session check timed out, falling back to anon key:', authErr);
+      token = supabaseAnonKey;
     }
 
     // 3. تحديد الامتداد الآمن واسم الحاوية
@@ -133,7 +159,7 @@ export function ModernProfileView({
     const fileName = `${userId}_${fileCategory}_${Date.now()}.${safeExt}`;
     const contentType = file.type || (fileCategory === 'cv' ? 'application/pdf' : 'image/jpeg');
 
-    // 4. الرفع المباشر عبر fetch مع تكرار المحاولة على المسار المجلد والمسار المسطح (المثبت نجاحه في test-upload.html)
+    // 4. الرفع المباشر عبر fetch مع تكرار المحاولة على المسار المجلد والمسار المسطح
     const candidatePaths = [
       `${userId}/${fileName}`,
       fileName,
@@ -146,16 +172,23 @@ export function ModernProfileView({
     for (const testPath of candidatePaths) {
       const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucketName}/${testPath}`;
       try {
-        const res = await fetch(uploadUrl, {
-          method: 'POST',
-          headers: {
-            'apikey': supabaseAnonKey,
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': contentType,
-            'x-upsert': 'true',
-          },
-          body: buffer,
-        });
+        alert(`3️⃣ أ [محاولة رفع]: ${bucketName}/${testPath}`);
+        const res = await withTimeout(
+          fetch(uploadUrl, {
+            method: 'POST',
+            headers: {
+              'apikey': supabaseAnonKey,
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': contentType,
+              'x-upsert': 'true',
+            },
+            body: buffer,
+          }),
+          15000,
+          `طلب الرفع عبر الشبكة (${testPath})`
+        );
+
+        alert(`3️⃣ ب [استجابة السيرفر]: HTTP ${res.status}`);
 
         if (res.ok) {
           uploadSuccess = true;
@@ -165,16 +198,23 @@ export function ModernProfileView({
 
         // إذا فشل التوكن المخصص، تجربة الرفع بـ Anon Key مباشرة مثل صفحة التشخيص الناجحة
         if (token !== supabaseAnonKey) {
-          const resAnon = await fetch(uploadUrl, {
-            method: 'POST',
-            headers: {
-              'apikey': supabaseAnonKey,
-              'Authorization': `Bearer ${supabaseAnonKey}`,
-              'Content-Type': contentType,
-              'x-upsert': 'true',
-            },
-            body: buffer,
-          });
+          alert('3️⃣ ج [إعادة المحاولة بمفتاح Anon المباشر]...');
+          const resAnon = await withTimeout(
+            fetch(uploadUrl, {
+              method: 'POST',
+              headers: {
+                'apikey': supabaseAnonKey,
+                'Authorization': `Bearer ${supabaseAnonKey}`,
+                'Content-Type': contentType,
+                'x-upsert': 'true',
+              },
+              body: buffer,
+            }),
+            15000,
+            `طلب الرفع عبر Anon Key (${testPath})`
+          );
+
+          alert(`3️⃣ د [استجابة Anon Key]: HTTP ${resAnon.status}`);
 
           if (resAnon.ok) {
             uploadSuccess = true;
@@ -196,10 +236,14 @@ export function ModernProfileView({
 
     const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${finalPath}`;
 
-    // 5. التحديث المباشر لقاعدة البيانات لضمان حفظ البيانات فوراً
+    // 5. التحديث المباشر لقاعدة البيانات لضمان حفظ البيانات فوراً مع مهلة أمان
     try {
       const dbCol = fileCategory === 'cv' ? 'cv_url' : `${fileCategory}_url`;
-      await supabase.from('profiles').update({ [dbCol]: publicUrl } as any).eq('id', userId);
+      await withTimeout(
+        supabase.from('profiles').update({ [dbCol]: publicUrl } as any).eq('id', userId),
+        6000,
+        'تحديث رابط التخزين المباشر'
+      );
     } catch (e) {
       console.warn('[DirectUpload] DB direct update note:', e);
     }
@@ -213,44 +257,62 @@ export function ModernProfileView({
     const rawFile = targetInput?.files?.[0];
     if (!rawFile || !effectiveUserId) return;
 
+    try {
+      sessionStorage.setItem('prolink_file_picked', Date.now().toString());
+    } catch (_) {}
+
+    alert(`1️⃣ [استلام الصورة]: ${rawFile.name} (${(rawFile.size / 1024).toFixed(1)} KB)`);
+
     if (rawFile.size === 0) {
       alert('⚠️ المتصفح أعاد ملفاً فارغاً (0 بايت).');
       if (targetInput) targetInput.value = '';
+      try { sessionStorage.removeItem('prolink_file_picked'); } catch (_) {}
       return;
     }
 
     try {
       setIsUploadingAvatar(true);
-      const fileKB = (rawFile.size / 1024).toFixed(1);
-      console.log(`[AvatarUpload] File selected: ${rawFile.name} (${fileKB} KB), type: ${rawFile.type}`);
 
-      // Snapshot file into RAM immediately before browser/OS drops handle
+      // Snapshot file into RAM immediately with timeout
       let workingFile = rawFile;
       try {
-        const ab = await rawFile.arrayBuffer();
+        const ab = await withTimeout(rawFile.arrayBuffer(), 8000, 'قراءة الصورة إلى RAM (arrayBuffer)');
+        alert(`2️⃣ [قراءة البايتات بنجاح]: تم تجميد ${ab.byteLength} بايت`);
         workingFile = new File([ab], rawFile.name || 'avatar.jpg', { type: rawFile.type || 'image/jpeg' });
-      } catch (abErr) {
-        console.warn('[AvatarUpload] arrayBuffer warning, using rawFile:', abErr);
+        (workingFile as any)._ab = ab;
+      } catch (abErr: any) {
+        alert(`⚠️ تعليق في قراءة الذاكرة: ${abErr?.message || abErr}`);
         workingFile = rawFile;
       }
 
-      const localUrl = URL.createObjectURL(workingFile);
-      setAvatar(localUrl);
+      alert('3️⃣ [بدء الرفع السحابي إلى Supabase]...');
+      const publicUrl = await withTimeout(
+        handleMobileDirectUpload(workingFile, 'avatar', effectiveUserId),
+        25000,
+        'رفع الصورة عبر الشبكة'
+      );
+      alert(`4️⃣ [نجح الرفع السحابي]:\n${publicUrl}`);
 
-      const publicUrl = await handleMobileDirectUpload(workingFile, 'avatar', effectiveUserId);
       setAvatar(publicUrl);
-      await profileService.updateProfile(effectiveUserId, { avatar: publicUrl, avatar_url: publicUrl });
+
+      alert('5️⃣ [تحديث الملف الشخصي في قاعدة البيانات]...');
+      await withTimeout(
+        profileService.updateProfile(effectiveUserId, { avatar: publicUrl, avatar_url: publicUrl }),
+        10000,
+        'تحديث قاعدة البيانات'
+      );
+      alert('6️⃣ [تم حفظ وتحديث الصورة الشخصية بنجاح تام! 🎉]');
+
       if (setAppUser) setAppUser((prev: any) => ({ ...prev, avatar: publicUrl, avatar_url: publicUrl }));
       addToast('✅ تم رفع وتحديث الصورة الشخصية بنجاح!', 'success');
-      alert(`✅ نجح رفع الصورة الشخصية على الهاتف!\n• الملف: ${rawFile.name} (${fileKB} KB)\n• الرابط: ${publicUrl}`);
     } catch (err: any) {
       console.error('Avatar direct upload error:', err);
       const errMsg = err?.message || JSON.stringify(err);
       addToast('تعذر رفع الصورة: ' + errMsg, 'error');
-      alert(`❌ خطأ رفع الصورة الشخصية:\n${errMsg}`);
+      alert(`❌ خطأ أو توقف (Hang/Timeout):\n${errMsg}`);
     } finally {
       setIsUploadingAvatar(false);
-      // Reset input ONLY after upload finishes to prevent Safari/Android GC abort
+      try { sessionStorage.removeItem('prolink_file_picked'); } catch (_) {}
       if (targetInput) targetInput.value = '';
     }
   };
@@ -261,44 +323,61 @@ export function ModernProfileView({
     const rawFile = targetInput?.files?.[0];
     if (!rawFile || !effectiveUserId) return;
 
+    try {
+      sessionStorage.setItem('prolink_file_picked', Date.now().toString());
+    } catch (_) {}
+
+    alert(`1️⃣ [استلام الغلاف]: ${rawFile.name} (${(rawFile.size / 1024).toFixed(1)} KB)`);
+
     if (rawFile.size === 0) {
       alert('⚠️ المتصفح أعاد ملفاً فارغاً (0 بايت).');
       if (targetInput) targetInput.value = '';
+      try { sessionStorage.removeItem('prolink_file_picked'); } catch (_) {}
       return;
     }
 
     try {
       setIsUploadingCover(true);
-      const fileKB = (rawFile.size / 1024).toFixed(1);
-      console.log(`[CoverUpload] File selected: ${rawFile.name} (${fileKB} KB), type: ${rawFile.type}`);
 
-      // Snapshot file into RAM immediately
       let workingFile = rawFile;
       try {
-        const ab = await rawFile.arrayBuffer();
+        const ab = await withTimeout(rawFile.arrayBuffer(), 8000, 'قراءة الغلاف إلى RAM');
+        alert(`2️⃣ [قراءة الغلاف بنجاح]: تم تجميد ${ab.byteLength} بايت`);
         workingFile = new File([ab], rawFile.name || 'cover.jpg', { type: rawFile.type || 'image/jpeg' });
-      } catch (abErr) {
-        console.warn('[CoverUpload] arrayBuffer warning, using rawFile:', abErr);
+        (workingFile as any)._ab = ab;
+      } catch (abErr: any) {
+        alert(`⚠️ تعليق في قراءة الغلاف: ${abErr?.message || abErr}`);
         workingFile = rawFile;
       }
 
-      const localUrl = URL.createObjectURL(workingFile);
-      setCoverUrl(localUrl);
+      alert('3️⃣ [بدء رفع الغلاف إلى Supabase]...');
+      const publicUrl = await withTimeout(
+        handleMobileDirectUpload(workingFile, 'cover', effectiveUserId),
+        25000,
+        'رفع الغلاف عبر الشبكة'
+      );
+      alert(`4️⃣ [نجح رفع الغلاف]:\n${publicUrl}`);
 
-      const publicUrl = await handleMobileDirectUpload(workingFile, 'cover', effectiveUserId);
       setCoverUrl(publicUrl);
-      await profileService.updateProfile(effectiveUserId, { cover_url: publicUrl, coverUrl: publicUrl } as any);
+
+      alert('5️⃣ [تحديث الغلاف في قاعدة البيانات]...');
+      await withTimeout(
+        profileService.updateProfile(effectiveUserId, { cover_url: publicUrl, coverUrl: publicUrl } as any),
+        10000,
+        'تحديث قاعدة البيانات'
+      );
+      alert('6️⃣ [تم حفظ صورة الغلاف بنجاح تام! 🎉]');
+
       if (setAppUser) setAppUser((prev: any) => ({ ...prev, cover_url: publicUrl, coverUrl: publicUrl }));
       addToast('✅ تم رفع وتحديث صورة الغلاف بنجاح!', 'success');
-      alert(`✅ نجح رفع صورة الغلاف على الهاتف!\n• الملف: ${rawFile.name} (${fileKB} KB)\n• الرابط: ${publicUrl}`);
     } catch (err: any) {
       console.error('Cover direct upload error:', err);
       const errMsg = err?.message || JSON.stringify(err);
       addToast('تعذر رفع صورة الغلاف: ' + errMsg, 'error');
-      alert(`❌ خطأ رفع صورة الغلاف:\n${errMsg}`);
+      alert(`❌ خطأ أو توقف في الغلاف (Hang/Timeout):\n${errMsg}`);
     } finally {
       setIsUploadingCover(false);
-      // Reset input ONLY after upload finishes
+      try { sessionStorage.removeItem('prolink_file_picked'); } catch (_) {}
       if (targetInput) targetInput.value = '';
     }
   };
@@ -393,20 +472,29 @@ export function ModernProfileView({
     const file = targetInput?.files?.[0];
     if (!file) return;
 
+    try {
+      sessionStorage.setItem('prolink_file_picked', Date.now().toString());
+    } catch (_) {}
+
+    alert(`1️⃣ [استلام ملف CV]: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`);
+
     if (!effectiveUserId) {
       alert('⚠️ يرجى تسجيل الدخول أولاً لتتمكن من رفع السيرة الذاتية.');
+      try { sessionStorage.removeItem('prolink_file_picked'); } catch (_) {}
       return;
     }
 
     if (file.size === 0) {
       alert('⚠️ المتصفح أعاد ملفاً فارغاً (0 بايت).');
       if (targetInput) targetInput.value = '';
+      try { sessionStorage.removeItem('prolink_file_picked'); } catch (_) {}
       return;
     }
 
     if (file.size > 25 * 1024 * 1024) {
       alert('⚠️ حجم الملف كبير جداً (الحد الأقصى 25 ميغابايت)');
       if (targetInput) targetInput.value = '';
+      try { sessionStorage.removeItem('prolink_file_picked'); } catch (_) {}
       return;
     }
 
@@ -416,50 +504,57 @@ export function ModernProfileView({
       const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
       const fileName = file.name || 'resume.pdf';
       setPendingCVName(`${fileName} (${sizeMB} MB)`);
-      console.log(`[CVUpload] File selected: ${fileName} (${sizeMB} MB), type: ${file.type}`);
 
-      // RAM snapshot immediately so Android content:// URI doesn't expire
+      // RAM snapshot immediately with timeout
       let workingFile = file;
       try {
-        const ab = await Promise.race<ArrayBuffer>([
-          file.arrayBuffer(),
-          new Promise<ArrayBuffer>((_, reject) =>
-            setTimeout(() => reject(new Error('snapshot timeout')), 10000)
-          ),
-        ]);
+        const ab = await withTimeout(file.arrayBuffer(), 10000, 'قراءة ملف الـ CV إلى RAM');
+        alert(`2️⃣ [قراءة الـ CV بنجاح]: تم تجميد ${ab.byteLength} بايت`);
         const mime = file.type || 'application/pdf';
         workingFile = new File([new Blob([ab], { type: mime })], fileName, { type: mime });
-        (workingFile as any).__isSnapshot = true;
+        (workingFile as any)._ab = ab;
         setCvUploadProgress(35);
-      } catch (abErr) {
-        console.warn('[CVUpload] arrayBuffer warning, using raw file:', abErr);
+      } catch (abErr: any) {
+        alert(`⚠️ تعليق في قراءة الـ CV: ${abErr?.message || abErr}`);
         workingFile = file;
       }
 
       setCvUploadProgress(50);
-      addToast('⏳ جاري رفع السيرة الذاتية إلى التخزين السحابي...', 'info');
+      alert('3️⃣ [بدء رفع ملف الـ CV إلى Supabase]...');
 
-      const publicUrl = await handleMobileDirectUpload(workingFile, 'cv', effectiveUserId);
+      const publicUrl = await withTimeout(
+        handleMobileDirectUpload(workingFile, 'cv', effectiveUserId),
+        25000,
+        'رفع الـ CV عبر الشبكة'
+      );
+      alert(`4️⃣ [نجح رفع ملف الـ CV]:\n${publicUrl}`);
+
       setCvUploadProgress(85);
       setCvUrl(publicUrl);
       setPendingCVFile(null);
       setPendingCVName(null);
 
-      await profileService.updateProfile(effectiveUserId, { cvUrl: publicUrl, cv_url: publicUrl });
-      if (setAppUser) setAppUser((prev: any) => ({ ...prev, cvUrl: publicUrl, cv_url: publicUrl }));
+      alert('5️⃣ [تثبيت الـ CV في قاعدة البيانات]...');
+      await withTimeout(
+        profileService.updateProfile(effectiveUserId, { cvUrl: publicUrl, cv_url: publicUrl }),
+        10000,
+        'تحديث قاعدة البيانات'
+      );
       setCvUploadProgress(100);
+      alert('6️⃣ [تم حفظ وتثبيت السيرة الذاتية بنجاح تام! 🎉]');
 
+      if (setAppUser) setAppUser((prev: any) => ({ ...prev, cvUrl: publicUrl, cv_url: publicUrl }));
       addToast('✅ تم رفع وتثبيت السيرة الذاتية بنجاح!', 'success');
-      alert(`✅ نجح رفع وتثبيت السيرة الذاتية على الهاتف بنجاح!\n• الملف: ${fileName} (${sizeMB} MB)\n• الرابط:\n${publicUrl}`);
       setTimeout(() => setCvUploadProgress(0), 1800);
     } catch (err: any) {
       setCvUploadProgress(0);
       console.error('[CVUpload] Error uploading CV:', err);
       const errMsg = err?.message || JSON.stringify(err) || 'خطأ غير معروف';
       addToast('فشل حفظ السيرة الذاتية: ' + errMsg, 'error');
-      alert(`❌ فشل رفع السيرة الذاتية على الهاتف:\n${errMsg}`);
+      alert(`❌ خطأ أو توقف في الـ CV (Hang/Timeout):\n${errMsg}`);
     } finally {
       setSavingCV(false);
+      try { sessionStorage.removeItem('prolink_file_picked'); } catch (_) {}
       if (targetInput) targetInput.value = '';
     }
   };
