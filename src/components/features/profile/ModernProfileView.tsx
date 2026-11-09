@@ -563,6 +563,14 @@ export function ModernProfileView({
             <ShieldCheck size={12} />
             <span>فحص الجلسة 🔍</span>
           </button>
+          <a
+            href={`${import.meta.env.BASE_URL}test-upload.html`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-xl border border-emerald-200 dark:border-emerald-900 flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm"
+          >
+            <span>صفحة الفحص 🧪</span>
+          </a>
         </div>
         {onBack && (
           <button
