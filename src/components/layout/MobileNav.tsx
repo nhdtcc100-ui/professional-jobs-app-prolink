@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Home, Briefcase, Globe, MessageSquare, MoreHorizontal,
@@ -68,6 +68,19 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   }, [appUser?.id]);
 
   const activeNavId = showMobileMenu ? 'more' : activeTab;
+
+  // ── حماية الـ backdrop: لا يستجيب حتى يمر 200ms من فتح الدرج
+  // هذا يمنع إغلاق الدرج فور الفتح بسبب bubble من onPointerDown
+  const backdropActiveRef = useRef(false);
+  useEffect(() => {
+    if (showMobileMenu) {
+      backdropActiveRef.current = false;
+      const t = setTimeout(() => { backdropActiveRef.current = true; }, 200);
+      return () => clearTimeout(t);
+    } else {
+      backdropActiveRef.current = false;
+    }
+  }, [showMobileMenu]);
 
   return (
     <>
@@ -251,7 +264,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
-              onClick={() => setShowMobileMenu(false)}
+              onClick={() => { if (backdropActiveRef.current) setShowMobileMenu(false); }}
               className="fixed inset-0 z-[100]"
               style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}
             />

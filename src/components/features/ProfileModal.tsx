@@ -7,7 +7,6 @@ import { imageService, snapshotFile } from '../../lib/services/imageService';
 import { PostTransmissionCard } from '../features';
 import { AppUser, Post } from '../../types';
 import { ProfileHeader, ProfileTabs, ProfileEditView, ProfileActivityView } from './profile';
-import { ProfileCompletenessWidget } from './profile/ProfileCompletenessWidget';
 
 interface ProfileModalProps {
   profile: AppUser;
@@ -385,15 +384,6 @@ export function ProfileModal({
             />
 
             <ProfileTabs activeTab={activeTab} setActiveTab={setActiveTab} isMe={isMe} />
-            
-            <div className="p-4 md:px-8 md:pt-6">
-              {isMe && (activeTab === 'activity' || activeTab === 'edit') && (
-                <ProfileCompletenessWidget 
-                  profile={{...profile, ...formData}} 
-                  onGoToEdit={() => setActiveTab('edit')} 
-                />
-              )}
-            </div>
 
             <div className="min-h-[600px] p-4 md:p-8 bg-white rounded-b-[3.5rem] overflow-hidden relative">
               <AnimatePresence mode="wait">

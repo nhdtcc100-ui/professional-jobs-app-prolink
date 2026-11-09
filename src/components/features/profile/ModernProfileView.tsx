@@ -4,7 +4,8 @@ import {
   User, Briefcase, MapPin, Phone, Lock, FileText, Pencil,
   ChevronsLeft, Upload, Download, Eye, CheckCircle2, Loader2,
   X, ExternalLink, Camera, RefreshCw,
-  EyeOff, AlertCircle, WifiOff, KeyRound, ChevronDown, ChevronUp
+  EyeOff, AlertCircle, WifiOff, KeyRound, ChevronDown, ChevronUp,
+  Shield, Wrench
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { profileService } from '../../../lib/services/profileService';
@@ -117,6 +118,10 @@ export function ModernProfileView({
   );
   const [coverUrl, setCoverUrl] = useState((profile as any)?.cover_url || (profile as any)?.coverUrl || '');
   const [cvUrl, setCvUrl] = useState(profile?.cvUrl || (profile as any)?.cv_url || '');
+  const [role, setRole] = useState<'seeker' | 'employer' | 'freelancer'>(
+    (profile?.role as any) || ((profile as any)?.account_type as any) || 'seeker'
+  );
+  const [savingRole, setSavingRole] = useState(false);
 
   // Keep state in sync with profile prop changes (prevents Mobile State loss)
   React.useEffect(() => {
@@ -124,6 +129,8 @@ export function ModernProfileView({
     if (cUrl && cUrl !== coverUrl) setCoverUrl(cUrl);
     const aUrl = profile?.avatar || (profile as any)?.avatar_url;
     if (aUrl && aUrl !== avatar) setAvatar(aUrl);
+    const r = (profile?.role as any) || ((profile as any)?.account_type as any);
+    if (r && r !== role) setRole(r);
   }, [profile]);
 
   // ─── Password State ──────────────────────────────────────────────────────────
@@ -148,6 +155,10 @@ export function ModernProfileView({
   const [pendingCVFile, setPendingCVFile] = useState<File | null>(null);
   const [pendingCVName, setPendingCVName] = useState<string | null>(null);
   const [cvUploadProgress, setCvUploadProgress] = useState(0);
+  // blob URL للعرض الآمن — يُنشأ عند الفتح ويُلغى عند الإغلاق
+  const [cvBlobUrl, setCvBlobUrl] = useState<string | null>(null);
+  const [cvBlobLoading, setCvBlobLoading] = useState(false);
+  const cvBlobRef = useRef<string | null>(null); // لضمان إلغاء URL القديم
 
   // ─── Refs ────────────────────────────────────────────────────────────────────
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -155,6 +166,76 @@ export function ModernProfileView({
   const cvInputRef = useRef<HTMLInputElement>(null);
 
   const effectiveUserId = user?.id || profile?.id;
+
+  // ─── فتح نافذة CV: جلب رابط مؤقت + تحويل إلى blob ─────────────────────────
+  const openCVModal = async () => {
+    setPreviewingCV(true);
+    if (!cvUrl) return;
+
+    // إذا كان ملف Word، لا نحتاج blob — سنعرض رسالة مناسبة
+    if (cvUrl.toLowerCase().includes('.doc')) return;
+
+    setCvBlobLoading(true);
+    try {
+      // إلغاء blob قديم إن وُجد
+      if (cvBlobRef.current) {
+        URL.revokeObjectURL(cvBlobRef.current);
+        cvBlobRef.current = null;
+        setCvBlobUrl(null);
+      }
+
+      // استخراج المسار من URL الكامل
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
+      let path = cvUrl;
+      // محاولة استخراج المسار من رابط storage العام
+      const publicMarker = '/storage/v1/object/public/resumes/';
+      const signedMarker = '/storage/v1/object/sign/resumes/';
+      if (cvUrl.includes(publicMarker)) {
+        path = cvUrl.split(publicMarker)[1] || cvUrl;
+      } else if (cvUrl.includes(signedMarker)) {
+        path = cvUrl.split(signedMarker)[1]?.split('?')[0] || cvUrl;
+      } else if (cvUrl.includes('/resumes/')) {
+        path = cvUrl.split('/resumes/')[1]?.split('?')[0] || cvUrl;
+      }
+
+      // جلب رابط موقّع لمدة 5 دقائق
+      const { data: signedData, error: signedError } = await supabase.storage
+        .from('resumes')
+        .createSignedUrl(decodeURIComponent(path), 300);
+
+      let fetchUrl = cvUrl; // fallback للرابط المباشر
+      if (!signedError && signedData?.signedUrl) {
+        fetchUrl = signedData.signedUrl;
+      }
+
+      // جلب الملف وتحويله إلى blob URL
+      const res = await fetch(fetchUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      cvBlobRef.current = blobUrl;
+      setCvBlobUrl(blobUrl);
+    } catch (err) {
+      console.error('[CV Modal] blob load error:', err);
+      // في حالة الفشل: نعرض الرابط المباشر كـ fallback
+      setCvBlobUrl(cvUrl);
+    } finally {
+      setCvBlobLoading(false);
+    }
+  };
+
+  const closeCVModal = () => {
+    setPreviewingCV(false);
+    // تأخير إلغاء blob حتى ينتهي الـ exit animation
+    setTimeout(() => {
+      if (cvBlobRef.current) {
+        URL.revokeObjectURL(cvBlobRef.current);
+        cvBlobRef.current = null;
+      }
+      setCvBlobUrl(null);
+      setCvBlobLoading(false);
+    }, 300);
+  };
 
   // ─── Timeout Wrapper لمنع أي تعليق في الموبايل ─────────────────────────────
   const withTimeout = <T,>(p: PromiseLike<T> | Promise<T>, ms: number, label: string): Promise<T> =>
@@ -293,8 +374,8 @@ export function ModernProfileView({
   // ─── Direct REST Database Update (تجاوز أقفال supabase-js وحفظ التعديل في 100ms) ───
   const updateProfileDbFieldDirect = async (
     userId: string,
-    field: 'avatar' | 'cover' | 'cv',
-    publicUrl: string
+    field: 'avatar' | 'cover' | 'cv' | 'role',
+    value: string
   ): Promise<{ status: number; duration: number }> => {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
     const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
@@ -310,9 +391,9 @@ export function ModernProfileView({
       }
     } catch (_) {}
 
-    const colName = field === 'cv' ? 'cv_url' : `${field}_url`;
+    const colName = field === 'cv' ? 'cv_url' : (field === 'avatar' || field === 'cover' ? `${field}_url` : field);
     const payload: Record<string, any> = {
-      [colName]: publicUrl,
+      [colName]: value,
       updated_at: new Date().toISOString(),
     };
 
@@ -372,14 +453,47 @@ export function ModernProfileView({
       const cached = localStorage.getItem('prolink_cached_user');
       if (cached) {
         const u = JSON.parse(cached);
-        if (field === 'avatar') { u.avatar = publicUrl; u.avatar_url = publicUrl; }
-        if (field === 'cover') { u.coverUrl = publicUrl; u.cover_url = publicUrl; }
-        if (field === 'cv') { u.cvUrl = publicUrl; u.cv_url = publicUrl; }
+        if (field === 'avatar') { u.avatar = value; u.avatar_url = value; }
+        if (field === 'cover') { u.coverUrl = value; u.cover_url = value; }
+        if (field === 'cv') { u.cvUrl = value; u.cv_url = value; }
+        if (field === 'role') { u.role = value; }
         localStorage.setItem('prolink_cached_user', JSON.stringify(u));
       }
     } catch (_) {}
 
     return { status: resStatus, duration };
+  };
+
+  // ─── تغيير نوع الحساب مباشرة (باحث عن عمل / صاحب عمل / عمل حر) ─────────────
+  const handleRoleChange = async (newRole: 'seeker' | 'employer' | 'freelancer') => {
+    if (!isMe || !effectiveUserId || savingRole || newRole === role) return;
+    try { navigator.vibrate?.([10]); } catch (_) {}
+
+    const oldRole = role;
+    setRole(newRole);
+    setSavingRole(true);
+    try {
+      await withTimeout(
+        updateProfileDbFieldDirect(effectiveUserId, 'role', newRole),
+        8000,
+        'تحديث نوع الحساب'
+      );
+      if (setAppUser) {
+        setAppUser((prev: any) => ({ ...prev, role: newRole }));
+      }
+      const roleLabels: Record<string, string> = {
+        seeker: 'باحث عن عمل 🔍',
+        employer: 'صاحب عمل 💼',
+        freelancer: 'عمل حر وخدمات ⚡',
+      };
+      addToast(`✅ تم تحديث نوع الحساب إلى "${roleLabels[newRole]}" بنجاح!`, 'success');
+    } catch (err: any) {
+      console.error('[RoleChange] error:', err);
+      setRole(oldRole);
+      addToast('فشل تحديث نوع الحساب: ' + (err?.message || 'خطأ في الشبكة'), 'error');
+    } finally {
+      setSavingRole(false);
+    }
   };
 
   // ─── Unified Image Upload Handler (Avatar & Cover) ───────────────────────────
@@ -801,6 +915,62 @@ export function ModernProfileView({
             </div>
           </div>
 
+          {/* ── نوع الحساب (Account Type Segmented Control) ── */}
+          <div className="pt-1 pb-5 mb-6 border-b border-slate-100 dark:border-slate-800/80 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className={iconBadge}><Shield size={17} /></div>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-slate-800 dark:text-white">نوع الحساب</h3>
+                  <p className="text-[10px] font-bold text-slate-400">
+                    {isMe ? 'اختر دورك في المنصة للوصول إلى الميزات المناسبة' : 'نوع هذا الحساب في المنصة'}
+                  </p>
+                </div>
+              </div>
+              {savingRole && (
+                <span className="text-[11px] font-bold text-[#0a66c2] flex items-center gap-1">
+                  <Loader2 size={12} className="animate-spin" />
+                  جاري الحفظ...
+                </span>
+              )}
+            </div>
+
+            {/* Segmented Control Buttons */}
+            <div className="grid grid-cols-3 gap-2 p-1.5 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60">
+              {[
+                { id: 'seeker', label: 'باحث عن عمل', emoji: '🔍', desc: 'تقديم وتصفح' },
+                { id: 'employer', label: 'صاحب عمل', emoji: '💼', desc: 'نشر وإدارة' },
+                { id: 'freelancer', label: 'عمل حر', emoji: '⚡', desc: 'سوق الخدمات' },
+              ].map(opt => {
+                const isSelected = role === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    disabled={!isMe || savingRole}
+                    onClick={() => handleRoleChange(opt.id as any)}
+                    className={`relative flex flex-col items-center justify-center py-2.5 px-1.5 rounded-xl text-center transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-white dark:bg-slate-900 shadow-md text-slate-900 dark:text-white font-black'
+                        : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 font-bold'
+                    } ${!isMe ? 'cursor-default' : 'active:scale-95'}`}
+                  >
+                    <span className="text-xl mb-1 filter drop-shadow-xs">{opt.emoji}</span>
+                    <span className="text-[11px] sm:text-xs leading-tight font-black">{opt.label}</span>
+                    <span className="text-[9px] text-slate-400 dark:text-slate-500 mt-0.5">{opt.desc}</span>
+                    {isSelected && (
+                      <motion.div
+                        layoutId="active-role-pill"
+                        className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-blue-400 mt-1"
+                        transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                      />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {/* عنوان "المعلومات الشخصية" — منفصل بمسافة واضحة وبطاقة أنيقة */}
           <div className="flex items-center gap-2.5 pt-2 pb-2 mb-6 border-b border-slate-100 dark:border-slate-800/80">
             <div className={iconBadge}><User size={17} /></div>
@@ -1103,7 +1273,7 @@ export function ModernProfileView({
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-blue-100 dark:border-blue-900/40">
               <motion.button
                 type="button"
-                onClick={() => setPreviewingCV(true)}
+                onClick={() => openCVModal()}
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.96 }}
                 className="py-2.5 px-3 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-[#0a66c2] dark:text-blue-300 rounded-xl text-xs font-black transition-all border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 shadow-sm active:scale-95">
@@ -1178,7 +1348,7 @@ export function ModernProfileView({
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════════
-          MODAL — معاينة السيرة الذاتية (مثبتة بدقة بين الشريطين العلوي والسفلي)
+          MODAL — معاينة السيرة الذاتية (آمن: blob URL بدون Google Docs)
           ══════════════════════════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {previewingCV && cvUrl && (
@@ -1192,7 +1362,7 @@ export function ModernProfileView({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
-            onClick={() => setPreviewingCV(false)}
+            onClick={closeCVModal}
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -1203,7 +1373,7 @@ export function ModernProfileView({
               dir="rtl"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* ── Modal Header: رأس ثابت فيه اسم المستخدم وصورته وزر رجوع (X) وزر تحميل ── */}
+              {/* ── Modal Header: اسم المستخدم + زر الإغلاق فقط (لا تحميل، لا فتح تبويب) ── */}
               <div className="sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
@@ -1215,29 +1385,9 @@ export function ModernProfileView({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <motion.a
-                    href={cvUrl}
-                    download
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="px-3.5 py-2 bg-gradient-to-l from-[#0a66c2] to-[#004182] text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shadow-sm shadow-[#0a66c2]/20 cursor-pointer"
-                  >
-                    <Download size={14} />
-                    <span className="hidden sm:inline">تحميل الملف</span>
-                  </motion.a>
-                  <motion.a
-                    href={cvUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center cursor-pointer"
-                    title="فتح في تبويب جديد"
-                  >
-                    <ExternalLink size={16} />
-                  </motion.a>
+                  {/* زر الإغلاق فقط — تم حذف زر التحميل وفتح التبويب لأسباب أمنية */}
                   <motion.button
-                    onClick={() => setPreviewingCV(false)}
+                    onClick={closeCVModal}
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all border border-red-200 dark:border-red-800/60 shadow-sm flex items-center justify-center cursor-pointer"
@@ -1248,9 +1398,10 @@ export function ModernProfileView({
                 </div>
               </div>
 
-              {/* ── منطقة السيرة: flex-1 overflow-auto ── */}
+              {/* ── منطقة عرض السيرة ── */}
               <div className="flex-1 w-full bg-slate-100 dark:bg-slate-950 relative overflow-hidden flex flex-col">
-                {cvUrl.toLowerCase().includes('.doc') || cvUrl.toLowerCase().includes('.docx') ? (
+                {cvUrl.toLowerCase().includes('.doc') ? (
+                  /* ملف Word — نعرض رسالة واضحة بدون روابط خارجية */
                   <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-4">
                     <div className="w-16 h-16 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-300 flex items-center justify-center shadow-md">
                       <FileText size={32} />
@@ -1258,51 +1409,44 @@ export function ModernProfileView({
                     <div>
                       <h4 className="text-base font-black text-slate-800 dark:text-white">مستند Word (.docx)</h4>
                       <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                        ملفات Word لا تعرض مباشرة في بعض المتصفحات، يمكنك فتحها في Google Docs أو تحميلها مباشرة
+                        ملفات Word لا تُعرض مباشرةً في المتصفح. يُرجى رفع ملف PDF للحصول على أفضل تجربة معاينة.
                       </p>
                     </div>
-                    <div className="flex items-center gap-3 pt-2 flex-wrap justify-center">
-                      <motion.a
-                        href={`https://docs.google.com/viewer?url=${encodeURIComponent(cvUrl)}&embedded=true`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"
-                      >
-                        <ExternalLink size={14} /><span>فتح في Google Docs</span>
-                      </motion.a>
-                      <motion.a
-                        href={cvUrl}
-                        download
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        className="px-4 py-2.5 rounded-xl bg-gradient-to-l from-[#0a66c2] to-[#004182] text-white text-xs font-black transition-all flex items-center gap-2 shadow-sm shadow-[#0a66c2]/20"
-                      >
-                        <Download size={14} /><span>تحميل الملف الآن</span>
-                      </motion.a>
+                  </div>
+                ) : cvBlobLoading ? (
+                  /* حالة التحميل — Skeleton */
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
+                      <Loader2 size={24} className="text-[#0a66c2] animate-spin" />
+                    </div>
+                    <p className="text-sm font-bold text-slate-500 dark:text-slate-400">جاري تحميل السيرة الذاتية…</p>
+                    {/* Skeleton lines */}
+                    <div className="w-64 space-y-2 mt-2">
+                      {[100, 80, 90, 70, 85].map((w, i) => (
+                        <div key={i} className="h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse" style={{ width: `${w}%` }} />
+                      ))}
                     </div>
                   </div>
+                ) : cvBlobUrl ? (
+                  /* عرض PDF من blob URL — آمن وفوري */
+                  <iframe
+                    src={cvBlobUrl}
+                    title="CV Document"
+                    className="w-full h-full border-none"
+                  />
                 ) : (
-                  <div className="w-full h-full relative">
-                    <iframe
-                      src={`https://docs.google.com/viewer?url=${encodeURIComponent(cvUrl)}&embedded=true`}
-                      title="CV Document"
-                      className="w-full h-full border-none"
-                    />
-                    {/* Floating pill for direct open if preview is slow */}
-                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 shadow-md">
-                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">إذا واجهت بطء في العرض:</span>
-                      <a
-                        href={cvUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[11px] font-bold text-[#0a66c2] dark:text-blue-400 hover:underline flex items-center gap-1"
-                      >
-                        <span>فتح في تبويب جديد</span>
-                        <ExternalLink size={11} />
-                      </a>
+                  /* حالة الخطأ */
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-6 text-center">
+                    <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
+                      <FileText size={28} className="text-red-400" />
                     </div>
+                    <p className="text-sm font-bold text-slate-500 dark:text-slate-400">تعذّر تحميل السيرة الذاتية</p>
+                    <button
+                      onClick={openCVModal}
+                      className="px-4 py-2 bg-blue-600 text-white text-xs font-black rounded-xl hover:bg-blue-700 transition-all"
+                    >
+                      إعادة المحاولة
+                    </button>
                   </div>
                 )}
               </div>

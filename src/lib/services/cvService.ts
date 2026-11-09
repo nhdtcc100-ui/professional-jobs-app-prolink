@@ -74,6 +74,7 @@ async function snapshotToMemory(file: File): Promise<File> {
       lastModified: Date.now(),
     });
     (snap as any).__isSnapshot = true;
+    (snap as any)._ab = ab;
     logger.info('[cvService] RAM snapshot OK –', snap.size, 'bytes');
     return snap;
   } catch (err) {
@@ -123,12 +124,11 @@ function resolveExtAndMime(file: File, ab?: ArrayBuffer): { ext: string; mime: s
 }
 
 /**
- * FIX-1 + FIX-2: Upload a File blob directly to Supabase Storage.
- * We pass the File object – NOT JSON, NOT FormData with custom headers.
- * The @supabase/storage-js client sets the correct multipart boundary itself.
+ * FIX-1 + FIX-2: Upload a File blob directly to Supabase Storage via REST fetch.
+ * This completely bypasses Supabase-js Web Locks which hang on mobile browsers.
  *
- * FIX-8: 30-second circuit-breaker per attempt.
- * FIX-9: Refresh auth session so Storage RLS headers are valid.
+ * FIX-8: 12-second abort timeout per bucket attempt.
+ * FIX-9: Uses session token from localStorage or anon key fallback.
  */
 async function uploadBlobToSupabase(
   file: File,
@@ -136,46 +136,84 @@ async function uploadBlobToSupabase(
   path: string,
   contentType: string
 ): Promise<string | null> {
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+
+  let token = supabaseAnonKey;
   try {
-    // FIX-9: Ensure auth token is fresh before every upload attempt
-    try {
-      const { data: session } = await supabase.auth.getSession();
-      if (!session?.session) {
-        logger.warn('[cvService] No active session – Storage RLS may reject upload');
-      }
-    } catch { /* non-fatal */ }
+    const raw = localStorage.getItem('prolink_v2_auth_session') ||
+                localStorage.getItem('sb-ubeqmsyyyojojmswmidq-auth-token');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      token = parsed?.access_token || parsed?.currentSession?.access_token || supabaseAnonKey;
+    }
+  } catch (_) {}
 
-    // FIX-1 + FIX-2: Pass File blob; Supabase SDK handles multipart/form-data internally
-    const uploadPromise = supabase.storage
-      .from(bucket)
-      .upload(path, file, {
-        contentType,          // correct MIME so Supabase doesn't reject it
-        upsert: true,
-        cacheControl: '3600',
-      });
+  // 1. قراءة بايتات الملف من الذاكرة RAM فوراً
+  let buffer: ArrayBuffer;
+  try {
+    if ((file as any)._ab) {
+      buffer = (file as any)._ab;
+    } else {
+      buffer = await file.arrayBuffer();
+    }
+  } catch (err) {
+    logger.warn('[cvService] failed to read buffer:', err);
+    return null;
+  }
 
-    // FIX-8: 30 s hard timeout per attempt
-    const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`Upload timeout (${UPLOAD_TIMEOUT_MS / 1000}s) on bucket '${bucket}'`)),
-        UPLOAD_TIMEOUT_MS
-      )
-    );
+  const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucket}/${path}`;
+  const UPLOAD_TIMEOUT = 12000; // 12 ثانية كحد أقصى لكل محاولة
 
-    const { error } = await Promise.race([uploadPromise, timeoutPromise]);
+  // 2. محاولة الرفع المباشر بتوكن المستخدم
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT);
 
-    if (error) {
-      logger.warn(`[cvService] bucket '${bucket}' error:`, error.message);
-      return null;
+    const res = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'apikey': supabaseAnonKey,
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': contentType,
+        'x-upsert': 'true',
+      },
+      body: buffer,
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (res.ok) {
+      return `${supabaseUrl}/storage/v1/object/public/${bucket}/${path}?v=${Date.now()}`;
     }
 
-    const { data: pub } = supabase.storage.from(bucket).getPublicUrl(path);
-    return pub?.publicUrl ?? null;
+    // 3. إذا فشل التوكن وكان غير Anon Key، نجرب بـ Anon Key مباشرة
+    if (token !== supabaseAnonKey) {
+      const controllerAnon = new AbortController();
+      const timerAnon = setTimeout(() => controllerAnon.abort(), UPLOAD_TIMEOUT);
 
+      const resAnon = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${supabaseAnonKey}`,
+          'Content-Type': contentType,
+          'x-upsert': 'true',
+        },
+        body: buffer,
+        signal: controllerAnon.signal,
+      });
+      clearTimeout(timerAnon);
+
+      if (resAnon.ok) {
+        return `${supabaseUrl}/storage/v1/object/public/${bucket}/${path}?v=${Date.now()}`;
+      }
+    }
   } catch (err: any) {
-    logger.warn(`[cvService] bucket '${bucket}' exception:`, err?.message || err);
-    return null;  // FIX-10: never rethrow from individual attempt
+    logger.warn(`[cvService] direct upload to '${bucket}' failed:`, err?.message || err);
   }
+
+  return null;
 }
 
 /**

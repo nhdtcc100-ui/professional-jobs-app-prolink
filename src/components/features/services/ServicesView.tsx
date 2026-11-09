@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef, startTransition } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Wrench, Search, MapPin, RefreshCw, Phone, MessageSquare,
@@ -145,6 +145,11 @@ const ServiceCard: React.FC<{
 export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick, onRequireAuth }) => {
   const [searchTitle, setSearchTitle] = useState('');
   const [searchLocation, setSearchLocation] = useState('');
+  // القيم المُقدَّمة للاستعلام بعد debounce (300ms)
+  const [debouncedTitle, setDebouncedTitle] = useState('');
+  const [debouncedLocation, setDebouncedLocation] = useState('');
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const [providers, setProviders] = useState<AppUser[]>([]);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -152,10 +157,26 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
   const [totalCount, setTotalCount] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
 
+  // ── Debounce: تأخير 300ms قبل تشغيل البحث لتجنب طلبات زائدة ──────────────
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      startTransition(() => {
+        setDebouncedTitle(searchTitle);
+        setDebouncedLocation(searchLocation);
+      });
+    }, 300);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchTitle, searchLocation]);
+
   // اقتراحات مسميات وظيفية شائعة
   const popularTitles = ['كهربائي', 'سباك', 'نجار', 'حلاق', 'مطبخ', 'دهان', 'ميكانيكي', 'تكييف', 'حداد', 'بناء'];
 
   const fetchProviders = useCallback(async (currentPage: number, reset = false) => {
+    // إلغاء أي طلب سابق
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = new AbortController();
+
     setLoading(true);
     try {
       let query = (supabase as any)
@@ -168,14 +189,14 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
         .order('created_at', { ascending: false })
         .range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1);
 
-      if (searchTitle.trim()) {
-        const titleTerm = searchTitle.trim();
+      if (debouncedTitle.trim()) {
+        const titleTerm = debouncedTitle.trim();
         query = query.or(
           `title.ilike.%${titleTerm}%,specialty.ilike.%${titleTerm}%,display_title.ilike.%${titleTerm}%,name.ilike.%${titleTerm}%`
         );
       }
-      if (searchLocation.trim()) {
-        const locTerm = searchLocation.trim();
+      if (debouncedLocation.trim()) {
+        const locTerm = debouncedLocation.trim();
         query = query.ilike('location', `%${locTerm}%`);
       }
 
@@ -211,18 +232,19 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
 
       if (count !== null) setTotalCount(count);
       setHasMore(mapped.length === PAGE_SIZE);
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.name === 'AbortError') return; // طلب ملغى — طبيعي
       console.error('[ServicesView] fetch error:', err);
     } finally {
       setLoading(false);
     }
-  }, [searchTitle, searchLocation]);
+  }, [debouncedTitle, debouncedLocation]);
 
-  // جلب أولي عند التحميل
+  // جلب عند تغيّر نص البحث المؤجّل
   useEffect(() => {
     setPage(0);
     fetchProviders(0, true);
-  }, [searchTitle, searchLocation]);
+  }, [debouncedTitle, debouncedLocation]);
 
   const handleLoadMore = () => {
     const nextPage = page + 1;
@@ -230,14 +252,20 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
     fetchProviders(nextPage, false);
   };
 
+  // بحث فوري: يمسح debounce ويشغّل الاستعلام مباشرة
   const handleSearch = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setDebouncedTitle(searchTitle);
+    setDebouncedLocation(searchLocation);
     setPage(0);
-    fetchProviders(0, true);
   };
 
   const handleClearSearch = () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
     setSearchTitle('');
     setSearchLocation('');
+    setDebouncedTitle('');
+    setDebouncedLocation('');
     setPage(0);
   };
 

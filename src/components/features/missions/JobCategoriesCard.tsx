@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, startTransition } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Layers, RotateCcw, Sparkles, Wrench } from 'lucide-react';
 import { Job } from '../../../types';
@@ -55,7 +55,10 @@ export const JobCategoriesCard: React.FC<JobCategoriesCardProps> = ({
   const handleSelect = useCallback((id: string) => {
     try { navigator.vibrate?.([8]); } catch (_) {}
     const isCurrentlySelected = id === selectedCategory || (id !== 'الكل' && normalizeArabic(selectedCategory) === normalizeArabic(id));
-    onSelectCategory(isCurrentlySelected && id !== 'الكل' ? 'الكل' : id);
+    // استجابة فورية بصرية عبر startTransition
+    startTransition(() => {
+      onSelectCategory(isCurrentlySelected && id !== 'الكل' ? 'الكل' : id);
+    });
   }, [selectedCategory, onSelectCategory]);
 
   return (
@@ -144,7 +147,8 @@ export const JobCategoriesCard: React.FC<JobCategoriesCardProps> = ({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.03, type: 'spring', stiffness: 450, damping: 30 }}
                 whileTap={{ scale: 0.92 }}
-                onClick={() => handleSelect(cat.id)}
+                onPointerDown={() => handleSelect(cat.id)}
+                onClick={(e) => e.preventDefault()}
                 // تم إزالة الكارد الأبيض تماماً من خلف كل أيقونة (شفاف وأنيق وبدون أي كارد مستطيل أبيض)
                 className="group relative shrink-0 flex flex-col items-center justify-center p-2 rounded-2xl cursor-pointer select-none transition-all duration-200 bg-transparent border-0 shadow-none no-global-btn"
                 style={{

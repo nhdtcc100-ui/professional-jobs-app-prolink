@@ -52,13 +52,6 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
   const publisher = (allUsers || []).find((u: any) => u.id === (applyingJob?.employer_id || (applyingJob as any)?.employerId));
   const coverBannerUrl = applyingJob?.image_url || publisher?.coverUrl || (publisher as any)?.cover_url;
 
-  const profileCompletion =
-    ((appUser as any).bio         ? 20 : 0) +
-    (((appUser as any).skills?.length > 0) ? 20 : 0) +
-    ((appUser as any).location    ? 20 : 0) +
-    ((appUser as any).experience  ? 20 : 0) +
-    (prevWorks.length > 0         ? 20 : 0);
-
   const handleClose = () => {
     if (!isApplying) setApplyingJob(null);
   };
@@ -88,14 +81,14 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
     setIsApplying(true);
     let succeeded = false;
 
-    // Safety timeout to prevent infinite loading
+    // Safety timeout to prevent infinite loading (35s for mobile file uploads)
     const timeoutId = setTimeout(() => {
       if (!succeeded) {
         setIsApplying(false);
         setIsUploadingCv(false);
         addToast('انتهت مهلة التقديم. يرجى التأكد من اتصال الإنترنت والمحاولة مجدداً.', 'error');
       }
-    }, 15000);
+    }, 35000);
 
     try {
       // Use profile CV if available, or upload new one
@@ -105,10 +98,21 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
       if (cvFileObj) {
         console.log("💎 [UI_STEP_2] Uploading new CV...");
         setIsUploadingCv(true);
-        const { data, error: uploadError } = await jobService.uploadCV(appUser.id, cvFileObj);
-        setIsUploadingCv(false);
-        if (uploadError) throw new Error('فشل رفع السيرة الذاتية: ' + uploadError.message);
-        cvUrl = data || '';
+        try {
+          const { data, error: uploadError } = await jobService.uploadCV(appUser.id, cvFileObj);
+          if (uploadError || !data) {
+            console.warn('CV upload warning:', uploadError);
+            if (cvUrl) {
+              addToast('تعذر رفع السيرة الجديدة، سيتم استخدام السيرة المحفوظة في ملفك الشخصي');
+            } else {
+              throw new Error('فشل رفع السيرة الذاتية: ' + (uploadError?.message || 'خطأ أثناء الرفع'));
+            }
+          } else {
+            cvUrl = data;
+          }
+        } finally {
+          setIsUploadingCv(false);
+        }
       }
 
       const formattedPrevWorks = prevWorks.map(pw => 
@@ -250,27 +254,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
                 {(appUser as any).industry || (appUser as any).companyName || (appUser as any).bio?.slice(0, 40) || 'باحث عن عمل'}
               </p>
             </div>
-            <div className={`text-[10px] font-black px-3 py-1.5 rounded-full shrink-0 ${
-              profileCompletion >= 75 ? 'bg-emerald-100 text-emerald-700' :
-              profileCompletion >= 50 ? 'bg-blue-100 text-blue-700' :
-              'bg-amber-100 text-amber-700'
-            }`}>
-              {profileCompletion}% مكتمل
-            </div>
           </div>
-
-          {/* Profile weak warning */}
-          {profileCompletion < 75 && (
-            <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex gap-3 items-start">
-              <Info size={15} className="text-amber-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="text-[11px] font-black text-amber-800 uppercase tracking-wider mb-1">ملفك غير مكتمل</p>
-                <p className="text-xs font-bold text-amber-700 leading-relaxed">
-                  أصحاب العمل يفضلون الملفات المكتملة. أكمل نبذتك ومهاراتك وخبراتك لرفع فرص القبول.
-                </p>
-              </div>
-            </div>
-          )}
 
           {/* Auto-filled info summary */}
           <div className="bg-blue-50/50 rounded-2xl p-4 space-y-3 border border-blue-100/60">
@@ -470,11 +454,22 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
                 <input
                   id="cv-upload-main" type="file" className="hidden"
                   accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  onChange={e => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
                     if (file.size > 20 * 1024 * 1024) { addToast('حجم الملف يجب أن لا يتجاوز 20 ميجابايت', 'error'); return; }
-                    setCvFileObj(file);
+                    
+                    // تجميد فوري لمحتوى الملف في الذاكرة RAM لحمايته من إفراغ نظام الهاتف
+                    try {
+                      const ab = await file.arrayBuffer();
+                      const mime = file.type || 'application/pdf';
+                      const frozen = new File([new Blob([ab], { type: mime })], file.name, { type: mime });
+                      (frozen as any)._ab = ab;
+                      setCvFileObj(frozen);
+                    } catch (readErr) {
+                      console.warn('[ApplyJobModal] Could not pre-read arrayBuffer, using raw file:', readErr);
+                      setCvFileObj(file);
+                    }
                     e.target.value = '';
                   }}
                 />
