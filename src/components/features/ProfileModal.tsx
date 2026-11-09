@@ -190,14 +190,6 @@ export function ProfileModal({
     }
 
     try {
-      const { inspectUploadedFile } = await import('../../lib/security/fileInspector');
-      const inspection = await inspectUploadedFile(file, { id: user.id }, '/app/cv-upload-modal');
-      if (!inspection.safe) {
-        addToast(inspection.error || 'تم حظر الملف لدواعي أمنية', 'error');
-        setSaveStatus('error');
-        return;
-      }
-
       const { cvService } = await import('../../lib/services/cvService');
       const { data: url, error: uploadErr } = await cvService.uploadCV(user.id, file, {
         name: (user as any)?.name || (profile as any)?.name,

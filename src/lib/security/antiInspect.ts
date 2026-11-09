@@ -137,6 +137,11 @@ export function initAntiInspect(user?: AppUser | null) {
     // ✅ Skip check for administrators
     if (isUserAdmin(currentUser)) return;
 
+    // ✅ Skip on mobile devices: virtual keyboards shrink innerHeight by 200-400px causing false alarms
+    const isMobileDevice = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+      (typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1 && window.innerWidth < 1024);
+    if (isMobileDevice) return;
+
     const widthThreshold = window.outerWidth - window.innerWidth > 160;
     const heightThreshold = window.outerHeight - window.innerHeight > 160;
 
