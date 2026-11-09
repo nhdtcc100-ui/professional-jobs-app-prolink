@@ -216,7 +216,7 @@ export function ModernProfileView({
       throw new Error(`تعذر الرفع إلى Supabase: ${lastErrorMsg}`);
     }
 
-    const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${finalPath}`;
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${finalPath}?v=${Date.now()}`;
     return publicUrl;
   };
 
@@ -259,7 +259,7 @@ export function ModernProfileView({
     const updateUrl = `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`;
     const t0 = performance.now();
 
-    // 2. إرسال طلب REST خام فائق السرعة
+    // 2. إرسال طلب REST خام فائق السرعة — return=representation لاكتشاف 0 صفوف
     let res = await withTimeout(
       fetch(updateUrl, {
         method: 'PATCH',
@@ -267,7 +267,7 @@ export function ModernProfileView({
           'apikey': supabaseAnonKey,
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
-          'Prefer': 'return=minimal',
+          'Prefer': 'return=representation',
         },
         body: JSON.stringify(payload),
       }),
@@ -284,7 +284,7 @@ export function ModernProfileView({
             'apikey': supabaseAnonKey,
             'Authorization': `Bearer ${supabaseAnonKey}`,
             'Content-Type': 'application/json',
-            'Prefer': 'return=minimal',
+            'Prefer': 'return=representation',
           },
           body: JSON.stringify(payload),
         }),
@@ -294,6 +294,18 @@ export function ModernProfileView({
     }
 
     const duration = Math.round(performance.now() - t0);
+    const resStatus = res.status;
+
+    // التحقق من أن صفاً واحداً على الأقل تم تحديثه
+    if (!res.ok) {
+      const errText = await res.text().catch(() => `HTTP ${resStatus}`);
+      throw new Error(`فشل تحديث قاعدة البيانات (${resStatus}): ${errText}`);
+    }
+    let rows: any[] = [];
+    try { rows = await res.json(); } catch (_) {}
+    if (!Array.isArray(rows) || rows.length === 0) {
+      throw new Error('لم يُحفظ التغيير في قاعدة البيانات (0 صفوف مُحدَّثة). تحقق من صلاحيات RLS.');
+    }
 
     // 3. تحديث الكاش المحلي فورياً لضمان عدم ضياع التحديث
     try {
@@ -307,7 +319,7 @@ export function ModernProfileView({
       }
     } catch (_) {}
 
-    return { status: res.status, duration };
+    return { status: resStatus, duration };
   };
 
   // ─── 1. Avatar Upload (Direct Client-to-Supabase) ───────────────────────────
@@ -709,7 +721,8 @@ export function ModernProfileView({
 
         {/* ── Avatar + Card Title Row ──────────────────────────────────────────── */}
         <div className="px-5 sm:px-7 pb-6 pt-0 space-y-5">
-          <div className="flex items-end justify-between -mt-10 sm:-mt-12 mb-6">
+          {/* صف الأفاتار فقط — يرتفع فوق الغلاف بـ -mt */}
+          <div className="flex items-end justify-between -mt-10 sm:-mt-12">
             {/* Avatar */}
             <div className="relative group">
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 ring-4 ring-white dark:ring-slate-900 shadow-xl shadow-[#0a66c2]/20">
@@ -723,7 +736,7 @@ export function ModernProfileView({
               {isMe && (
                 <label
                   htmlFor="avatar-file-input"
-                  className="absolute -top-1.5 -right-1.5 w-8 h-8 rounded-full bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900 transition-all active:scale-90 cursor-pointer hover:scale-110"
+                  className="absolute -bottom-1.5 -right-1.5 w-8 h-8 rounded-full bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900 transition-all active:scale-90 cursor-pointer hover:scale-110"
                   title="تغيير الصورة الشخصية"
                 >
                   <Pencil size={13} />
@@ -731,11 +744,12 @@ export function ModernProfileView({
                 </label>
               )}
             </div>
-            {/* Card title */}
-            <div className="flex items-center gap-2 pb-1">
-              <div className={iconBadge}><User size={16} /></div>
-              <span className="text-base font-black text-slate-800 dark:text-white">المعلومات الشخصية</span>
-            </div>
+          </div>
+
+          {/* عنوان "المعلومات الشخصية" — منفصل تحت الأفاتار بمسافة واضحة */}
+          <div className="flex items-center gap-2 mt-2 mb-1">
+            <div className={iconBadge}><User size={16} /></div>
+            <span className="text-base font-black text-slate-800 dark:text-white">المعلومات الشخصية</span>
           </div>
 
           {/* الاسم */}
