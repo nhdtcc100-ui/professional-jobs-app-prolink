@@ -108,6 +108,7 @@ interface AppContextType {
   markMessageAsRead: (msgId: string) => Promise<void>;
   markChatMessagesAsRead: (senderId: string) => Promise<void>;
   markNotificationAsRead: (notifId: string) => Promise<void>;
+  markJobApplicationNotificationsAsRead: () => Promise<void>;
   deleteReadNotifications: () => Promise<void>;
   deleteAllNotifications: () => Promise<void>;
   userTotalPostsCount: number;
@@ -552,6 +553,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.warn('markNotificationAsRead DB error:', err);
     }
   }, [setReadNotifIds, setNotifications, setReadNotifTimestamps]);
+
+  const markJobApplicationNotificationsAsRead = useCallback(async () => {
+    const unreadJobNotifs = notifications.filter(n => n.type === 'job_application' && !n.read && !readNotifIds.has(n.id));
+    if (unreadJobNotifs.length === 0) return;
+    const ids = unreadJobNotifs.map(n => n.id);
+    const now = Date.now();
+    setReadNotifTimestamps(prev => {
+      const next = { ...prev };
+      ids.forEach(id => { next[id] = now; });
+      return next;
+    });
+    setReadNotifIds(prev => {
+      const next = new Set(prev);
+      ids.forEach(id => next.add(id));
+      return next;
+    });
+    setNotifications(prev => prev.map(n => ids.includes(n.id) ? { ...n, read: true } : n));
+    try {
+      await supabase.from('notifications').update({ read: true }).in('id', ids);
+    } catch (_) {}
+  }, [notifications, readNotifIds, setNotifications, setReadNotifIds, setReadNotifTimestamps]);
 
   const deleteReadNotifications = useCallback(async () => {
     if (!user?.id) return;
@@ -2081,6 +2103,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     markMessageAsRead,
     markChatMessagesAsRead,
     markNotificationAsRead,
+    markJobApplicationNotificationsAsRead,
     deleteReadNotifications,
     deleteAllNotifications,
     userTotalPostsCount,

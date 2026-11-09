@@ -29,7 +29,7 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
 }) => {
   const [numPages, setNumPages] = useState<number>(0);
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const [scale, setScale] = useState<number>(1.2);
+  const [scale, setScale] = useState<number>(0.5);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -166,8 +166,8 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
 
   // ─── Controls ────────────────────────────────────────────────────────────────
   const handleZoomIn = () => setScale(prev => Math.min(prev + 0.25, 2.8));
-  const handleZoomOut = () => setScale(prev => Math.max(prev - 0.25, 0.6));
-  const handleResetZoom = () => setScale(1.2);
+  const handleZoomOut = () => setScale(prev => Math.max(prev - 0.25, 0.4));
+  const handleResetZoom = () => setScale(0.5);
   const handleNextPage = () => setCurrentPage(prev => Math.min(prev + 1, numPages));
   const handlePrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
 
@@ -176,7 +176,7 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-x-0 top-16 z-[120] flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-md"
+        className="fixed inset-x-0 top-16 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-md"
         style={{ bottom: 'calc(4.35rem + env(safe-area-inset-bottom, 0px))' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -257,7 +257,7 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
               <div className="flex items-center gap-1.5">
                 <button
                   onClick={handleZoomOut}
-                  disabled={scale <= 0.6}
+                  disabled={scale <= 0.4}
                   className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors shadow-2xs"
                   title="تصغير"
                 >

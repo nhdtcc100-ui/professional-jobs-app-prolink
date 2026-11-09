@@ -59,7 +59,7 @@ type MainTab = 'jobs' | 'courses';
 type JobSubTab = 'discover' | 'my-posts' | 'requests' | 'analytics';
 
 export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onApplyJob, setActiveTab, onPublisherClick }: MissionsViewProps) {
-  const { refreshData } = useAppContext();
+  const { refreshData, markJobApplicationNotificationsAsRead } = useAppContext();
   const isAdmin = isUserAdmin(appUser);
 
   const [mainTab, setMainTab] = useState<MainTab>('jobs');
@@ -86,6 +86,34 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
   const [incomingApplications, setIncomingApplications] = useState<any[]>([]);
   const [sentApplications, setSentApplications] = useState<any[]>([]);
   const [appsLoading, setAppsLoading] = useState(false);
+
+  const [seenAppIds, setSeenAppIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(`prolink_seen_apps_${appUser?.id}`);
+      return raw ? new Set(JSON.parse(raw)) : new Set<string>();
+    } catch { return new Set<string>(); }
+  });
+
+  const markAllIncomingAsSeen = React.useCallback(() => {
+    if (!appUser?.id || incomingApplications.length === 0) return;
+    const allIds = incomingApplications.map(a => a.id);
+    const updated = new Set([...seenAppIds, ...allIds]);
+    setSeenAppIds(updated);
+    try {
+      localStorage.setItem(`prolink_seen_apps_${appUser.id}`, JSON.stringify(Array.from(updated)));
+      window.dispatchEvent(new Event('prolink_seen_apps_updated'));
+    } catch (_) {}
+    if (markJobApplicationNotificationsAsRead) {
+      markJobApplicationNotificationsAsRead();
+    }
+  }, [appUser?.id, incomingApplications, seenAppIds, markJobApplicationNotificationsAsRead]);
+
+  // When employer opens requests tab, mark them as seen and clear notifications
+  useEffect(() => {
+    if (activeSubTab === 'requests' && incomingApplications.length > 0) {
+      markAllIncomingAsSeen();
+    }
+  }, [activeSubTab, incomingApplications.length, markAllIncomingAsSeen]);
 
   // ── Applications ─────────────────────────────────────────────────────────────
   const fetchApplications = async () => {
@@ -476,7 +504,7 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
               const availableSubTabs = isEmployerUser ? [
                 { id: 'discover', label: 'اكتشف الفرص' },
                 { id: 'my-posts', label: `وظائفي (${myPostedJobs.length})` },
-                { id: 'requests', label: 'الطلبات الواردة', badge: incomingApplications.filter(a => a.status === 'pending').length },
+                { id: 'requests', label: 'الطلبات الواردة', badge: incomingApplications.filter(a => a.status === 'pending' && !seenAppIds.has(a.id)).length },
                 { id: 'analytics', label: 'إحصائيات' }
               ] : [
                 { id: 'discover', label: 'اكتشف الوظائف والفرص' },

@@ -329,6 +329,22 @@ function ApplicationsListViewContent({
     }
   }, [selectedAppIndex]);
 
+  // Automatically mark currently opened applicant as seen
+  useEffect(() => {
+    if (selectedAppIndex !== null && filteredApps[selectedAppIndex] && appUser?.id) {
+      const currentId = filteredApps[selectedAppIndex].id;
+      try {
+        const raw = localStorage.getItem(`prolink_seen_apps_${appUser.id}`);
+        const set = raw ? new Set(JSON.parse(raw)) : new Set<string>();
+        if (!set.has(currentId)) {
+          set.add(currentId);
+          localStorage.setItem(`prolink_seen_apps_${appUser.id}`, JSON.stringify(Array.from(set)));
+          window.dispatchEvent(new Event('prolink_seen_apps_updated'));
+        }
+      } catch (_) {}
+    }
+  }, [selectedAppIndex, filteredApps, appUser?.id]);
+
   const handleDetailScroll = () => {
     if (!detailContainerRef.current) return;
     const container = detailContainerRef.current;
@@ -660,6 +676,15 @@ function ApplicationsListViewContent({
                             const idx = filteredApps.findIndex(a => a.id === app.id);
                             setSelectedAppIndex(idx >= 0 ? idx : 0);
                             setShowScheduler(false);
+                            if (appUser?.id) {
+                              try {
+                                const raw = localStorage.getItem(`prolink_seen_apps_${appUser.id}`);
+                                const set = raw ? new Set(JSON.parse(raw)) : new Set<string>();
+                                set.add(app.id);
+                                localStorage.setItem(`prolink_seen_apps_${appUser.id}`, JSON.stringify(Array.from(set)));
+                                window.dispatchEvent(new Event('prolink_seen_apps_updated'));
+                              } catch (_) {}
+                            }
                           }}
                           className="flex-[2] py-2.5 bg-slate-900 dark:bg-slate-800 text-white rounded-xl text-[10px] font-black hover:bg-slate-800 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2 shadow-sm border border-transparent dark:border-slate-700 active:scale-95"
                         >

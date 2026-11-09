@@ -92,14 +92,28 @@ export const MobileNav: React.FC<MobileNavProps> = ({
     }
     const fetchUnseen = async () => {
       try {
-        const { count } = await (supabase.from('job_applications') as any)
-          .select('id', { count: 'exact', head: true })
+        let seenSet = new Set<string>();
+        try {
+          const raw = localStorage.getItem(`prolink_seen_apps_${appUser.id}`);
+          if (raw) seenSet = new Set(JSON.parse(raw));
+        } catch (_) {}
+
+        const { data } = await (supabase.from('job_applications') as any)
+          .select('id')
           .eq('employer_id', appUser.id)
           .eq('status', 'pending');
-        setApplicantsCount(count || 0);
+        if (data) {
+          const unviewed = (data as any[]).filter(a => !seenSet.has(a.id)).length;
+          setApplicantsCount(unviewed);
+        } else {
+          setApplicantsCount(0);
+        }
       } catch (_) {}
     };
     fetchUnseen();
+
+    const handleSeenUpdate = () => { fetchUnseen(); };
+    window.addEventListener('prolink_seen_apps_updated', handleSeenUpdate);
 
     const channel = supabase
       .channel(`mobile-dock-job-apps-${appUser.id}`)
@@ -109,6 +123,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       .subscribe();
 
     return () => {
+      window.removeEventListener('prolink_seen_apps_updated', handleSeenUpdate);
       supabase.removeChannel(channel);
     };
   }, [appUser?.id, appUser?.role]);

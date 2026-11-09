@@ -168,7 +168,8 @@ export function ModernProfileView({
 
   // ─── فتح نافذة CV (معاينة حقيقية عبر Canvas بدون iframe أو جوجل دوكس) ────────
   const openCVModal = async () => {
-    if (!cvUrl && !pendingCVFile) return;
+    const targetCvUrl = cvUrl || profile?.cvUrl || (profile as any)?.cv_url || '';
+    if (!targetCvUrl && !pendingCVFile) return;
 
     setPreviewingCV(true);
 
@@ -190,7 +191,7 @@ export function ModernProfileView({
       }
 
       // إذا كان الملف Word
-      if (cvUrl.toLowerCase().includes('.doc')) {
+      if (targetCvUrl.toLowerCase().includes('.doc')) {
         setCvPdfBytes(null);
         return;
       }
@@ -208,14 +209,14 @@ export function ModernProfileView({
       ];
 
       for (const { marker, bkt } of markers) {
-        if (cvUrl.includes(marker)) {
-          storagePath = decodeURIComponent(cvUrl.split(marker)[1]?.split('?')[0] || '');
+        if (targetCvUrl.includes(marker)) {
+          storagePath = decodeURIComponent(targetCvUrl.split(marker)[1]?.split('?')[0] || '');
           bucket = bkt;
           break;
         }
       }
 
-      let fetchUrl = cvUrl;
+      let fetchUrl = targetCvUrl;
       if (storagePath) {
         const { data: sd, error: se } = await supabase.storage
           .from(bucket)
@@ -241,7 +242,7 @@ export function ModernProfileView({
       } else {
         // Fallback بـ Anon key headers
         const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
-        const resAnon = await fetch(cvUrl, {
+        const resAnon = await fetch(targetCvUrl, {
           headers: {
             apikey: supabaseAnonKey,
             Authorization: `Bearer ${supabaseAnonKey}`,
@@ -257,7 +258,7 @@ export function ModernProfileView({
       }
     } catch (err: any) {
       console.warn('[openCVModal] Direct buffer fetch failed, passing url:', err);
-      setCvPdfBytes(cvUrl);
+      setCvPdfBytes(targetCvUrl);
     }
   };
 
@@ -1442,7 +1443,7 @@ export function ModernProfileView({
       <PDFViewerModal
         isOpen={previewingCV}
         onClose={closeCVModal}
-        pdfSource={cvPdfBytes}
+        pdfSource={cvPdfBytes || cvUrl || profile?.cvUrl || (profile as any)?.cv_url || null}
         userName={profile?.name}
         userAvatar={avatar}
       />

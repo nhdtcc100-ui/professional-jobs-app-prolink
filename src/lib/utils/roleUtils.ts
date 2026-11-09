@@ -24,19 +24,12 @@ export const isUserAdmin = (user: any): boolean => {
 
 /**
  * 💼 Checks if a user is authorized to post jobs.
- * 1. Admin: ALWAYS TRUE (full access).
- * 2. Seeker: ALWAYS FALSE (strictly hidden).
- * 3. Employer: TRUE.
- * 4. Unspecified: Default to FALSE unless they explicitly choose Employer.
+ * 1. Seeker & Freelancer: STRICTLY FALSE (always respected, even for testing admins).
+ * 2. Employer: TRUE.
+ * 3. Dedicated Admin role (role === 'admin'): TRUE.
  */
 export const isJobPoster = (user: any): boolean => {
   if (!user) return false;
-
-  // 👑 Admin always has full power
-  if (isUserAdmin(user)) {
-    return true;
-  }
-
   const role = String(user.role || '').toLowerCase().trim();
 
   // 🚫 Seeker and Freelancer are strictly forbidden from posting formal corporate jobs
@@ -68,7 +61,11 @@ export const isJobPoster = (user: any): boolean => {
     return true;
   }
 
-  // Default: non-employers cannot post jobs
+  // 👑 Dedicated Admin account (without seeker/freelancer choice)
+  if (isUserAdmin(user) && (role === 'admin' || role === 'superadmin' || !role)) {
+    return true;
+  }
+
   return false;
 };
 
@@ -77,8 +74,6 @@ export const isJobPoster = (user: any): boolean => {
  */
 export const isJobSeeker = (user: any): boolean => {
   if (!user) return false;
-  if (isUserAdmin(user)) return false;
-
   const role = String(user.role || '').toLowerCase().trim();
   return (
     role === 'seeker' ||
@@ -96,8 +91,6 @@ export const isJobSeeker = (user: any): boolean => {
  */
 export const isFreelancer = (user: any): boolean => {
   if (!user) return false;
-  if (isUserAdmin(user)) return false;
-
   const role = String(user.role || '').toLowerCase().trim();
   return (
     role === 'freelancer' ||

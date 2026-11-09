@@ -7,6 +7,7 @@ import { imageService, snapshotFile } from '../../lib/services/imageService';
 import { PostTransmissionCard } from '../features';
 import { AppUser, Post } from '../../types';
 import { ProfileHeader, ProfileTabs, ProfileEditView, ProfileActivityView } from './profile';
+import { PDFViewerModal } from '../common/PDFViewerModal';
 
 interface ProfileModalProps {
   profile: AppUser;
@@ -67,6 +68,7 @@ export function ProfileModal({
   });
 
   const [saveStatus, setSaveStatus]   = useState<SaveStatus>('idle');
+  const [showCVPreview, setShowCVPreview] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState<'posts' | 'activity' | 'edit'>(isEditing ? 'edit' : 'activity');
   const [userPosts, setUserPosts]     = useState<any[]>([]);
@@ -376,6 +378,7 @@ export function ProfileModal({
               onDirectCoverPick={handleDirectCoverUpload}
               handleFieldChange={handleFieldChange}
               handleDownloadCV={handleDownloadCV}
+              onViewCV={() => setShowCVPreview(true)}
               setActiveTab={setActiveTab}
               userPostsCount={userPosts.length}
               onMessageClick={onMessageClick}
@@ -438,6 +441,15 @@ export function ProfileModal({
             </div>
           </div>
         </div>
+
+        {/* ── Secure In-App PDF CV Viewer Modal ── */}
+        <PDFViewerModal
+          isOpen={showCVPreview}
+          onClose={() => setShowCVPreview(false)}
+          pdfSource={formData.cvUrl || (profile as any).cvUrl || (profile as any).cv_url || null}
+          userName={formData.name || profile.name}
+          userAvatar={formData.avatar || profile.avatar}
+        />
       </motion.div>
     </motion.div>
   );

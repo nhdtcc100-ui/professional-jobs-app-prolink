@@ -13,6 +13,7 @@ interface ProfileHeaderProps {
   handleAvatarChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleFieldChange: (field: string, value: any) => void;
   handleDownloadCV: () => void;
+  onViewCV?: () => void;
   setActiveTab: (tab: any) => void;
   userPostsCount: number;
   onMessageClick?: () => void;
@@ -37,6 +38,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   handleAvatarChange,
   handleFieldChange,
   handleDownloadCV,
+  onViewCV,
   setActiveTab,
   userPostsCount,
   onMessageClick,
@@ -309,15 +311,18 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                   تعزيز الملف
                 </button>
                 <button
+                  type="button"
                   onClick={() => {
-                    if (formData.cv_url) {
+                    if (onViewCV) {
+                      onViewCV();
+                    } else if (formData.cv_url) {
                       const sep = formData.cv_url.includes('?') ? '&' : '?';
                       window.open(formData.cv_url + sep + 't=' + Date.now(), '_blank');
                     } else {
                       handleDownloadCV();
                     }
                   }}
-                  className="px-5 py-2.5 border-2 border-[#0a66c2] text-[#0a66c2] rounded-xl font-black text-[10px] hover:bg-blue-50 transition-all active:scale-95 flex items-center gap-2"
+                  className="px-5 py-2.5 border-2 border-[#0a66c2] text-[#0a66c2] rounded-xl font-black text-[10px] hover:bg-blue-50 transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
                 >
                   {formData.cv_url ? '📄 عرض السيرة الذاتية' : 'تحميل CV'}
                 </button>
@@ -338,16 +343,22 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 )}
                 {/* ✅ زر عرض CV للزوار */}
                 {(profile.cvUrl || (profile as any).cv_url) && (
-                  <a
-                    href={profile.cvUrl || (profile as any).cv_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-1.5 px-4 py-2.5 border-2 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-black text-[10px] hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all active:scale-95"
-                    title="عرض السيرة الذاتية"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onViewCV) {
+                        onViewCV();
+                      } else {
+                        const targetUrl = profile.cvUrl || (profile as any).cv_url;
+                        window.open(targetUrl, '_blank');
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2.5 border-2 border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl font-black text-[10px] hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all active:scale-95 cursor-pointer"
+                    title="معاينة السيرة الذاتية"
                   >
                     <FileText size={13} />
                     <span>CV</span>
-                  </a>
+                  </button>
                 )}
               </div>
             )}
