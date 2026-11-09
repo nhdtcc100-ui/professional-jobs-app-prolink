@@ -176,7 +176,8 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
   return (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-0 z-[120] flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-md"
+        className="fixed inset-x-0 top-16 z-[120] flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-md"
+        style={{ bottom: 'calc(4.35rem + env(safe-area-inset-bottom, 0px))' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -187,7 +188,7 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.94, opacity: 0, y: 15 }}
           transition={{ type: 'spring', stiffness: 340, damping: 28 }}
-          className="w-full h-full max-w-4xl max-h-[92vh] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
+          className="w-full h-full max-w-4xl max-h-full bg-white dark:bg-slate-900 rounded-3xl shadow-2xl flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
           dir="rtl"
           onClick={(e) => e.stopPropagation()}
         >
