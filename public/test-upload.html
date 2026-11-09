@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>صفحة تشخيص رفع الملفات على الهاتف | ProLink</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: #0f172a; color: #f8fafc; padding: 16px; padding-bottom: 60px; line-height: 1.5; }
+    .card { background: #1e293b; border-radius: 16px; padding: 16px; margin-bottom: 16px; border: 1px solid #334155; }
+    h1 { font-size: 18px; color: #38bdf8; margin-bottom: 8px; text-align: center; }
+    h2 { font-size: 15px; color: #94a3b8; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 6px; }
+    p { font-size: 13px; color: #cbd5e1; margin-bottom: 8px; }
+    .btn { display: block; width: 100%; padding: 12px; border-radius: 12px; border: none; font-size: 14px; font-weight: bold; cursor: pointer; text-align: center; margin-top: 10px; transition: 0.2s; }
+    .btn-primary { background: #0284c7; color: white; }
+    .btn-success { background: #10b981; color: white; }
+    .btn-purple { background: #8b5cf6; color: white; }
+    .btn:active { transform: scale(0.98); opacity: 0.9; }
+    input[type="file"] { display: block; width: 100%; padding: 10px; background: #0f172a; border-radius: 10px; border: 1px dashed #64748b; color: #94a3b8; margin: 10px 0; font-size: 12px; }
+    input[type="text"] { width: 100%; padding: 10px; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: white; font-size: 13px; margin: 6px 0; }
+    .log-box { background: #020617; border-radius: 10px; padding: 12px; font-family: monospace; font-size: 11px; color: #a5f3fc; max-height: 220px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; border: 1px solid #1e293b; }
+    .badge { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 11px; font-weight: bold; margin: 2px; }
+    .badge-ok { background: #065f46; color: #6ee7b7; }
+    .badge-err { background: #7f1d1d; color: #fca5a5; }
+    .badge-info { background: #1e3a8a; color: #93c5fd; }
+    .preview-img { max-width: 100%; height: auto; max-height: 180px; border-radius: 12px; margin-top: 10px; display: none; object-fit: contain; background: #000; border: 1px solid #475569; }
+  </style>
+</head>
+<body>
+
+  <h1>📱 أداة التشخيص الخام لرفع الملفات</h1>
+  <p style="text-align: center; font-size: 11px; color: #64748b; margin-bottom: 16px;">
+    تعمل هذه الصفحة بشكل خام بدون React أو مكتبات إضافية لعزل مشاكل الموبايل فورياً.
+  </p>
+
+  <!-- 1. اختيار الملف -->
+  <div class="card">
+    <h2>1. اختيار الملف من استوديو أو ملفات الهاتف</h2>
+    <p>اختر صورة (Avatar / Cover) أو ملف CV (PDF):</p>
+    <input type="file" id="filePicker" accept="image/*,.pdf,.doc,.docx" />
+    <img id="imagePreview" class="preview-img" alt="معاينة" />
+  </div>
+
+  <!-- 2. نتائج القراءة من ذاكرة الهاتف -->
+  <div class="card">
+    <h2>2. سجل القراءة والذاكرة (RAM & Device)</h2>
+    <div id="memoryLogs" class="log-box">في انتظار اختيار ملف من هاتفك...</div>
+  </div>
+
+  <!-- 3. اختبار الرفع المباشر إلى Supabase -->
+  <div class="card">
+    <h2>3. اختبار الرفع المباشر إلى Supabase Storage</h2>
+    <p>يحاول الرفع المباشر إلى حاوية <code>profiles</code> دون المرور بأي وسيط:</p>
+    <button id="btnSupabase" class="btn btn-primary" disabled>🚀 تجربة الرفع إلى Supabase</button>
+  </div>
+
+  <!-- 4. اختبار الرفع عبر Google Apps Script أو Cloudinary -->
+  <div class="card">
+    <h2>4. اختبار الرفع البديل (GAS أو Cloudinary)</h2>
+    <p>الصق رابط الـ Web App الخاص بـ Google Apps Script أو اترك الافتراضي:</p>
+    <input type="text" id="customEndpoint" placeholder="https://script.google.com/macros/s/.../exec" />
+    <button id="btnCustomUpload" class="btn btn-purple" disabled>⚡ تجربة إرسال Base64 إلى الرابط</button>
+  </div>
+
+  <!-- 5. سجل العمليات والشبكة -->
+  <div class="card">
+    <h2>5. سجل استجابات الشبكة (Network Live Logs)</h2>
+    <div id="networkLogs" class="log-box">جاهز...</div>
+    <button onclick="clearLogs()" class="btn" style="background: #334155; color: #94a3b8; padding: 6px; margin-top: 8px;">مسح السجل</button>
+  </div>
+
+  <script>
+    const SUPABASE_URL = "https://ubeqmsyyyojojmswmidq.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0";
+
+    const filePicker = document.getElementById('filePicker');
+    const memoryLogs = document.getElementById('memoryLogs');
+    const networkLogs = document.getElementById('networkLogs');
+    const imagePreview = document.getElementById('imagePreview');
+    const btnSupabase = document.getElementById('btnSupabase');
+    const btnCustomUpload = document.getElementById('btnCustomUpload');
+    const customEndpoint = document.getElementById('customEndpoint');
+
+    let currentFile = null;
+    let currentBase64 = null;
+    let currentArrayBuffer = null;
+
+    function logMemory(msg) {
+      memoryLogs.innerHTML += `\n${new Date().toLocaleTimeString()} - ${msg}`;
+      memoryLogs.scrollTop = memoryLogs.scrollHeight;
+    }
+
+    function logNet(msg) {
+      networkLogs.innerHTML += `\n${new Date().toLocaleTimeString()} - ${msg}`;
+      networkLogs.scrollTop = networkLogs.scrollHeight;
+    }
+
+    function clearLogs() {
+      memoryLogs.innerHTML = "جاهز...";
+      networkLogs.innerHTML = "جاهز...";
+    }
+
+    // 1. فحص واختيار الملف
+    filePicker.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) {
+        logMemory("⚠️ لم يتم اختيار أي ملف (e.target.files فارغ).");
+        return;
+      }
+
+      currentFile = file;
+      btnSupabase.disabled = false;
+      btnCustomUpload.disabled = false;
+
+      logMemory(`✅ تم استلام الملف من نظام التشغيل:`);
+      logMemory(`• الاسم: ${file.name}`);
+      logMemory(`• النوع (MIME): ${file.type || 'غير محدد'}`);
+      logMemory(`• الحجم: ${(file.size / 1024).toFixed(2)} كيلوبايت (${file.size} بايت)`);
+      logMemory(`• تاريخ التعديل: ${new Date(file.lastModified).toISOString()}`);
+
+      if (file.size === 0) {
+        logMemory(`❌ تنبيه خطير: حجم الملف 0 بايت! نظام التشغيل لم يسمح بقراءة البيانات.`);
+        return;
+      }
+
+      // اختبار قراءة الذاكرة الفورية (ArrayBuffer)
+      try {
+        logMemory(`⏳ جاري التجميد في الذاكرة (ArrayBuffer)...`);
+        currentArrayBuffer = await file.arrayBuffer();
+        logMemory(`🟢 نجحت قراءة الذاكرة: تم تجميد ${currentArrayBuffer.byteLength} بايت في RAM بنجاح.`);
+      } catch (err) {
+        logMemory(`🔴 فشلت قراءة الذاكرة (ArrayBuffer): ${err.message}`);
+      }
+
+      // اختبار FileReader (Base64)
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        currentBase64 = event.target.result;
+        logMemory(`🟢 نجح تحويل Base64: الطول الكلي ${currentBase64.length} حرف.`);
+        if (file.type.startsWith('image/')) {
+          imagePreview.src = currentBase64;
+          imagePreview.style.display = 'block';
+        } else {
+          imagePreview.style.display = 'none';
+        }
+      };
+      reader.onerror = (err) => {
+        logMemory(`🔴 فشل FileReader: ${err}`);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // 2. اختبار الرفع المباشر إلى Supabase Storage
+    btnSupabase.addEventListener('click', async () => {
+      if (!currentFile) return;
+
+      const bucket = currentFile.type.startsWith('image/') ? 'profiles' : 'resumes';
+      const ext = currentFile.name.split('.').pop() || 'bin';
+      const path = `diagnostics/mobile_test_${Date.now()}.${ext}`;
+      const uploadUrl = `${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`;
+
+      logNet(`⏳ محاولة الرفع إلى Supabase...`);
+      logNet(`• المسار: ${bucket}/${path}`);
+      logNet(`• الرابط: ${uploadUrl}`);
+
+      btnSupabase.disabled = true;
+      try {
+        const res = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': currentFile.type || 'application/octet-stream',
+            'x-upsert': 'true'
+          },
+          body: currentArrayBuffer || currentFile
+        });
+
+        const status = res.status;
+        const text = await res.text();
+        logNet(`• كود الاستجابة HTTP: ${status} (${res.statusText})`);
+
+        if (res.ok) {
+          const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/${bucket}/${path}`;
+          logNet(`🎉 نجح الرفع إلى Supabase بنسبة 100%!`);
+          logNet(`• رابط الملف العام:\n${publicUrl}`);
+          alert(`✅ نجح الرفع المباشر إلى Supabase بنجاح!\nالكود: ${status}\nالرابط: ${publicUrl}`);
+        } else {
+          logNet(`🔴 فشل الرفع: ${text}`);
+          alert(`❌ فشل الرفع إلى Supabase (${status}):\n${text}`);
+        }
+      } catch (err) {
+        logNet(`🔴 خطأ شبكة غير متوقع: ${err.message}`);
+        alert(`❌ خطأ اتصال بالشبكة:\n${err.message}`);
+      } finally {
+        btnSupabase.disabled = false;
+      }
+    });
+
+    // 3. اختبار الرفع إلى Google Apps Script Web App
+    btnCustomUpload.addEventListener('click', async () => {
+      const url = customEndpoint.value.trim();
+      if (!url) {
+        alert("يرجى إدخال رابط Google Apps Script Web App أولاً.");
+        return;
+      }
+      if (!currentBase64) {
+        alert("يرجى اختيار ملف أولاً.");
+        return;
+      }
+
+      logNet(`⏳ إرسال Base64 إلى Google Apps Script: ${url}`);
+      btnCustomUpload.disabled = true;
+
+      try {
+        const payload = {
+          name: currentFile.name,
+          mimeType: currentFile.type || 'image/jpeg',
+          base64: currentBase64
+        };
+
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        logNet(`• كود الاستجابة: ${res.status}`);
+        logNet(`• الرد المستلم: ${JSON.stringify(data)}`);
+
+        if (data.success && data.url) {
+          logNet(`🎉 نجح الحفظ في Google Drive! الرابط: ${data.url}`);
+          alert(`✅ تم الحفظ في Google Drive بنجاح!\nالرابط: ${data.url}`);
+        } else {
+          logNet(`🔴 خطأ من السيرفر: ${data.error || 'غير محدد'}`);
+        }
+      } catch (err) {
+        logNet(`🔴 خطأ أثناء الإرسال: ${err.message}`);
+        alert(`خطأ: ${err.message}`);
+      } finally {
+        btnCustomUpload.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
