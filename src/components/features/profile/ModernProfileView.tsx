@@ -79,16 +79,32 @@ export function ModernProfileView({
 
   // ─── 1. Avatar Upload (via mobileUploadService – FIX all 10 issues) ───────────
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target?.files?.[0];
-    if (!file || !effectiveUserId) return;
+    const rawFile = e.target?.files?.[0];
+    if (!rawFile || !effectiveUserId) return;
+
+    // Diagnostic logging for mobile debugging
+    console.log("File details (Avatar):", {
+      name: rawFile.name,
+      size: rawFile.size,
+      type: rawFile.type,
+      isMobile: /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+    });
+
+    // Normalize file object with explicit MIME type (prevents Mobile blob corruption)
+    const ext = (rawFile.name || '').split('.').pop()?.toLowerCase() || 'jpg';
+    const cleanType = rawFile.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
+    const safeFile = new File([rawFile], rawFile.name || `avatar_${Date.now()}.${ext}`, {
+      type: cleanType,
+    });
+
     try {
       setIsUploadingAvatar(true);
       // Instant preview
-      const localUrl = URL.createObjectURL(file);
+      const localUrl = URL.createObjectURL(safeFile);
       setAvatar(localUrl);
 
       // Background upload via mobileUploadService (RAM snapshot + multi-bucket + fallback)
-      const { uploadPromise } = await mobileUploadService.uploadFile(file, 'avatar', effectiveUserId);
+      const { uploadPromise } = await mobileUploadService.uploadFile(safeFile, 'avatar', effectiveUserId);
       const finalUrl = await uploadPromise;
 
       setAvatar(finalUrl);
@@ -104,19 +120,35 @@ export function ModernProfileView({
 
   // ─── 2. Cover Photo Upload (via mobileUploadService) ─────────────────────────
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target?.files?.[0];
-    if (!file || !effectiveUserId) return;
+    const rawFile = e.target?.files?.[0];
+    if (!rawFile || !effectiveUserId) return;
+
+    // Diagnostic logging for mobile debugging
+    console.log("File details (Cover):", {
+      name: rawFile.name,
+      size: rawFile.size,
+      type: rawFile.type,
+      isMobile: /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+    });
+
+    // Normalize file object with explicit MIME type (prevents Mobile blob corruption)
+    const ext = (rawFile.name || '').split('.').pop()?.toLowerCase() || 'jpg';
+    const cleanType = rawFile.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
+    const safeFile = new File([rawFile], rawFile.name || `cover_${Date.now()}.${ext}`, {
+      type: cleanType,
+    });
+
     try {
       setIsUploadingCover(true);
-      const localUrl = URL.createObjectURL(file);
+      const localUrl = URL.createObjectURL(safeFile);
       setCoverUrl(localUrl);
 
-      const { uploadPromise } = await mobileUploadService.uploadFile(file, 'cover', effectiveUserId);
+      const { uploadPromise } = await mobileUploadService.uploadFile(safeFile, 'cover', effectiveUserId);
       const finalUrl = await uploadPromise;
 
       setCoverUrl(finalUrl);
-      await profileService.updateProfile(effectiveUserId, { cover_url: finalUrl } as any);
-      if (setAppUser) setAppUser((prev: any) => ({ ...prev, cover_url: finalUrl }));
+      await profileService.updateProfile(effectiveUserId, { cover_url: finalUrl, coverUrl: finalUrl } as any);
+      if (setAppUser) setAppUser((prev: any) => ({ ...prev, cover_url: finalUrl, coverUrl: finalUrl }));
       addToast('✅ تم تحديث صورة الغلاف بنجاح!', 'success');
     } catch (err: any) {
       addToast('تعذر رفع صورة الغلاف: ' + (err?.message || ''), 'error');

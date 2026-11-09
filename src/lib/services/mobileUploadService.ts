@@ -1,4 +1,4 @@
-﻿/**
+/**
  * mobileUploadService.ts
  * ─────────────────────────────────────────────────────────────────
  * Telegram / WhatsApp-style upload engine for ProLink mobile.
@@ -58,8 +58,8 @@ const THUMB_QUALITY  = 0.55;
 const UPLOAD_TIMEOUT = 30_000; // 30 s per bucket attempt
 
 const IMAGE_BUCKETS: Record<string, string[]> = {
-  avatar:       ['profiles'],
-  cover:        ['profiles'],
+  avatar:       ['profiles', 'images'],
+  cover:        ['profiles', 'images'],
   'post-image': ['posts', 'images'],
   'post-video': ['posts'],
 };
@@ -92,7 +92,7 @@ async function compressImageFile(
 
         const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', quality));
         if (blob && blob.size > 0) {
-          const out = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
+          const out = new File([blob], (file.name || 'photo.jpg').replace(/\.[^.]+$/, '.jpg'), {
             type: 'image/jpeg', lastModified: Date.now(),
           });
           (out as any).__isSnapshot = true;
@@ -118,7 +118,7 @@ async function compressImageFile(
       canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
       canvas.toBlob(blob => {
         if (blob && blob.size > 0) {
-          const out = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), {
+          const out = new File([blob], (file.name || 'photo.jpg').replace(/\.[^.]+$/, '.jpg'), {
             type: 'image/jpeg', lastModified: Date.now(),
           });
           (out as any).__isSnapshot = true;
@@ -133,10 +133,12 @@ async function compressImageFile(
   });
 }
 
-/** Compact to a tiny base64 JPEG thumbnail for DB storage (≈ 8-15 KB) */
-async function toCompactBase64(file: File): Promise<string | null> {
+/** Compact to base64 JPEG for DB storage fallback */
+async function toCompactBase64(file: File, type: UploadType = 'avatar'): Promise<string | null> {
   try {
-    const compressed = await compressImageFile(file, THUMB_MAX_DIM, THUMB_QUALITY);
+    const maxDim = type === 'cover' ? 800 : THUMB_MAX_DIM;
+    const quality = type === 'cover' ? 0.72 : THUMB_QUALITY;
+    const compressed = await compressImageFile(file, maxDim, quality);
     return new Promise(resolve => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
@@ -155,8 +157,12 @@ async function uploadToStorage(
   buckets: string[],
   contentType: string
 ): Promise<string | null> {
-  const uuid     = generateUUID();
-  const ext      = file.name.split('.').pop()?.toLowerCase() || 'jpg';
+  const uuid = generateUUID();
+  let ext = file.name ? file.name.split('.').pop()?.toLowerCase() || 'jpg' : 'jpg';
+  // If ext has no dot or is invalid (e.g. Android URI "image:12345" or "blob")
+  if (!['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) {
+    ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
+  }
   const fileName = `${userId}/${uuid}.${ext}`;
 
   // Ensure auth session headers are fresh (required for Storage RLS)
@@ -347,7 +353,7 @@ export const mobileUploadService = {
         // Strategy 2: Compact Base64 thumbnail in DB (WhatsApp compressed preview fallback)
         console.warn('[mobileUpload] Storage failed → compact Base64 fallback');
         emit({ type, phase: 'uploading', percent: 75 });
-        const b64 = await toCompactBase64(uploadFile);
+        const b64 = await toCompactBase64(uploadFile, type);
         if (b64) {
           if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
           emit({ type, phase: 'done', percent: 100, url: b64 });
@@ -424,7 +430,7 @@ export const mobileUploadService = {
         }
 
         emit({ type, phase: 'uploading', percent: 75 });
-        const b64 = await toCompactBase64(uploadFile);
+        const b64 = await toCompactBase64(uploadFile, type);
         if (b64) {
           if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
           emit({ type, phase: 'done', percent: 100, url: b64 });
