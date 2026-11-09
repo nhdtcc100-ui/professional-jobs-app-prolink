@@ -14,11 +14,38 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
+// Safe storage that works on Mobile Safari Private Mode, Android WebView, and standard browsers
+const mobileSafeStorage = {
+  getItem: (key: string): string | null => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.getItem(key);
+      }
+    } catch (_) {}
+    return null;
+  },
+  setItem: (key: string, value: string): void => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(key, value);
+      }
+    } catch (_) {}
+  },
+  removeItem: (key: string): void => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem(key);
+      }
+    } catch (_) {}
+  }
+};
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+    storage: mobileSafeStorage,
     storageKey: 'prolink_v2_auth_session',
     
     // تعطيل نظام الأقفال المسبب للتعليق (No-Op Lock)

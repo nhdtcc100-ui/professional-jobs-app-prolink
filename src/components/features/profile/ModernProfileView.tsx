@@ -92,6 +92,22 @@ export function ModernProfileView({
     fileCategory: 'avatar' | 'cover' | 'cv',
     userId: string
   ): Promise<string> => {
+    // 0. فحص الجلسة على الموبايل والتحقق من التوكن (Auth Session Check)
+    let currentSession: any = null;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      currentSession = session;
+      if (!currentSession) {
+        console.warn('[DirectUpload] No active session on mobile, trying refreshSession()...');
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        currentSession = refreshed?.session;
+      }
+    } catch (authErr) {
+      console.warn('[DirectUpload] Error checking session:', authErr);
+    }
+
+    console.log("Current Mobile Session:", currentSession ? `Authenticated as ${currentSession.user?.email || currentSession.user?.id}` : "NO SESSION (Unauthenticated / Token Lost)");
+
     // فحص أن حجم الملف أكبر من صفر (لمنع تفريغ الذاكرة في متصفحات الموبايل)
     if (!file || file.size === 0) {
       throw new Error('عذراً، يبدو أن الملف فارغ أو تعذر على المتصفح قراءته من الموبايل. جرب اختيار ملف آخر.');
@@ -138,6 +154,19 @@ export function ModernProfileView({
     }
 
     if (uploadError) {
+      const isRls = uploadError.message?.toLowerCase().includes('row-level security') ||
+                    uploadError.message?.toLowerCase().includes('violates') ||
+                    uploadError.message?.toLowerCase().includes('policy') ||
+                    uploadError.message?.toLowerCase().includes('unauthorized') ||
+                    uploadError.statusCode === '403';
+
+      if (isRls) {
+        throw new Error(
+          `🔒 رُفض الرفع بسبب سياسة الأمان (RLS Policy): ${uploadError.message}.\n` +
+          (currentSession ? `(الحساب مسجل: ${currentSession.user?.email || 'نعم'})` : `(تنبيه: الجلسة غير موجودة على متصفح الهاتف - Session is Null)`) +
+          `\nيرجى تنفيذ ملف FIX_COVER_AND_AVATAR_STORAGE_PERMISSIONS.sql في لوحة Supabase لمنح الصلاحيات للموبايل.`
+        );
+      }
       throw new Error(uploadError.message || 'تعذر رفع الملف إلى وحدة التخزين السحابية');
     }
 
