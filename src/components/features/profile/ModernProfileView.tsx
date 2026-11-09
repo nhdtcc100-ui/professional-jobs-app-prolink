@@ -834,8 +834,43 @@ export function ModernProfileView({
                 </div>
               </div>
 
-              <div className="flex-1 w-full bg-slate-100 dark:bg-slate-950 relative">
-                <iframe src={`${cvUrl}#toolbar=1&navpanes=0`} title="CV Document" className="w-full h-full border-none" />
+              <div className="flex-1 w-full bg-slate-100 dark:bg-slate-950 relative flex flex-col">
+                {cvUrl.toLowerCase().includes('.doc') || cvUrl.toLowerCase().includes('.docx') ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-4">
+                    <div className="w-16 h-16 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 flex items-center justify-center shadow-md">
+                      <FileText size={32} />
+                    </div>
+                    <div>
+                      <h4 className="text-base font-black text-slate-800 dark:text-white">
+                        مستند Word (.docx)
+                      </h4>
+                      <p className="text-xs text-slate-400 mt-1 max-w-sm">
+                        ملفات Word لا تعرض مباشرة في بعض المتصفحات، يمكنك فتحها في قارئ المستندات أو تحميلها مباشرة
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 pt-2">
+                      <a
+                        href={`https://docs.google.com/viewer?url=${encodeURIComponent(cvUrl)}&embedded=true`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"
+                      >
+                        <ExternalLink size={14} />
+                        <span>فتح في Google Docs</span>
+                      </a>
+                      <a
+                        href={cvUrl}
+                        download
+                        className="px-4 py-2.5 rounded-xl bg-gradient-to-l from-blue-600 to-indigo-600 text-white text-xs font-black hover:from-blue-700 hover:to-indigo-700 transition-all flex items-center gap-2 shadow-sm shadow-blue-500/20"
+                      >
+                        <Download size={14} />
+                        <span>تحميل الملف الآن</span>
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <iframe src={`${cvUrl}#toolbar=1&navpanes=0`} title="CV Document" className="w-full h-full border-none" />
+                )}
               </div>
 
               <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 flex items-center justify-between">

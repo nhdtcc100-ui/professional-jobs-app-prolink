@@ -377,7 +377,17 @@ export const profileService = {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const activeUid = session?.user?.id || userId;
-        const upsertRes = await supabase.from('profiles').upsert({ id: activeUid, ...dbUpdates }).select('id');
+        let nameFallback = dbUpdates.name;
+        if (!nameFallback) {
+          try {
+            const cached = localStorage.getItem('prolink_cached_user');
+            if (cached) nameFallback = JSON.parse(cached)?.name;
+          } catch {}
+          if (!nameFallback) {
+            nameFallback = session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'مستخدم';
+          }
+        }
+        const upsertRes = await supabase.from('profiles').upsert({ id: activeUid, name: nameFallback, ...dbUpdates }).select('id');
         if (upsertRes.data && upsertRes.data.length > 0) {
           result = upsertRes;
         }

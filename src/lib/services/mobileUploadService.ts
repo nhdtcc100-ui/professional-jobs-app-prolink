@@ -123,7 +123,11 @@ async function compressImageFile(
         ctx.drawImage(bmp, 0, 0, w, h);
         bmp.close();
 
-        const blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', quality));
+        let blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', quality));
+        // Strict cloud payload cap: if > 800KB, re-compress to ensure < 1MB limit for Cloudflare/Vercel
+        if (blob && blob.size > 800 * 1024) {
+          blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.65));
+        }
         if (blob && blob.size > 0) {
           const out = new File([blob], (file.name || 'photo.jpg').replace(/\.[^.]+$/, '.jpg'), {
             type: 'image/jpeg', lastModified: Date.now(),
@@ -149,7 +153,10 @@ async function compressImageFile(
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
-      canvas.toBlob(blob => {
+      canvas.toBlob(async (blob) => {
+        if (blob && blob.size > 800 * 1024) {
+          blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.65));
+        }
         if (blob && blob.size > 0) {
           const out = new File([blob], (file.name || 'photo.jpg').replace(/\.[^.]+$/, '.jpg'), {
             type: 'image/jpeg', lastModified: Date.now(),
