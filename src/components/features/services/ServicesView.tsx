@@ -150,6 +150,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
   const [debouncedLocation, setDebouncedLocation] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // كاش فوري في الذاكرة لمنح سرعة استجابة خارقة 0ms (Stale-While-Revalidate)
+  const searchCacheRef = useRef<Map<string, { data: AppUser[]; count: number }>>(new Map());
   const [providers, setProviders] = useState<AppUser[]>([]);
   const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -157,7 +159,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
   const [totalCount, setTotalCount] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
 
-  // ── Debounce: تأخير 300ms قبل تشغيل البحث لتجنب طلبات زائدة ──────────────
+  // ── Debounce: تأخير 250ms قبل تشغيل البحث اليدوي لتجنب استعلامات متتالية ────────
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -165,7 +167,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
         setDebouncedTitle(searchTitle);
         setDebouncedLocation(searchLocation);
       });
-    }, 300);
+    }, 250);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchTitle, searchLocation]);
 
@@ -173,11 +175,25 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
   const popularTitles = ['كهربائي', 'سباك', 'نجار', 'حلاق', 'مطبخ', 'دهان', 'ميكانيكي', 'تكييف', 'حداد', 'بناء'];
 
   const fetchProviders = useCallback(async (currentPage: number, reset = false) => {
-    // إلغاء أي طلب سابق
+    const cacheKey = `${debouncedTitle.trim()}_${debouncedLocation.trim()}_${currentPage}`;
+
+    // إذا كانت الصفحة الأولى وموجودة في الكاش، اعرضها فوراً 0ms دون أي انتظار
+    if (reset && searchCacheRef.current.has(cacheKey)) {
+      const cached = searchCacheRef.current.get(cacheKey)!;
+      setProviders(cached.data);
+      setTotalCount(cached.count);
+      setHasMore(cached.data.length === PAGE_SIZE);
+      // متابعة في الخلفية لتحديث البيانات بصمت (Stale-While-Revalidate)
+    }
+
+    // إلغاء أي طلب شبكة سابق
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
 
-    setLoading(true);
+    if (!searchCacheRef.current.has(cacheKey)) {
+      setLoading(true);
+    }
+
     try {
       let query = (supabase as any)
         .from('profiles')
@@ -223,6 +239,9 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
           bio: p.bio || '',
         };
       });
+
+      // حفظ في الكاش
+      searchCacheRef.current.set(cacheKey, { data: mapped, count: count || 0 });
 
       if (reset) {
         setProviders(mapped);
@@ -344,21 +363,36 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
         </div>
       </motion.div>
 
-      {/* مسميات شائعة */}
+      {/* مسميات شائعة مع نقر فوري 0ms واستجابة حركية */}
       <div className="flex flex-wrap gap-2 px-1">
-        {popularTitles.map((t) => (
-          <button
-            key={t}
-            onClick={() => setSearchTitle(t)}
-            className={`px-3 py-1.5 rounded-full text-[10px] font-black border transition-all active:scale-95 ${
-              searchTitle === t
-                ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/25'
-                : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-100 dark:border-slate-700 hover:border-blue-300 hover:text-blue-600'
-            }`}
-          >
-            {t}
-          </button>
-        ))}
+        {popularTitles.map((t) => {
+          const isSelected = searchTitle === t;
+          return (
+            <button
+              key={t}
+              type="button"
+              onPointerDown={() => {
+                try { navigator.vibrate?.([6]); } catch (_) {}
+              }}
+              onClick={() => {
+                const nextVal = isSelected ? '' : t;
+                if (debounceRef.current) clearTimeout(debounceRef.current);
+                setSearchTitle(nextVal);
+                startTransition(() => {
+                  setDebouncedTitle(nextVal);
+                  setPage(0);
+                });
+              }}
+              className={`px-3 py-1.5 rounded-full text-[10px] font-black border transition-all active:scale-95 cursor-pointer ${
+                isSelected
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/25'
+                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-100 dark:border-slate-700 hover:border-blue-300 hover:text-blue-600'
+              }`}
+            >
+              {t}
+            </button>
+          );
+        })}
       </div>
 
       {/* نتائج البحث */}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, Suspense, lazy, useCallback } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy, useCallback, useMemo } from 'react';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import {
   loadMissionsView,
@@ -173,6 +173,26 @@ function App() {
   });
   const [isPostingJobPage, setIsPostingJobPage] = useState(false);
   const [selectedJobCategory, setSelectedJobCategory] = useState<string>('الكل');
+
+  // ⚡ تغذية مدمجة ومفلترة ومخزنة مؤقتاً عبر useMemo لمنح سرعة فائقة 60FPS عند التنقل بين أقسام الوظائف
+  const memoizedCombinedFeed = useMemo(() => {
+    const filteredFeedJobs = selectedJobCategory === 'الكل'
+      ? jobs
+      : jobs.filter(j => isJobInCategory(j, selectedJobCategory));
+
+    const feedPosts = selectedJobCategory === 'الكل'
+      ? posts
+      : (selectedJobCategory === 'أخبار' ? posts : []);
+
+    return [
+      ...feedPosts.map(p => ({ ...p, feedType: 'post' as const })),
+      ...filteredFeedJobs.map(j => ({ ...j, feedType: 'job' as const, timestamp: j.postedAt }))
+    ].sort((a, b) => {
+      const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date();
+      const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date();
+      return dateB.getTime() - dateA.getTime();
+    });
+  }, [jobs, posts, selectedJobCategory]);
 
   const handlePostJobFromPage = async () => {
     if (!appUser) return;
@@ -1051,58 +1071,35 @@ function App() {
                   </div>
 
                   <div className="space-y-4 pb-36 md:pb-12">
-                    {(() => {
-                      // Filter jobs by selected category using normalized comparison
-                      const filteredFeedJobs = selectedJobCategory === 'الكل'
-                        ? jobs
-                        : jobs.filter(j => isJobInCategory(j, selectedJobCategory));
-
-                      const feedPosts = selectedJobCategory === 'الكل'
-                        ? posts
-                        : (selectedJobCategory === 'أخبار' ? posts : []);
-
-                      // Combined feed logic
-                      const combined = [
-                        ...feedPosts.map(p => ({ ...p, feedType: 'post' })),
-                        ...filteredFeedJobs.map(j => ({ ...j, feedType: 'job', timestamp: j.postedAt }))
-                      ].sort((a, b) => {
-                        const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date();
-                        const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date();
-                        return dateB.getTime() - dateA.getTime();
-                      });
-
-                      if (combined.length === 0) {
-                        return (
-                          <div className="text-center py-12 px-4 bg-white/80 dark:bg-slate-900/80 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm" dir="rtl">
-                            <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                              <Briefcase size={28} />
-                            </div>
-                            <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 mb-1">
-                              لا توجد وظائف معروضة حالياً في قسم «{selectedJobCategory}»
-                            </h3>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                              يمكنك تصفح باقي الأقسام أو إعادة تعيين الفلتر لعرض جميع الوظائف
-                            </p>
-                            <button
-                              onClick={() => setSelectedJobCategory('الكل')}
-                              className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black shadow-md hover:bg-blue-700 active:scale-95 transition-all"
-                            >
-                              عرض جميع الوظائف
-                            </button>
-                          </div>
-                        );
-                      }
-
-                      return combined.map((item: any, idx) => (
+                    {memoizedCombinedFeed.length === 0 ? (
+                      <div className="text-center py-12 px-4 bg-white/80 dark:bg-slate-900/80 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm" dir="rtl">
+                        <div className="w-14 h-14 mx-auto mb-3 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
+                          <Briefcase size={28} />
+                        </div>
+                        <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 mb-1">
+                          لا توجد وظائف معروضة حالياً في قسم «{selectedJobCategory}»
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                          يمكنك تصفح باقي الأقسام أو إعادة تعيين الفلتر لعرض جميع الوظائف
+                        </p>
+                        <button
+                          onClick={() => setSelectedJobCategory('الكل')}
+                          className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black shadow-md hover:bg-blue-700 active:scale-95 transition-all"
+                        >
+                          عرض جميع الوظائف
+                        </button>
+                      </div>
+                    ) : (
+                      memoizedCombinedFeed.map((item: any, idx) => (
                         <React.Fragment key={item.id}>
                           {item.feedType === 'post' ? (
                             <PostNewsCard
                               post={item}
-                              delay={idx * 0.05}
+                              delay={Math.min(idx * 0.03, 0.3)}
                               onClick={() => {
                                 setDetailFeed({
                                   type: 'post',
-                                  items: combined,
+                                  items: memoizedCombinedFeed,
                                   initialIndex: idx
                                 });
                               }}
@@ -1120,11 +1117,11 @@ function App() {
                                 onClick={() => {
                                   setDetailFeed({
                                     type: 'job',
-                                    items: combined,
+                                    items: memoizedCombinedFeed,
                                     initialIndex: idx
                                   });
                                 }}
-                                delay={idx * 0.05}
+                                delay={Math.min(idx * 0.03, 0.3)}
                                 onEditJob={(job) => setEditingFeedJob(job)}
                                 onPublisherClick={(emp) => {
                                   setSelectedProfile(emp);
@@ -1138,8 +1135,8 @@ function App() {
                             </div>
                           )}
                         </React.Fragment>
-                      ));
-                    })()}
+                      ))
+                    )}
                   </div>
                     </>
                   )}

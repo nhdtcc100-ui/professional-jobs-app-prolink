@@ -12,6 +12,7 @@ import { profileService } from '../../../lib/services/profileService';
 import { cvService } from '../../../lib/services/cvService';
 import { mobileUploadService } from '../../../lib/services/mobileUploadService';
 import { AppUser } from '../../../types';
+import { PDFViewerModal } from '../../common/PDFViewerModal';
 
 interface ModernProfileViewProps {
   profile: AppUser;
@@ -155,10 +156,8 @@ export function ModernProfileView({
   const [pendingCVFile, setPendingCVFile] = useState<File | null>(null);
   const [pendingCVName, setPendingCVName] = useState<string | null>(null);
   const [cvUploadProgress, setCvUploadProgress] = useState(0);
-  // blob URL للعرض الآمن — يُنشأ عند الفتح ويُلغى عند الإغلاق
-  const [cvBlobUrl, setCvBlobUrl] = useState<string | null>(null);
-  const [cvBlobLoading, setCvBlobLoading] = useState(false);
-  const cvBlobRef = useRef<string | null>(null); // لضمان إلغاء URL القديم
+  const [cvPdfBytes, setCvPdfBytes] = useState<ArrayBuffer | string | null>(null);
+  const [cvDownloading, setCvDownloading] = useState(false);
 
   // ─── Refs ────────────────────────────────────────────────────────────────────
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -167,74 +166,163 @@ export function ModernProfileView({
 
   const effectiveUserId = user?.id || profile?.id;
 
-  // ─── فتح نافذة CV: جلب رابط مؤقت + تحويل إلى blob ─────────────────────────
+  // ─── فتح نافذة CV (معاينة حقيقية عبر Canvas بدون iframe أو جوجل دوكس) ────────
   const openCVModal = async () => {
+    if (!cvUrl && !pendingCVFile) return;
+
     setPreviewingCV(true);
-    if (!cvUrl) return;
 
-    // إذا كان ملف Word، لا نحتاج blob — سنعرض رسالة مناسبة
-    if (cvUrl.toLowerCase().includes('.doc')) return;
-
-    setCvBlobLoading(true);
     try {
-      // إلغاء blob قديم إن وُجد
-      if (cvBlobRef.current) {
-        URL.revokeObjectURL(cvBlobRef.current);
-        cvBlobRef.current = null;
-        setCvBlobUrl(null);
+      // 1. إذا كان المستخدم قد اختار ملفاً للتو في RAM ولم يُحفظ بعد
+      if (pendingCVFile) {
+        if (pendingCVFile.name.toLowerCase().endsWith('.doc') || pendingCVFile.name.toLowerCase().endsWith('.docx')) {
+          setCvPdfBytes(null);
+          return;
+        }
+        let ab: ArrayBuffer;
+        if ((pendingCVFile as any)._ab) {
+          ab = (pendingCVFile as any)._ab;
+        } else {
+          ab = await pendingCVFile.arrayBuffer();
+        }
+        setCvPdfBytes(ab);
+        return;
       }
 
-      // استخراج المسار من URL الكامل
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
-      let path = cvUrl;
-      // محاولة استخراج المسار من رابط storage العام
-      const publicMarker = '/storage/v1/object/public/resumes/';
-      const signedMarker = '/storage/v1/object/sign/resumes/';
-      if (cvUrl.includes(publicMarker)) {
-        path = cvUrl.split(publicMarker)[1] || cvUrl;
-      } else if (cvUrl.includes(signedMarker)) {
-        path = cvUrl.split(signedMarker)[1]?.split('?')[0] || cvUrl;
-      } else if (cvUrl.includes('/resumes/')) {
-        path = cvUrl.split('/resumes/')[1]?.split('?')[0] || cvUrl;
+      // إذا كان الملف Word
+      if (cvUrl.toLowerCase().includes('.doc')) {
+        setCvPdfBytes(null);
+        return;
       }
 
-      // جلب رابط موقّع لمدة 5 دقائق
-      const { data: signedData, error: signedError } = await supabase.storage
-        .from('resumes')
-        .createSignedUrl(decodeURIComponent(path), 300);
+      // 2. استخراج مسار التخزين وإزالة أي ?v=...
+      let storagePath = '';
+      let bucket = 'resumes';
+      const markers = [
+        { marker: '/storage/v1/object/public/resumes/', bkt: 'resumes' },
+        { marker: '/storage/v1/object/sign/resumes/', bkt: 'resumes' },
+        { marker: '/storage/v1/object/public/applications/', bkt: 'applications' },
+        { marker: '/storage/v1/object/sign/applications/', bkt: 'applications' },
+        { marker: '/resumes/', bkt: 'resumes' },
+        { marker: '/applications/', bkt: 'applications' },
+      ];
 
-      let fetchUrl = cvUrl; // fallback للرابط المباشر
-      if (!signedError && signedData?.signedUrl) {
-        fetchUrl = signedData.signedUrl;
+      for (const { marker, bkt } of markers) {
+        if (cvUrl.includes(marker)) {
+          storagePath = decodeURIComponent(cvUrl.split(marker)[1]?.split('?')[0] || '');
+          bucket = bkt;
+          break;
+        }
       }
 
-      // جلب الملف وتحويله إلى blob URL
-      const res = await fetch(fetchUrl);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const blob = await res.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      cvBlobRef.current = blobUrl;
-      setCvBlobUrl(blobUrl);
-    } catch (err) {
-      console.error('[CV Modal] blob load error:', err);
-      // في حالة الفشل: نعرض الرابط المباشر كـ fallback
-      setCvBlobUrl(cvUrl);
-    } finally {
-      setCvBlobLoading(false);
+      let fetchUrl = cvUrl;
+      if (storagePath) {
+        const { data: sd, error: se } = await supabase.storage
+          .from(bucket)
+          .createSignedUrl(storagePath, 300);
+        if (!se && sd?.signedUrl) {
+          fetchUrl = sd.signedUrl;
+        }
+      }
+
+      // 3. جلب بايتات الملف مع timeout
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 20_000);
+      let res: Response;
+      try {
+        res = await fetch(fetchUrl, { signal: ctrl.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+
+      if (res.ok) {
+        const buf = await res.arrayBuffer();
+        setCvPdfBytes(buf);
+      } else {
+        // Fallback بـ Anon key headers
+        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+        const resAnon = await fetch(cvUrl, {
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization: `Bearer ${supabaseAnonKey}`,
+          },
+        });
+        if (resAnon.ok) {
+          const buf = await resAnon.arrayBuffer();
+          setCvPdfBytes(buf);
+        } else {
+          // Pass URL as fallback to modal
+          setCvPdfBytes(fetchUrl);
+        }
+      }
+    } catch (err: any) {
+      console.warn('[openCVModal] Direct buffer fetch failed, passing url:', err);
+      setCvPdfBytes(cvUrl);
     }
   };
 
   const closeCVModal = () => {
     setPreviewingCV(false);
-    // تأخير إلغاء blob حتى ينتهي الـ exit animation
-    setTimeout(() => {
-      if (cvBlobRef.current) {
-        URL.revokeObjectURL(cvBlobRef.current);
-        cvBlobRef.current = null;
+    setCvPdfBytes(null);
+  };
+
+  // ─── تحميل السيرة الذاتية بأمان وتنزيلها كملف بدون فضح روابط قواعد البيانات ────
+  const handleDownloadCV = async () => {
+    if (!cvUrl && !pendingCVFile) return;
+    try {
+      setCvDownloading(true);
+      if (pendingCVFile) {
+        const u = URL.createObjectURL(pendingCVFile);
+        const a = document.createElement('a');
+        a.href = u;
+        a.download = pendingCVFile.name || 'CV.pdf';
+        a.click();
+        URL.revokeObjectURL(u);
+        addToast('✅ بدأ تحميل الملف', 'success');
+        return;
       }
-      setCvBlobUrl(null);
-      setCvBlobLoading(false);
-    }, 300);
+
+      // محاولة استخراج الرابط الموقّع إن وجد
+      let storagePath = '';
+      let bucket = 'resumes';
+      const markers = [
+        { marker: '/storage/v1/object/public/resumes/', bkt: 'resumes' },
+        { marker: '/storage/v1/object/public/applications/', bkt: 'applications' },
+        { marker: '/resumes/', bkt: 'resumes' },
+        { marker: '/applications/', bkt: 'applications' },
+      ];
+      for (const { marker, bkt } of markers) {
+        if (cvUrl.includes(marker)) {
+          storagePath = decodeURIComponent(cvUrl.split(marker)[1]?.split('?')[0] || '');
+          bucket = bkt;
+          break;
+        }
+      }
+
+      let fetchUrl = cvUrl;
+      if (storagePath) {
+        const { data: sd } = await supabase.storage.from(bucket).createSignedUrl(storagePath, 120);
+        if (sd?.signedUrl) fetchUrl = sd.signedUrl;
+      }
+
+      const res = await fetch(fetchUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const bUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = bUrl;
+      const isDoc = cvUrl.toLowerCase().includes('.doc');
+      a.download = `CV_${profile?.name || 'User'}.${isDoc ? 'docx' : 'pdf'}`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(bUrl), 2000);
+      addToast('✅ تم تنزيل السيرة الذاتية بنجاح', 'success');
+    } catch (err: any) {
+      console.error('[handleDownloadCV] error:', err);
+      // Fallback
+      window.open(cvUrl, '_blank');
+    } finally {
+      setCvDownloading(false);
+    }
   };
 
   // ─── Timeout Wrapper لمنع أي تعليق في الموبايل ─────────────────────────────
@@ -1279,15 +1367,16 @@ export function ModernProfileView({
                 className="py-2.5 px-3 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-[#0a66c2] dark:text-blue-300 rounded-xl text-xs font-black transition-all border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 shadow-sm active:scale-95">
                 <Eye size={14} /><span>معاينة السيرة</span>
               </motion.button>
-              <motion.a
-                href={cvUrl}
-                target="_blank"
-                rel="noopener noreferrer"
+              <motion.button
+                type="button"
+                onClick={handleDownloadCV}
+                disabled={cvDownloading}
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.96 }}
-                className="py-2.5 px-3 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-1.5 shadow-sm active:scale-95">
-                <Download size={14} /><span>تحميل CV</span>
-              </motion.a>
+                className="py-2.5 px-3 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50 cursor-pointer">
+                {cvDownloading ? <Loader2 size={14} className="animate-spin text-[#0a66c2]" /> : <Download size={14} />}
+                <span>{cvDownloading ? 'جاري التحميل...' : 'تحميل CV'}</span>
+              </motion.button>
               {isMe && (
                 <label
                   htmlFor="cv-file-input"
@@ -1348,112 +1437,15 @@ export function ModernProfileView({
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════════
-          MODAL — معاينة السيرة الذاتية (آمن: blob URL بدون Google Docs)
+          MODAL — معاينة السيرة الذاتية (Native Canvas عبر PDF.js بدون iframe وبدون Google Docs)
           ══════════════════════════════════════════════════════════════════════════ */}
-      <AnimatePresence>
-        {previewingCV && cvUrl && (
-          <motion.div
-            className="fixed inset-x-0 z-[50] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-md"
-            style={{
-              top: 'calc(var(--topbar-h, 64px) + env(safe-area-inset-top, 0px))',
-              bottom: 'calc(var(--bottomnav-h, 88px) + env(safe-area-inset-bottom, 0px))',
-            }}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            onClick={closeCVModal}
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-              className="w-full h-full max-w-4xl mx-auto bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl shadow-[#0a66c2]/20 flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
-              dir="rtl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {/* ── Modal Header: اسم المستخدم + زر الإغلاق فقط (لا تحميل، لا فتح تبويب) ── */}
-              <div className="sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
-                    <img src={avatar} alt={name} className="w-full h-full object-cover" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-slate-800 dark:text-white text-sm sm:text-base leading-tight">{profile?.name}</h3>
-                    <p className="text-[11px] text-[#0a66c2] dark:text-blue-400 font-bold">معاينة السيرة الذاتية (CV)</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {/* زر الإغلاق فقط — تم حذف زر التحميل وفتح التبويب لأسباب أمنية */}
-                  <motion.button
-                    onClick={closeCVModal}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all border border-red-200 dark:border-red-800/60 shadow-sm flex items-center justify-center cursor-pointer"
-                    title="إغلاق (X)"
-                  >
-                    <X size={20} />
-                  </motion.button>
-                </div>
-              </div>
-
-              {/* ── منطقة عرض السيرة ── */}
-              <div className="flex-1 w-full bg-slate-100 dark:bg-slate-950 relative overflow-hidden flex flex-col">
-                {cvUrl.toLowerCase().includes('.doc') ? (
-                  /* ملف Word — نعرض رسالة واضحة بدون روابط خارجية */
-                  <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-4">
-                    <div className="w-16 h-16 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-300 flex items-center justify-center shadow-md">
-                      <FileText size={32} />
-                    </div>
-                    <div>
-                      <h4 className="text-base font-black text-slate-800 dark:text-white">مستند Word (.docx)</h4>
-                      <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                        ملفات Word لا تُعرض مباشرةً في المتصفح. يُرجى رفع ملف PDF للحصول على أفضل تجربة معاينة.
-                      </p>
-                    </div>
-                  </div>
-                ) : cvBlobLoading ? (
-                  /* حالة التحميل — Skeleton */
-                  <div className="w-full h-full flex flex-col items-center justify-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
-                      <Loader2 size={24} className="text-[#0a66c2] animate-spin" />
-                    </div>
-                    <p className="text-sm font-bold text-slate-500 dark:text-slate-400">جاري تحميل السيرة الذاتية…</p>
-                    {/* Skeleton lines */}
-                    <div className="w-64 space-y-2 mt-2">
-                      {[100, 80, 90, 70, 85].map((w, i) => (
-                        <div key={i} className="h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 animate-pulse" style={{ width: `${w}%` }} />
-                      ))}
-                    </div>
-                  </div>
-                ) : cvBlobUrl ? (
-                  /* عرض PDF من blob URL — آمن وفوري */
-                  <iframe
-                    src={cvBlobUrl}
-                    title="CV Document"
-                    className="w-full h-full border-none"
-                  />
-                ) : (
-                  /* حالة الخطأ */
-                  <div className="w-full h-full flex flex-col items-center justify-center gap-3 p-6 text-center">
-                    <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-900/30 flex items-center justify-center">
-                      <FileText size={28} className="text-red-400" />
-                    </div>
-                    <p className="text-sm font-bold text-slate-500 dark:text-slate-400">تعذّر تحميل السيرة الذاتية</p>
-                    <button
-                      onClick={openCVModal}
-                      className="px-4 py-2 bg-blue-600 text-white text-xs font-black rounded-xl hover:bg-blue-700 transition-all"
-                    >
-                      إعادة المحاولة
-                    </button>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <PDFViewerModal
+        isOpen={previewingCV}
+        onClose={closeCVModal}
+        pdfSource={cvPdfBytes}
+        userName={profile?.name}
+        userAvatar={avatar}
+      />
 
     </div>
   );
