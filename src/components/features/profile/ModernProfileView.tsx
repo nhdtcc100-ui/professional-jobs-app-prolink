@@ -1178,15 +1178,15 @@ export function ModernProfileView({
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════════
-          MODAL — معاينة السيرة الذاتية
+          MODAL — معاينة السيرة الذاتية (مثبتة بدقة بين الشريطين العلوي والسفلي)
           ══════════════════════════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {previewingCV && cvUrl && (
           <motion.div
-            className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-md"
+            className="fixed inset-x-0 z-[50] flex items-center justify-center p-2 sm:p-4 bg-black/60 backdrop-blur-md"
             style={{
-              paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
-              paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
+              top: 'calc(var(--topbar-h, 64px) + env(safe-area-inset-top, 0px))',
+              bottom: 'calc(var(--bottomnav-h, 88px) + env(safe-area-inset-bottom, 0px))',
             }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -1195,50 +1195,60 @@ export function ModernProfileView({
             onClick={() => setPreviewingCV(false)}
           >
             <motion.div
-              initial={{ scale: 0.92, opacity: 0 }}
+              initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.92, opacity: 0 }}
+              exit={{ scale: 0.95, opacity: 0 }}
               transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-              className="w-full sm:max-w-4xl h-[100dvh] max-h-[calc(100dvh-max(env(safe-area-inset-top,0px),16px)-max(env(safe-area-inset-bottom,0px),16px))] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl shadow-[#0a66c2]/20 flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
+              className="w-full h-full max-w-4xl mx-auto bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl shadow-[#0a66c2]/20 flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
               dir="rtl"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* ── Modal Header (Sticky) ─────────────────────────────────────────────── */}
-              <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shrink-0">
+              {/* ── Modal Header: رأس ثابت فيه اسم المستخدم وصورته وزر رجوع (X) وزر تحميل ── */}
+              <div className="sticky top-0 z-10 flex items-center justify-between px-4 sm:px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-md shadow-[#0a66c2]/30">
-                    <FileText size={20} />
+                  <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
+                    <img src={avatar} alt={name} className="w-full h-full object-cover" />
                   </div>
                   <div>
-                    <h3 className="font-black text-slate-800 dark:text-white text-sm sm:text-base">معاينة السيرة الذاتية</h3>
-                    <p className="text-[11px] text-slate-400 font-bold">{profile?.name}</p>
+                    <h3 className="font-black text-slate-800 dark:text-white text-sm sm:text-base leading-tight">{profile?.name}</h3>
+                    <p className="text-[11px] text-[#0a66c2] dark:text-blue-400 font-bold">معاينة السيرة الذاتية (CV)</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <motion.a
                     href={cvUrl}
+                    download
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="px-3.5 py-2 bg-gradient-to-l from-[#0a66c2] to-[#004182] text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shadow-sm shadow-[#0a66c2]/20 cursor-pointer"
+                  >
+                    <Download size={14} />
+                    <span className="hidden sm:inline">تحميل الملف</span>
+                  </motion.a>
+                  <motion.a
+                    href={cvUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    className="w-11 h-11 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center cursor-pointer"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center cursor-pointer"
                     title="فتح في تبويب جديد"
                   >
-                    <ExternalLink size={18} />
+                    <ExternalLink size={16} />
                   </motion.a>
                   <motion.button
                     onClick={() => setPreviewingCV(false)}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                    className="w-11 h-11 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all border border-red-200 dark:border-red-800/60 shadow-sm flex items-center justify-center cursor-pointer"
-                    title="إغلاق"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="w-10 h-10 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all border border-red-200 dark:border-red-800/60 shadow-sm flex items-center justify-center cursor-pointer"
+                    title="إغلاق (X)"
                   >
-                    <X size={22} />
+                    <X size={20} />
                   </motion.button>
                 </div>
               </div>
 
-              {/* ── Modal Body ───────────────────────────────────────────────── */}
+              {/* ── منطقة السيرة: flex-1 overflow-auto ── */}
               <div className="flex-1 w-full bg-slate-100 dark:bg-slate-950 relative overflow-hidden flex flex-col">
                 {cvUrl.toLowerCase().includes('.doc') || cvUrl.toLowerCase().includes('.docx') ? (
                   <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-4">
@@ -1295,20 +1305,6 @@ export function ModernProfileView({
                     </div>
                   </div>
                 )}
-              </div>
-
-              {/* ── Modal Footer ─────────────────────────────────────────────── */}
-              <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 flex items-center justify-between shrink-0">
-                <span className="text-[11px] font-bold text-slate-400">ProLink CV Viewer</span>
-                <motion.a
-                  href={cvUrl}
-                  download
-                  whileHover={{ scale: 1.03 }}
-                  whileTap={{ scale: 0.97 }}
-                  className="px-5 py-2.5 bg-gradient-to-l from-[#0a66c2] to-[#004182] text-white text-xs font-black rounded-xl transition-all flex items-center gap-2 shadow-sm shadow-[#0a66c2]/20 cursor-pointer"
-                >
-                  <Download size={15} /><span>تحميل الملف</span>
-                </motion.a>
               </div>
             </motion.div>
           </motion.div>

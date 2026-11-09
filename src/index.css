@@ -8,6 +8,15 @@
   --sab: env(safe-area-inset-bottom, 0px);
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
+  /* Topbar & BottomNav heights for overlays and bounded modals */
+  --topbar-h: 64px;
+  --bottomnav-h: 88px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --bottomnav-h: 16px;
+  }
 }
 
 /* Hide native scrollbar — keep scrollability */
