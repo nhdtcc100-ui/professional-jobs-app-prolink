@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   User, Briefcase, MapPin, Phone, Lock, FileText, Pencil,
   ChevronsLeft, Upload, Download, Eye, CheckCircle2, Loader2,
-  X, ExternalLink, ArrowRight, Camera, RefreshCw,
+  X, ExternalLink, Camera, RefreshCw,
   EyeOff, AlertCircle, WifiOff, KeyRound, ChevronDown, ChevronUp
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
@@ -654,23 +654,6 @@ export function ModernProfileView({
   return (
     <div className="w-full max-w-xl mx-auto space-y-4 pb-28 pt-2 md:pt-4 px-3 sm:px-4" dir="rtl">
 
-      {/* ─── Top Header ────────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between px-1 py-2">
-        <div className="flex items-center gap-2.5">
-          <h1 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">
-            {isMe ? 'إعدادات الحساب' : 'الملف الشخصي'}
-          </h1>
-        </div>
-        {onBack && (
-          <button
-            onClick={onBack}
-            className="w-10 h-10 rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 flex items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all shadow-sm active:scale-95"
-          >
-            <ArrowRight size={18} />
-          </button>
-        )}
-      </div>
-
       {/* ══════════════════════════════════════════════════════════════════════════
           CARD 1 — المعلومات الشخصية (Cover + Avatar + Info)
           ══════════════════════════════════════════════════════════════════════════ */}
@@ -681,7 +664,7 @@ export function ModernProfileView({
       >
         {/* ── Cover Photo Banner ──────────────────────────────────────────────── */}
         <div
-          className="relative h-32 sm:h-44 overflow-hidden group"
+          className="relative h-48 sm:h-56 overflow-hidden group"
           style={{ background: 'linear-gradient(135deg, #0a66c2 0%, #004182 60%, #001e3c 100%)' }}
         >
           {coverUrl ? (
@@ -726,7 +709,7 @@ export function ModernProfileView({
 
         {/* ── Avatar + Card Title Row ──────────────────────────────────────────── */}
         <div className="px-5 sm:px-7 pb-6 pt-0 space-y-5">
-          <div className="flex items-end justify-between -mt-10 sm:-mt-12 mb-3">
+          <div className="flex items-end justify-between -mt-10 sm:-mt-12 mb-6">
             {/* Avatar */}
             <div className="relative group">
               <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 ring-4 ring-white dark:ring-slate-900 shadow-xl shadow-[#0a66c2]/20">
@@ -1049,14 +1032,23 @@ export function ModernProfileView({
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-blue-100 dark:border-blue-900/40">
-              <button type="button" onClick={() => setPreviewingCV(true)}
+              <motion.button
+                type="button"
+                onClick={() => setPreviewingCV(true)}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.96 }}
                 className="py-2.5 px-3 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-[#0a66c2] dark:text-blue-300 rounded-xl text-xs font-black transition-all border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 shadow-sm active:scale-95">
                 <Eye size={14} /><span>معاينة السيرة</span>
-              </button>
-              <a href={cvUrl} target="_blank" rel="noopener noreferrer"
+              </motion.button>
+              <motion.a
+                href={cvUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.96 }}
                 className="py-2.5 px-3 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-1.5 shadow-sm active:scale-95">
                 <Download size={14} /><span>تحميل CV</span>
-              </a>
+              </motion.a>
               {isMe && (
                 <label
                   htmlFor="cv-file-input"
@@ -1121,15 +1113,31 @@ export function ModernProfileView({
           ══════════════════════════════════════════════════════════════════════════ */}
       <AnimatePresence>
         {previewingCV && cvUrl && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-md">
+          <motion.div
+            className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-md"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={() => setPreviewingCV(false)}
+          >
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-4xl h-[88vh] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl shadow-[#0a66c2]/20 flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800"
+              initial={{ opacity: 0, y: 60, scale: 0.93 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 60, scale: 0.93 }}
+              transition={{ type: 'spring', damping: 26, stiffness: 320 }}
+              className="w-full sm:max-w-4xl bg-white dark:bg-slate-900 sm:rounded-3xl rounded-t-3xl shadow-2xl shadow-[#0a66c2]/20 flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
+              style={{
+                height: 'calc(100dvh - env(safe-area-inset-top, 0px) - 8px)',
+                maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - 8px)',
+                paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+                marginTop: 'env(safe-area-inset-top, 0px)',
+              }}
               dir="rtl"
+              onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50">
+              {/* ── Modal Header ─────────────────────────────────────────────── */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-md">
                     <FileText size={18} />
@@ -1140,18 +1148,29 @@ export function ModernProfileView({
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <a href={cvUrl} target="_blank" rel="noopener noreferrer"
-                    className="p-2 rounded-xl bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 transition-all border border-slate-200 dark:border-slate-600">
-                    <ExternalLink size={16} />
-                  </a>
-                  <button onClick={() => setPreviewingCV(false)}
-                    className="p-2 rounded-xl bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 transition-all border border-slate-200 dark:border-slate-600 cursor-pointer">
-                    <X size={16} />
-                  </button>
+                  <motion.a
+                    href={cvUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.92 }}
+                    className="p-2.5 rounded-xl bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 transition-all border border-slate-200 dark:border-slate-600 shadow-sm"
+                  >
+                    <ExternalLink size={17} />
+                  </motion.a>
+                  <motion.button
+                    onClick={() => setPreviewingCV(false)}
+                    whileHover={{ scale: 1.08 }}
+                    whileTap={{ scale: 0.92 }}
+                    className="p-2.5 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all border border-red-200 dark:border-red-800/60 shadow-sm cursor-pointer"
+                  >
+                    <X size={19} />
+                  </motion.button>
                 </div>
               </div>
 
-              <div className="flex-1 w-full bg-slate-100 dark:bg-slate-950 relative flex flex-col">
+              {/* ── Modal Body ───────────────────────────────────────────────── */}
+              <div className="flex-1 w-full bg-slate-100 dark:bg-slate-950 relative overflow-hidden">
                 {cvUrl.toLowerCase().includes('.doc') || cvUrl.toLowerCase().includes('.docx') ? (
                   <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-4">
                     <div className="w-16 h-16 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-300 flex items-center justify-center shadow-md">
@@ -1160,41 +1179,55 @@ export function ModernProfileView({
                     <div>
                       <h4 className="text-base font-black text-slate-800 dark:text-white">مستند Word (.docx)</h4>
                       <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                        ملفات Word لا تعرض مباشرة في بعض المتصفحات، يمكنك فتحها في قارئ المستندات أو تحميلها مباشرة
+                        ملفات Word لا تعرض مباشرة في بعض المتصفحات، يمكنك فتحها في Google Docs أو تحميلها مباشرة
                       </p>
                     </div>
                     <div className="flex items-center gap-3 pt-2 flex-wrap justify-center">
-                      <a
+                      <motion.a
                         href={`https://docs.google.com/viewer?url=${encodeURIComponent(cvUrl)}&embedded=true`}
                         target="_blank"
                         rel="noopener noreferrer"
+                        whileHover={{ scale: 1.03 }}
+                        whileTap={{ scale: 0.97 }}
                         className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"
                       >
                         <ExternalLink size={14} /><span>فتح في Google Docs</span>
-                      </a>
-                      <a
+                      </motion.a>
+                      <motion.a
                         href={cvUrl}
                         download
+                        whileHover={{ scale: 1.03 }}
+                        whileTap={{ scale: 0.97 }}
                         className="px-4 py-2.5 rounded-xl bg-gradient-to-l from-[#0a66c2] to-[#004182] text-white text-xs font-black transition-all flex items-center gap-2 shadow-sm shadow-[#0a66c2]/20"
                       >
                         <Download size={14} /><span>تحميل الملف الآن</span>
-                      </a>
+                      </motion.a>
                     </div>
                   </div>
                 ) : (
-                  <iframe src={`${cvUrl}#toolbar=1&navpanes=0`} title="CV Document" className="w-full h-full border-none" />
+                  <iframe
+                    src={`https://docs.google.com/viewer?url=${encodeURIComponent(cvUrl)}&embedded=true`}
+                    title="CV Document"
+                    className="w-full h-full border-none"
+                  />
                 )}
               </div>
 
-              <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 flex items-center justify-between">
+              {/* ── Modal Footer ─────────────────────────────────────────────── */}
+              <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800 flex items-center justify-between shrink-0">
                 <span className="text-[11px] font-bold text-slate-400">ProLink CV Viewer</span>
-                <a href={cvUrl} download
-                  className="px-4 py-2 bg-gradient-to-l from-[#0a66c2] to-[#004182] text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shadow-sm shadow-[#0a66c2]/20">
+                <motion.a
+                  href={cvUrl}
+                  download
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="px-4 py-2 bg-gradient-to-l from-[#0a66c2] to-[#004182] text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shadow-sm shadow-[#0a66c2]/20"
+                >
                   <Download size={14} /><span>تحميل الملف</span>
-                </a>
+                </motion.a>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
