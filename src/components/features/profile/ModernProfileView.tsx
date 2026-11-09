@@ -146,26 +146,47 @@ export function ModernProfileView({
       .from(finalBucket)
       .getPublicUrl(filePath);
 
-    return publicUrlData.publicUrl;
+    const publicUrl = publicUrlData.publicUrl;
+
+    // 4. التحديث المباشر لقاعدة البيانات (Database) لضمان حفظ البيانات فوراً
+    try {
+      const dbCol = fileCategory === 'cv' ? 'cv_url' : `${fileCategory}_url`;
+      await supabase.from('profiles').update({ [dbCol]: publicUrl } as any).eq('id', userId);
+    } catch (e) {
+      console.warn('[DirectUpload] DB direct update note:', e);
+    }
+
+    return publicUrl;
   };
 
   // ─── 1. Avatar Upload (Direct Client-to-Supabase) ───────────────────────────
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawFile = e.target?.files?.[0];
-    if (e.target) e.target.value = ''; // Reset input to allow selecting same file again
+    const targetInput = e.target;
+    const rawFile = targetInput?.files?.[0];
     if (!rawFile || !effectiveUserId) return;
 
     if (rawFile.size === 0) {
       addToast('عذراً، الملف فارغ أو تعذر على المتصفح قراءته من الموبايل.', 'error');
+      if (targetInput) targetInput.value = '';
       return;
     }
 
     try {
       setIsUploadingAvatar(true);
-      const localUrl = URL.createObjectURL(rawFile);
+
+      // Snapshot file into RAM immediately before browser/OS drops handle
+      let workingFile = rawFile;
+      try {
+        const ab = await rawFile.arrayBuffer();
+        workingFile = new File([ab], rawFile.name || 'avatar.jpg', { type: rawFile.type || 'image/jpeg' });
+      } catch {
+        workingFile = rawFile;
+      }
+
+      const localUrl = URL.createObjectURL(workingFile);
       setAvatar(localUrl);
 
-      const publicUrl = await handleMobileDirectUpload(rawFile, 'avatar', effectiveUserId);
+      const publicUrl = await handleMobileDirectUpload(workingFile, 'avatar', effectiveUserId);
       setAvatar(publicUrl);
       await profileService.updateProfile(effectiveUserId, { avatar: publicUrl, avatar_url: publicUrl });
       if (setAppUser) setAppUser((prev: any) => ({ ...prev, avatar: publicUrl, avatar_url: publicUrl }));
@@ -175,26 +196,39 @@ export function ModernProfileView({
       addToast('تعذر رفع الصورة: ' + (err?.message || ''), 'error');
     } finally {
       setIsUploadingAvatar(false);
+      // Reset input ONLY after upload finishes to prevent Safari/Android GC abort
+      if (targetInput) targetInput.value = '';
     }
   };
 
   // ─── 2. Cover Photo Upload (Direct Client-to-Supabase) ───────────────────────
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawFile = e.target?.files?.[0];
-    if (e.target) e.target.value = ''; // Reset input
+    const targetInput = e.target;
+    const rawFile = targetInput?.files?.[0];
     if (!rawFile || !effectiveUserId) return;
 
     if (rawFile.size === 0) {
       addToast('عذراً، الملف فارغ أو تعذر على المتصفح قراءته من الموبايل.', 'error');
+      if (targetInput) targetInput.value = '';
       return;
     }
 
     try {
       setIsUploadingCover(true);
-      const localUrl = URL.createObjectURL(rawFile);
+
+      // Snapshot file into RAM immediately
+      let workingFile = rawFile;
+      try {
+        const ab = await rawFile.arrayBuffer();
+        workingFile = new File([ab], rawFile.name || 'cover.jpg', { type: rawFile.type || 'image/jpeg' });
+      } catch {
+        workingFile = rawFile;
+      }
+
+      const localUrl = URL.createObjectURL(workingFile);
       setCoverUrl(localUrl);
 
-      const publicUrl = await handleMobileDirectUpload(rawFile, 'cover', effectiveUserId);
+      const publicUrl = await handleMobileDirectUpload(workingFile, 'cover', effectiveUserId);
       setCoverUrl(publicUrl);
       await profileService.updateProfile(effectiveUserId, { cover_url: publicUrl, coverUrl: publicUrl } as any);
       if (setAppUser) setAppUser((prev: any) => ({ ...prev, cover_url: publicUrl, coverUrl: publicUrl }));
@@ -204,6 +238,8 @@ export function ModernProfileView({
       addToast('تعذر رفع صورة الغلاف: ' + (err?.message || ''), 'error');
     } finally {
       setIsUploadingCover(false);
+      // Reset input ONLY after upload finishes
+      if (targetInput) targetInput.value = '';
     }
   };
 
@@ -337,6 +373,7 @@ export function ModernProfileView({
         setCvUrl(finalUrl);
         setPendingCVFile(null);
         setPendingCVName(null);
+        if (cvInputRef.current) cvInputRef.current.value = '';
       }
 
       await profileService.updateProfile(effectiveUserId, { cvUrl: finalUrl, cv_url: finalUrl });
