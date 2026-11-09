@@ -24,6 +24,76 @@ interface ModernProfileViewProps {
   showCallButton?: boolean;
 }
 
+// ─── Fast Client-Side Image Resizer (Canvas-based, RAM efficient) ───────────
+const resizeImageToCanvas = async (
+  file: File,
+  maxWidth: number,
+  maxHeight: number,
+  quality = 0.85
+): Promise<{ file: File; buffer: ArrayBuffer }> => {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith('image/')) {
+      file.arrayBuffer().then((buf) => resolve({ file, buffer: buf })).catch(reject);
+      return;
+    }
+
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > maxWidth || height > maxHeight) {
+        const ratio = Math.min(maxWidth / width, maxHeight / height);
+        width = Math.round(width * ratio);
+        height = Math.round(height * ratio);
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        file.arrayBuffer().then((buf) => resolve({ file, buffer: buf })).catch(reject);
+        return;
+      }
+
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, width, height);
+
+      canvas.toBlob(
+        async (blob) => {
+          if (!blob) {
+            const buf = await file.arrayBuffer();
+            resolve({ file, buffer: buf });
+            return;
+          }
+          const buffer = await blob.arrayBuffer();
+          const cleanName = `${file.name.replace(/\.[^/.]+$/, '')}.jpg`;
+          const resizedFile = new File([blob], cleanName, { type: 'image/jpeg' });
+          (resizedFile as any)._ab = buffer;
+          resolve({ file: resizedFile, buffer });
+        },
+        'image/jpeg',
+        quality
+      );
+    };
+
+    img.onerror = async () => {
+      URL.revokeObjectURL(url);
+      try {
+        const buf = await file.arrayBuffer();
+        resolve({ file, buffer: buf });
+      } catch (e) {
+        reject(e);
+      }
+    };
+
+    img.src = url;
+  });
+};
+
 export function ModernProfileView({
   profile,
   isMe,
@@ -245,16 +315,6 @@ export function ModernProfileView({
       [colName]: publicUrl,
       updated_at: new Date().toISOString(),
     };
-    if (field === 'avatar') {
-      payload.avatar = publicUrl;
-      payload.avatar_url = publicUrl;
-    }
-    if (field === 'cover') {
-      payload.cover_url = publicUrl;
-    }
-    if (field === 'cv') {
-      payload.cv_url = publicUrl;
-    }
 
     const updateUrl = `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`;
     const t0 = performance.now();
@@ -322,8 +382,11 @@ export function ModernProfileView({
     return { status: resStatus, duration };
   };
 
-  // ─── 1. Avatar Upload (Direct Client-to-Supabase) ───────────────────────────
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ─── Unified Image Upload Handler (Avatar & Cover) ───────────────────────────
+  const handleImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    kind: 'avatar' | 'cover'
+  ) => {
     const targetInput = e.target;
     const rawFile = targetInput?.files?.[0];
     if (!rawFile || !effectiveUserId) return;
@@ -334,98 +397,83 @@ export function ModernProfileView({
       return;
     }
 
-    try {
-      setIsUploadingAvatar(true);
+    const isAvatar = kind === 'avatar';
+    if (isAvatar) setIsUploadingAvatar(true);
+    else setIsUploadingCover(true);
 
-      // Snapshot file into RAM immediately with timeout
+    try {
+      // 1. Fast Canvas Resize & RAM snapshot (400x400 for avatar, 1200x600 for cover)
+      const maxWidth = isAvatar ? 400 : 1200;
+      const maxHeight = isAvatar ? 400 : 600;
+
       let workingFile = rawFile;
       try {
-        const ab = await withTimeout(rawFile.arrayBuffer(), 8000, 'قراءة الصورة إلى RAM (arrayBuffer)');
-        workingFile = new File([ab], rawFile.name || 'avatar.jpg', { type: rawFile.type || 'image/jpeg' });
-        (workingFile as any)._ab = ab;
-      } catch (abErr: any) {
-        console.warn('[AvatarUpload] arrayBuffer read failed, using raw file:', abErr);
+        const { file: resized, buffer } = await withTimeout(
+          resizeImageToCanvas(rawFile, maxWidth, maxHeight, 0.85),
+          7000,
+          `معالجة وتصغير ${isAvatar ? 'الصورة الشخصية' : 'صورة الغلاف'}`
+        );
+        workingFile = resized;
+        (workingFile as any)._ab = buffer;
+      } catch (resizeErr) {
+        console.warn(`[${kind}Upload] Client resize warning, using raw file:`, resizeErr);
         workingFile = rawFile;
       }
 
+      // 2. Direct upload to Supabase with unique timestamped path
       const publicUrl = await withTimeout(
-        handleMobileDirectUpload(workingFile, 'avatar', effectiveUserId),
+        handleMobileDirectUpload(workingFile, kind, effectiveUserId),
         25000,
-        'رفع الصورة عبر الشبكة'
+        `رفع ${isAvatar ? 'الصورة الشخصية' : 'صورة الغلاف'} عبر الشبكة`
       );
 
-      setAvatar(publicUrl);
+      // 3. Immediate local state update for instantaneous UI feedback
+      if (isAvatar) {
+        setAvatar(publicUrl);
+      } else {
+        setCoverUrl(publicUrl);
+      }
 
+      // 4. Update Database via direct REST with return=representation verification
       await withTimeout(
-        updateProfileDbFieldDirect(effectiveUserId, 'avatar', publicUrl),
+        updateProfileDbFieldDirect(effectiveUserId, kind, publicUrl),
         8000,
         'تحديث قاعدة البيانات REST'
       );
 
-      if (setAppUser) setAppUser((prev: any) => ({ ...prev, avatar: publicUrl, avatar_url: publicUrl }));
-      addToast('✅ تم رفع وتحديث الصورة الشخصية بنجاح!', 'success');
-    } catch (err: any) {
-      console.error('Avatar direct upload error:', err);
-      const errMsg = err?.message || JSON.stringify(err);
-      const isTimeout = errMsg?.includes('TIMEOUT');
-      addToast(isTimeout ? 'انتهت مهلة رفع الصورة، يرجى المحاولة مجدداً.' : ('تعذر رفع الصورة الشخصية: ' + errMsg), 'error');
-    } finally {
-      setIsUploadingAvatar(false);
-      if (targetInput) targetInput.value = '';
-    }
-  };
-
-  // ─── 2. Cover Photo Upload (Direct Client-to-Supabase) ───────────────────────
-  const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const targetInput = e.target;
-    const rawFile = targetInput?.files?.[0];
-    if (!rawFile || !effectiveUserId) return;
-
-    if (rawFile.size === 0) {
-      addToast('تعذر قراءة الملف: الملف فارغ. يرجى اختيار صورة أخرى.', 'error');
-      if (targetInput) targetInput.value = '';
-      return;
-    }
-
-    try {
-      setIsUploadingCover(true);
-
-      let workingFile = rawFile;
-      try {
-        const ab = await withTimeout(rawFile.arrayBuffer(), 8000, 'قراءة الغلاف إلى RAM');
-        workingFile = new File([ab], rawFile.name || 'cover.jpg', { type: rawFile.type || 'image/jpeg' });
-        (workingFile as any)._ab = ab;
-      } catch (abErr: any) {
-        console.warn('[CoverUpload] arrayBuffer read failed, using raw file:', abErr);
-        workingFile = rawFile;
+      // 5. Update global app user
+      if (setAppUser) {
+        setAppUser((prev: any) => ({
+          ...prev,
+          ...(isAvatar
+            ? { avatar: publicUrl, avatar_url: publicUrl }
+            : { cover_url: publicUrl, coverUrl: publicUrl }),
+        }));
       }
 
-      const publicUrl = await withTimeout(
-        handleMobileDirectUpload(workingFile, 'cover', effectiveUserId),
-        25000,
-        'رفع الغلاف عبر الشبكة'
+      addToast(
+        isAvatar ? '✅ تم تحديث الصورة الشخصية بنجاح!' : '✅ تم تحديث صورة الغلاف بنجاح!',
+        'success'
       );
-
-      setCoverUrl(publicUrl);
-
-      await withTimeout(
-        updateProfileDbFieldDirect(effectiveUserId, 'cover', publicUrl),
-        8000,
-        'تحديث قاعدة البيانات REST'
-      );
-
-      if (setAppUser) setAppUser((prev: any) => ({ ...prev, cover_url: publicUrl, coverUrl: publicUrl }));
-      addToast('✅ تم رفع وتحديث صورة الغلاف بنجاح!', 'success');
     } catch (err: any) {
-      console.error('Cover direct upload error:', err);
+      console.error(`[${kind}Upload] Upload error:`, err);
       const errMsg = err?.message || JSON.stringify(err);
       const isTimeout = errMsg?.includes('TIMEOUT');
-      addToast(isTimeout ? 'انتهت مهلة رفع صورة الغلاف، يرجى المحاولة مجدداً.' : ('تعذر رفع صورة الغلاف: ' + errMsg), 'error');
+      addToast(
+        isTimeout
+          ? 'انتهت المهلة، يرجى المحاولة مجدداً أو التحقق من الاتصال.'
+          : `تعذر تحديث ${isAvatar ? 'الصورة الشخصية' : 'صورة الغلاف'}: ${errMsg}`,
+        'error'
+      );
     } finally {
-      setIsUploadingCover(false);
+      if (isAvatar) setIsUploadingAvatar(false);
+      else setIsUploadingCover(false);
       if (targetInput) targetInput.value = '';
     }
   };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => handleImageUpload(e, 'avatar');
+  const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => handleImageUpload(e, 'cover');
 
   // ─── Native Platform Handlers (Capacitor vs Web Input) ──────────────────────
   const handleAvatarButtonClick = async () => {
@@ -676,11 +724,11 @@ export function ModernProfileView({
       >
         {/* ── Cover Photo Banner ──────────────────────────────────────────────── */}
         <div
-          className="relative h-48 sm:h-56 overflow-hidden group"
+          className="relative h-48 sm:h-56 w-full overflow-hidden group"
           style={{ background: 'linear-gradient(135deg, #0a66c2 0%, #004182 60%, #001e3c 100%)' }}
         >
           {coverUrl ? (
-            <img src={coverUrl} alt="cover" className="w-full h-full object-cover" />
+            <img src={coverUrl} alt="cover" className="w-full h-full object-cover object-center" />
           ) : (
             <div className="absolute inset-0 overflow-hidden">
               {/* Professional decorative pattern */}
@@ -719,37 +767,44 @@ export function ModernProfileView({
           )}
         </div>
 
-        {/* ── Avatar + Card Title Row ──────────────────────────────────────────── */}
+        {/* ── Avatar + Card Content ──────────────────────────────────────────── */}
         <div className="px-5 sm:px-7 pb-6 pt-0 space-y-5">
-          {/* صف الأفاتار فقط — يرتفع فوق الغلاف بـ -mt */}
-          <div className="flex items-end justify-between -mt-10 sm:-mt-12">
+          {/* صف الأفاتار فقط — يرتفع فوق الغلاف بـ -mt-12 */}
+          <div className="flex items-end justify-between -mt-12 sm:-mt-14">
             {/* Avatar */}
             <div className="relative group">
-              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 ring-4 ring-white dark:ring-slate-900 shadow-xl shadow-[#0a66c2]/20">
-                <img src={avatar} alt={name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden bg-slate-100 dark:bg-slate-800 ring-4 ring-white dark:ring-slate-900 shadow-xl shadow-[#0a66c2]/20">
+                <motion.img
+                  src={avatar}
+                  alt={name}
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                  animate={isUploadingAvatar ? { opacity: [0.5, 1, 0.5], scale: [0.97, 1.03, 0.97] } : {}}
+                  transition={{ repeat: Infinity, duration: 1.2 }}
+                />
               </div>
               {isUploadingAvatar && (
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-2xl">
-                  <Loader2 size={20} className="text-white animate-spin" />
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-3xl backdrop-blur-xs">
+                  <Loader2 size={24} className="text-white animate-spin" />
                 </div>
               )}
               {isMe && (
                 <label
                   htmlFor="avatar-file-input"
-                  className="absolute -bottom-1.5 -right-1.5 w-8 h-8 rounded-full bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900 transition-all active:scale-90 cursor-pointer hover:scale-110"
+                  className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900 transition-all active:scale-90 cursor-pointer hover:scale-110"
                   title="تغيير الصورة الشخصية"
                 >
-                  <Pencil size={13} />
+                  <Camera size={15} />
                   <input id="avatar-file-input" ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
                 </label>
               )}
             </div>
           </div>
 
-          {/* عنوان "المعلومات الشخصية" — منفصل تحت الأفاتار بمسافة واضحة */}
-          <div className="flex items-center gap-2 mt-2 mb-1">
-            <div className={iconBadge}><User size={16} /></div>
-            <span className="text-base font-black text-slate-800 dark:text-white">المعلومات الشخصية</span>
+          {/* عنوان "المعلومات الشخصية" — منفصل بمسافة واضحة وبطاقة أنيقة */}
+          <div className="flex items-center gap-2.5 pt-2 pb-2 mb-6 border-b border-slate-100 dark:border-slate-800/80">
+            <div className={iconBadge}><User size={17} /></div>
+            <span className="text-base sm:text-lg font-black text-slate-800 dark:text-white">المعلومات الشخصية</span>
           </div>
 
           {/* الاسم */}
@@ -1128,7 +1183,11 @@ export function ModernProfileView({
       <AnimatePresence>
         {previewingCV && cvUrl && (
           <motion.div
-            className="fixed inset-0 z-[9999] flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-md"
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-6 bg-black/75 backdrop-blur-md"
+            style={{
+              paddingTop: 'max(env(safe-area-inset-top, 0px), 16px)',
+              paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)',
+            }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -1136,29 +1195,23 @@ export function ModernProfileView({
             onClick={() => setPreviewingCV(false)}
           >
             <motion.div
-              initial={{ opacity: 0, y: 60, scale: 0.93 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 60, scale: 0.93 }}
-              transition={{ type: 'spring', damping: 26, stiffness: 320 }}
-              className="w-full sm:max-w-4xl bg-white dark:bg-slate-900 sm:rounded-3xl rounded-t-3xl shadow-2xl shadow-[#0a66c2]/20 flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
-              style={{
-                height: 'calc(100dvh - env(safe-area-inset-top, 0px) - 8px)',
-                maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - 8px)',
-                paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-                marginTop: 'env(safe-area-inset-top, 0px)',
-              }}
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              className="w-full sm:max-w-4xl h-[100dvh] max-h-[calc(100dvh-max(env(safe-area-inset-top,0px),16px)-max(env(safe-area-inset-bottom,0px),16px))] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl shadow-[#0a66c2]/20 flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
               dir="rtl"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* ── Modal Header ─────────────────────────────────────────────── */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-800/50 shrink-0">
+              {/* ── Modal Header (Sticky) ─────────────────────────────────────────────── */}
+              <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3.5 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shrink-0">
                 <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-md">
-                    <FileText size={18} />
+                  <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-md shadow-[#0a66c2]/30">
+                    <FileText size={20} />
                   </div>
                   <div>
-                    <h3 className="font-black text-slate-800 dark:text-white text-sm">معاينة السيرة الذاتية</h3>
-                    <p className="text-[10px] text-slate-400 font-bold">{profile?.name}</p>
+                    <h3 className="font-black text-slate-800 dark:text-white text-sm sm:text-base">معاينة السيرة الذاتية</h3>
+                    <p className="text-[11px] text-slate-400 font-bold">{profile?.name}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1166,25 +1219,27 @@ export function ModernProfileView({
                     href={cvUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    whileHover={{ scale: 1.08 }}
-                    whileTap={{ scale: 0.92 }}
-                    className="p-2.5 rounded-xl bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-600 transition-all border border-slate-200 dark:border-slate-600 shadow-sm"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    className="w-11 h-11 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-center cursor-pointer"
+                    title="فتح في تبويب جديد"
                   >
-                    <ExternalLink size={17} />
+                    <ExternalLink size={18} />
                   </motion.a>
                   <motion.button
                     onClick={() => setPreviewingCV(false)}
-                    whileHover={{ scale: 1.08 }}
-                    whileTap={{ scale: 0.92 }}
-                    className="p-2.5 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all border border-red-200 dark:border-red-800/60 shadow-sm cursor-pointer"
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                    className="w-11 h-11 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all border border-red-200 dark:border-red-800/60 shadow-sm flex items-center justify-center cursor-pointer"
+                    title="إغلاق"
                   >
-                    <X size={19} />
+                    <X size={22} />
                   </motion.button>
                 </div>
               </div>
 
               {/* ── Modal Body ───────────────────────────────────────────────── */}
-              <div className="flex-1 w-full bg-slate-100 dark:bg-slate-950 relative overflow-hidden">
+              <div className="flex-1 w-full bg-slate-100 dark:bg-slate-950 relative overflow-hidden flex flex-col">
                 {cvUrl.toLowerCase().includes('.doc') || cvUrl.toLowerCase().includes('.docx') ? (
                   <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center space-y-4">
                     <div className="w-16 h-16 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-300 flex items-center justify-center shadow-md">
@@ -1201,8 +1256,8 @@ export function ModernProfileView({
                         href={`https://docs.google.com/viewer?url=${encodeURIComponent(cvUrl)}&embedded=true`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        whileHover={{ scale: 1.03 }}
-                        whileTap={{ scale: 0.97 }}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
                         className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm"
                       >
                         <ExternalLink size={14} /><span>فتح في Google Docs</span>
@@ -1210,8 +1265,8 @@ export function ModernProfileView({
                       <motion.a
                         href={cvUrl}
                         download
-                        whileHover={{ scale: 1.03 }}
-                        whileTap={{ scale: 0.97 }}
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
                         className="px-4 py-2.5 rounded-xl bg-gradient-to-l from-[#0a66c2] to-[#004182] text-white text-xs font-black transition-all flex items-center gap-2 shadow-sm shadow-[#0a66c2]/20"
                       >
                         <Download size={14} /><span>تحميل الملف الآن</span>
@@ -1219,11 +1274,26 @@ export function ModernProfileView({
                     </div>
                   </div>
                 ) : (
-                  <iframe
-                    src={`https://docs.google.com/viewer?url=${encodeURIComponent(cvUrl)}&embedded=true`}
-                    title="CV Document"
-                    className="w-full h-full border-none"
-                  />
+                  <div className="w-full h-full relative">
+                    <iframe
+                      src={`https://docs.google.com/viewer?url=${encodeURIComponent(cvUrl)}&embedded=true`}
+                      title="CV Document"
+                      className="w-full h-full border-none"
+                    />
+                    {/* Floating pill for direct open if preview is slow */}
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 shadow-md">
+                      <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">إذا واجهت بطء في العرض:</span>
+                      <a
+                        href={cvUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[11px] font-bold text-[#0a66c2] dark:text-blue-400 hover:underline flex items-center gap-1"
+                      >
+                        <span>فتح في تبويب جديد</span>
+                        <ExternalLink size={11} />
+                      </a>
+                    </div>
+                  </div>
                 )}
               </div>
 
@@ -1235,9 +1305,9 @@ export function ModernProfileView({
                   download
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.97 }}
-                  className="px-4 py-2 bg-gradient-to-l from-[#0a66c2] to-[#004182] text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shadow-sm shadow-[#0a66c2]/20"
+                  className="px-5 py-2.5 bg-gradient-to-l from-[#0a66c2] to-[#004182] text-white text-xs font-black rounded-xl transition-all flex items-center gap-2 shadow-sm shadow-[#0a66c2]/20 cursor-pointer"
                 >
-                  <Download size={14} /><span>تحميل الملف</span>
+                  <Download size={15} /><span>تحميل الملف</span>
                 </motion.a>
               </div>
             </motion.div>
