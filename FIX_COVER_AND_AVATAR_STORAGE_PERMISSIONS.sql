@@ -90,3 +90,4 @@ CREATE POLICY "profiles_insert_own" ON public.profiles FOR INSERT WITH CHECK (tr
 
 -- تأكيد النجاح
 SELECT '✅ تم تطبيق جميع الصلاحيات بنجاح لرفع صور الغلاف والأفاتار والسير الذاتية!' AS status;
+

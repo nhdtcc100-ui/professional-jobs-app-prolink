@@ -66,19 +66,52 @@ const IMAGE_BUCKETS: Record<string, string[]> = {
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
 
+/** Convert HEIC/HEIF to JPEG if needed (iOS Safari / Camera) */
+async function convertHeicIfNeeded(file: File): Promise<File> {
+  const isHeic = (file.type && (file.type.includes('heic') || file.type.includes('heif'))) ||
+                 (file.name && /\.(heic|heif)$/i.test(file.name));
+  if (!isHeic) return file;
+  try {
+    const heic2anyModule = await import('heic2any');
+    const heic2any = heic2anyModule.default || heic2anyModule;
+    const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+    const blob = Array.isArray(converted) ? converted[0] : converted;
+    const newName = (file.name || 'photo').replace(/\.(heic|heif)$/i, '.jpg');
+    const out = new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() });
+    (out as any).__isSnapshot = true;
+    return out;
+  } catch (err) {
+    console.warn('[mobileUpload] HEIC conversion warning:', err);
+    return file;
+  }
+}
+
 /** Downscale an in-memory image File to ≤ maxDim px using hardware GPU bitmap */
 async function compressImageFile(
   file: File,
   maxDim = IMAGE_MAX_DIM,
   quality = IMAGE_QUALITY
 ): Promise<File> {
-  // Fast path: createImageBitmap (hardware-accelerated on Android Chrome / WebView)
+  // Convert HEIC before any canvas or bitmap operation
+  file = await convertHeicIfNeeded(file);
+
+  // Fast path: createImageBitmap with hardware downscale (prevents OOM on 108MP mobile photos)
   if (typeof createImageBitmap === 'function') {
     try {
-      const bmp = await Promise.race([
-        createImageBitmap(file),
-        new Promise<null>(res => setTimeout(() => res(null), 8000)),
-      ]);
+      let bmp: ImageBitmap | null = null;
+      try {
+        // Hardware subsampling decode
+        bmp = await Promise.race([
+          (createImageBitmap as any)(file, { resizeWidth: maxDim, resizeQuality: 'medium' }),
+          new Promise<null>(res => setTimeout(() => res(null), 8000)),
+        ]);
+      } catch {
+        bmp = await Promise.race([
+          createImageBitmap(file),
+          new Promise<null>(res => setTimeout(() => res(null), 8000)),
+        ]);
+      }
+
       if (bmp && bmp.width > 0) {
         let w = bmp.width, h = bmp.height;
         if (w >= h && w > maxDim) { h = Math.max(1, Math.round(h * maxDim / w)); w = maxDim; }
@@ -208,17 +241,23 @@ async function pickFile(type: UploadType): Promise<File | null> {
     try {
       const { Camera, CameraSource, CameraResultType } = await import('@capacitor/camera');
       const photo = await Camera.getPhoto({
-        quality: 85,
+        quality: 80,
         allowEditing: false,
-        resultType: CameraResultType.Uri,
-        source: CameraSource.Photos,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Prompt,
       });
-      if (photo?.webPath) {
-        const res  = await fetch(photo.webPath);
-        const blob = await res.blob();
-        const ext  = photo.format || 'jpg';
-        const f    = new File([blob], `photo_${Date.now()}.${ext}`, {
-          type: blob.type || `image/${ext}`, lastModified: Date.now(),
+      if (photo?.base64String) {
+        const byteCharacters = atob(photo.base64String);
+        const byteNumbers = new Uint8Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const ext = photo.format || 'jpg';
+        const mime = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+        const blob = new Blob([byteNumbers], { type: mime });
+        const f = new File([blob], `photo_${Date.now()}.${ext}`, {
+          type: mime,
+          lastModified: Date.now(),
         });
         (f as any).__isSnapshot = true;
         return f;

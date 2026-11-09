@@ -45,8 +45,16 @@ export function ModernProfileView({
     profile?.avatar || (profile as any)?.avatar_url ||
     `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'User')}&background=0a66c2&color=fff`
   );
-  const [coverUrl, setCoverUrl] = useState((profile as any)?.cover_url || '');
+  const [coverUrl, setCoverUrl] = useState((profile as any)?.cover_url || (profile as any)?.coverUrl || '');
   const [cvUrl, setCvUrl] = useState(profile?.cvUrl || (profile as any)?.cv_url || '');
+
+  // Keep state in sync with profile prop changes (prevents Mobile State loss)
+  React.useEffect(() => {
+    const cUrl = (profile as any)?.cover_url || (profile as any)?.coverUrl;
+    if (cUrl && cUrl !== coverUrl) setCoverUrl(cUrl);
+    const aUrl = profile?.avatar || (profile as any)?.avatar_url;
+    if (aUrl && aUrl !== avatar) setAvatar(aUrl);
+  }, [profile]);
 
   // ─── Password State ──────────────────────────────────────────────────────────
   const [currentPassword, setCurrentPassword] = useState('');
@@ -154,6 +162,57 @@ export function ModernProfileView({
       addToast('تعذر رفع صورة الغلاف: ' + (err?.message || ''), 'error');
     } finally {
       setIsUploadingCover(false);
+    }
+  };
+
+  // ─── Native Platform Handlers (Capacitor vs Web Input) ──────────────────────
+  const handleAvatarButtonClick = async () => {
+    if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
+      try {
+        setIsUploadingAvatar(true);
+        const { preview, uploadPromise } = await mobileUploadService.pickAndUpload('avatar', {
+          userId: effectiveUserId,
+        });
+        if (preview) setAvatar(preview);
+        const finalUrl = await uploadPromise;
+        setAvatar(finalUrl);
+        await profileService.updateProfile(effectiveUserId, { avatar: finalUrl, avatar_url: finalUrl });
+        if (setAppUser) setAppUser((prev: any) => ({ ...prev, avatar: finalUrl, avatar_url: finalUrl }));
+        addToast('✅ تم تحديث الصورة الشخصية بنجاح!', 'success');
+      } catch (err: any) {
+        if (!err?.message?.includes('cancel') && !err?.message?.includes('User cancel')) {
+          addToast('تعذر تغيير الصورة: ' + (err?.message || ''), 'error');
+        }
+      } finally {
+        setIsUploadingAvatar(false);
+      }
+    } else {
+      avatarInputRef.current?.click();
+    }
+  };
+
+  const handleCoverButtonClick = async () => {
+    if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
+      try {
+        setIsUploadingCover(true);
+        const { preview, uploadPromise } = await mobileUploadService.pickAndUpload('cover', {
+          userId: effectiveUserId,
+        });
+        if (preview) setCoverUrl(preview);
+        const finalUrl = await uploadPromise;
+        setCoverUrl(finalUrl);
+        await profileService.updateProfile(effectiveUserId, { cover_url: finalUrl, coverUrl: finalUrl } as any);
+        if (setAppUser) setAppUser((prev: any) => ({ ...prev, cover_url: finalUrl, coverUrl: finalUrl }));
+        addToast('✅ تم تحديث صورة الغلاف بنجاح!', 'success');
+      } catch (err: any) {
+        if (!err?.message?.includes('cancel') && !err?.message?.includes('User cancel')) {
+          addToast('تعذر تغيير صورة الغلاف: ' + (err?.message || ''), 'error');
+        }
+      } finally {
+        setIsUploadingCover(false);
+      }
+    } else {
+      coverInputRef.current?.click();
     }
   };
 
@@ -356,8 +415,8 @@ export function ModernProfileView({
             <>
               <button
                 type="button"
-                onClick={() => coverInputRef.current?.click()}
-                className="absolute bottom-3 left-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 hover:bg-black/60 text-white text-xs font-bold backdrop-blur-sm transition-all border border-white/20 active:scale-95"
+                onClick={handleCoverButtonClick}
+                className="absolute bottom-3 left-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 hover:bg-black/60 text-white text-xs font-bold backdrop-blur-sm transition-all border border-white/20 active:scale-95 cursor-pointer"
               >
                 <Camera size={13} />
                 <span>تغيير الغلاف</span>
@@ -383,7 +442,7 @@ export function ModernProfileView({
                 <>
                   <button
                     type="button"
-                    onClick={() => avatarInputRef.current?.click()}
+                    onClick={handleAvatarButtonClick}
                     className="absolute -top-1.5 -right-1.5 w-8 h-8 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900 transition-all active:scale-90 cursor-pointer"
                     title="تغيير الصورة الشخصية"
                   >
