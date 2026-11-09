@@ -1450,11 +1450,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
     try {
-      let cvUrl = '';
+      let cvUrl = (appUser as any).cvUrl || (appUser as any).cv_url || '';
       if (file) {
         const { data: url, error: uploadError } = await jobService.uploadCV(appUser.id, file);
         if (uploadError) throw uploadError;
-        cvUrl = url || '';
+        if (url) cvUrl = url;
       }
       
       const { error } = await jobService.applyToJob(appUser.id, job.employer_id || '', {
@@ -1463,13 +1463,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cvUrl: cvUrl,
         skills: appUser.skills || [],
         applicantData: {
-          name: appUser.name,
-          avatar: appUser.avatar,
-          industry: (appUser as any).industry,
-          location: (appUser as any).location,
-          phone: (appUser as any).phone,
-          bio: (appUser as any).bio,
-          email: appUser.email
+          name: appUser.name || (appUser as any).fullName || 'متقدم',
+          avatar: appUser.avatar || '',
+          title: (appUser as any).title || (appUser as any).specialty || '',
+          industry: (appUser as any).industry || (appUser as any).specialty || '',
+          location: (appUser as any).location || '',
+          phone: (appUser as any).phone || '',
+          bio: (appUser as any).bio || '',
+          email: appUser.email || '',
+          cvUrl: cvUrl,
         },
         experience: (appUser as any).experience || '',
         education: (appUser as any).education || ''

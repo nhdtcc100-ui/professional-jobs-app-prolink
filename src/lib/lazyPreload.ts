@@ -45,6 +45,9 @@ export const preloadTab = (tab: string) => {
     case 'erp':
       loadERPView();
       break;
+    case 'admin':
+      loadAdminDashboard();
+      break;
     default:
       break;
   }

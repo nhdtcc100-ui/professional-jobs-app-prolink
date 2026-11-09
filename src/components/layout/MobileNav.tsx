@@ -7,7 +7,8 @@ import {
 import { AppUser } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 import { supabase } from '../../lib/supabase';
-import { preloadTab } from '../../lib/lazyPreload';
+import { preloadTab, loadAdminDashboard } from '../../lib/lazyPreload';
+import { isJobPoster } from '../../lib/utils/roleUtils';
 
 interface MobileNavProps {
   activeTab: string;
@@ -85,12 +86,32 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 
   const [applicantsCount, setApplicantsCount] = useState(0);
   useEffect(() => {
-    if (!appUser?.id) return;
-    (supabase.from('job_applications') as any)
-      .select('id', { count: 'exact', head: true })
-      .eq('employer_id', appUser.id)
-      .then(({ count }: any) => setApplicantsCount(count || 0));
-  }, [appUser?.id]);
+    if (!appUser?.id || !isJobPoster(appUser)) {
+      setApplicantsCount(0);
+      return;
+    }
+    const fetchUnseen = async () => {
+      try {
+        const { count } = await (supabase.from('job_applications') as any)
+          .select('id', { count: 'exact', head: true })
+          .eq('employer_id', appUser.id)
+          .eq('status', 'pending');
+        setApplicantsCount(count || 0);
+      } catch (_) {}
+    };
+    fetchUnseen();
+
+    const channel = supabase
+      .channel(`mobile-dock-job-apps-${appUser.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'job_applications', filter: `employer_id=eq.${appUser.id}` }, () => {
+        fetchUnseen();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [appUser?.id, appUser?.role]);
 
   const activeNavId = showMobileMenu ? 'more' : activeTab;
 
@@ -180,6 +201,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
         icon: Shield,
         color: 'text-red-500',
         onClick: () => setShowAdmin(true),
+        preload: () => loadAdminDashboard(),
       });
     }
 
@@ -286,7 +308,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
             const isJobs = item.id === 'jobs';
             const badge = isMessages 
               ? unreadMessagesCount 
-              : isJobs && applicantsCount > 0 
+              : isJobs && isJobPoster(appUser) && applicantsCount > 0 
                 ? applicantsCount 
                 : 0;
 

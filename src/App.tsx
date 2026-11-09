@@ -13,7 +13,7 @@ import {
   loadSettingsPage,
   preloadTab
 } from './lib/lazyPreload';
-import { Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare } from 'lucide-react';
+import { Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare, Shield } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { Post, Job, AppUser } from './types';
 import { SkeletonPostCard } from './components/ui';
@@ -920,7 +920,17 @@ function App() {
       {/* ── Admin Dashboard full page ─────────────────────── */}
       <AnimatePresence mode="wait">
         {showAdmin && (appUser?.isAdmin || appUser?.hasSupportAccess) && (
-          <Suspense fallback={null} key="admin-dashboard">
+          <Suspense
+            fallback={
+              <div className="fixed inset-0 z-[200] bg-slate-900 flex flex-col items-center justify-center text-white" dir="rtl">
+                <div className="w-12 h-12 rounded-2xl bg-blue-600/30 text-blue-400 flex items-center justify-center border border-blue-500/30 animate-pulse mb-3">
+                  <Shield size={24} />
+                </div>
+                <p className="text-xs font-black">جاري فتح لوحة التحكم العليا...</p>
+              </div>
+            }
+            key="admin-dashboard"
+          >
             <AdminDashboard reports={reports} onClose={() => setShowAdmin(false)} addToast={addToast} />
           </Suspense>
         )}

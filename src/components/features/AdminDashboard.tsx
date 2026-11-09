@@ -132,6 +132,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
 
   const fetchRoleRequests = async () => {
     setLoadingRoleRequests(true);
+    const safetyTimer = setTimeout(() => setLoadingRoleRequests(false), 4500);
     try {
       const { data, error } = await profileService.fetchAllPendingRoleRequests();
       if (!error && data) {
@@ -140,12 +141,14 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
     } catch (e) {
       console.error("fetchRoleRequests error:", e);
     } finally {
+      clearTimeout(safetyTimer);
       setLoadingRoleRequests(false);
     }
   };
 
   const fetchSupportThreads = async () => {
     setSupportLoading(true);
+    const safetyTimer = setTimeout(() => setSupportLoading(false), 4500);
     try {
       const adminIds = new Set([
         currentAppUser?.id,
@@ -222,6 +225,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
     } catch (e) {
       console.error("Support fetch error:", e);
     } finally {
+      clearTimeout(safetyTimer);
       setSupportLoading(false);
     }
   };
@@ -303,6 +307,10 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
     if (isFetchingStats.current) return;
     isFetchingStats.current = true;
     setLoadingStats(true);
+    const safetyTimer = setTimeout(() => {
+      setLoadingStats(false);
+      isFetchingStats.current = false;
+    }, 4500);
 
     try {
       // 1. Fetch exact total counts using head:true for efficiency
@@ -376,6 +384,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
       console.error('Admin stats error:', e);
       addToast('خطأ في جلب البيانات: ' + (e.message || 'خطأ غير معروف'), 'error');
     } finally {
+      clearTimeout(safetyTimer);
       setLoadingStats(false);
       isFetchingStats.current = false;
     }

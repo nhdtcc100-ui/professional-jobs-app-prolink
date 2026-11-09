@@ -105,9 +105,23 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
       if (incoming) {
         setIncomingApplications((incoming as any[]).map((app: any) => {
           const job = app.jobs || jobs.find((j: any) => j.id === app.job_id);
+          const userProfile = allUsers.find((u: any) => u.id === app.applicant_id);
+          const applicantData = {
+            ...(userProfile || {}),
+            ...(app.applicant_data || {}),
+            name: app.applicant_data?.name || (userProfile as any)?.name || (userProfile as any)?.full_name || 'متقدم',
+            avatar: app.applicant_data?.avatar || userProfile?.avatar || (userProfile as any)?.avatar_url || null,
+            phone: app.applicant_data?.phone || userProfile?.phone || '',
+            email: app.applicant_data?.email || userProfile?.email || '',
+            location: app.applicant_data?.location || userProfile?.location || '',
+            title: app.applicant_data?.title || userProfile?.title || (userProfile as any)?.headline || '',
+            bio: app.applicant_data?.bio || userProfile?.bio || '',
+            cvUrl: app.cv_url || app.applicant_data?.cvUrl || userProfile?.cvUrl || (userProfile as any)?.cv_url || null,
+          };
           return {
             ...app,
-            applicantName: app.applicant_data?.name || 'متقدم مجهول',
+            applicant_data: applicantData,
+            applicantName: applicantData.name,
             jobTitle: job?.title || 'وظيفة غير معروفة',
             requirements: job?.requirements || job?.description || ''
           };
@@ -355,10 +369,24 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
     if (!job.employer_id) { addToast('بيانات صاحب العمل مفقودة', 'error'); return; }
     try {
       addToast('جاري إرسال طلبك... ⚡');
+      const cvUrl = (appUser as any).cvUrl || (appUser as any).cv_url || '';
       const { error } = await jobService.applyToJob(appUser.id, job.employer_id, {
         jobId: job.id,
         skills: appUser.skills || [],
-        applicantData: { name: appUser.name, avatar: appUser.avatar },
+        cvUrl: cvUrl,
+        applicantData: {
+          name: appUser.name || (appUser as any).fullName || 'متقدم',
+          avatar: appUser.avatar || '',
+          title: (appUser as any).title || (appUser as any).specialty || '',
+          industry: (appUser as any).industry || (appUser as any).specialty || '',
+          location: (appUser as any).location || '',
+          phone: (appUser as any).phone || '',
+          bio: (appUser as any).bio || '',
+          email: appUser.email || '',
+          cvUrl: cvUrl,
+        },
+        experience: (appUser as any).experience || '',
+        education: (appUser as any).education || '',
         coverLetter: 'أرغب في التقديم عبر ملفي الشخصي.'
       });
       if (error) throw error;

@@ -4,7 +4,7 @@ import {
   FileText, Download, CheckCircle, XCircle, Clock, Search, ExternalLink,
   User, Briefcase, FileSpreadsheet, Calendar, MessageCircle, Mail,
   RotateCcw, Trash2, MapPin, Globe, Sparkles, DollarSign, MessageSquare,
-  Loader2, Star, StickyNote, ArrowRight, ChevronUp, ChevronDown, Phone
+  Loader2, Star, StickyNote, ArrowRight, ChevronUp, ChevronDown, Phone, Eye
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { AppUser } from '../../../types';
@@ -13,6 +13,7 @@ import { GlassCard, CloseButton } from '../../ui';
 import { useAppContext } from '../../../contexts/AppContext';
 import { EmployeeOnboardingModal } from '../erp/EmployeeOnboardingModal';
 import { AIEvaluationModal } from './AIEvaluationModal';
+import { PDFViewerModal } from '../../common/PDFViewerModal';
 interface ApplicantData {
   name?: string;
   email?: string;
@@ -227,6 +228,29 @@ function ApplicationsListViewContent({
   const [highlightedAppId, setHighlightedAppId] = useState<string | null>(null);
   const detailContainerRef = React.useRef<HTMLDivElement>(null);
   const [ratingFilter, setRatingFilter] = useState<number>(0); // 0 = all
+  const [previewCVData, setPreviewCVData] = useState<{
+    url: string;
+    userName?: string;
+    userAvatar?: string;
+  } | null>(null);
+
+  // Helper to reliably retrieve complete applicant profile
+  const resolveApplicant = (app: JobApplication) => {
+    const profile = allUsers.find(u => u.id === app.applicant_id);
+    const data = app.applicant_data || {};
+    return {
+      ...(profile || {}),
+      ...data,
+      name: data.name || (app as any).applicantName || profile?.name || (profile as any)?.full_name || 'متقدم',
+      avatar: data.avatar || profile?.avatar || (profile as any)?.avatar_url || '',
+      phone: data.phone || profile?.phone || '',
+      email: data.email || profile?.email || '',
+      location: data.location || profile?.location || '',
+      title: data.title || profile?.title || (profile as any)?.job_title || (profile as any)?.headline || '',
+      bio: data.bio || profile?.bio || '',
+      cvUrl: app.cv_url || data.cvUrl || data.cv_url || profile?.cvUrl || (profile as any)?.cv_url || '',
+    };
+  };
 
   // ── Rating system (localStorage) ─────────────────────────────────────
   const getRatings = (): Record<string, number> => {
@@ -492,32 +516,35 @@ function ApplicationsListViewContent({
                       <span>المتقدم المعروض حالياً 📍</span>
                     </div>
                   )}
-                  <div className="flex items-start gap-4">
-                    <div className="relative">
-                      <img
-                        src={app.applicant_data?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(app.applicant_data?.name || 'U')}&background=0a66c2&color=fff`}
-                        className={`w-14 h-14 rounded-2xl object-cover shadow-md border-2 transition-all ${isHighlighted ? 'border-blue-500 scale-105' : 'border-white dark:border-slate-700'}`}
-                        alt=""
-                      />
-                    <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white dark:border-slate-700 flex items-center justify-center shadow-sm ${app.status === 'approved' ? 'bg-emerald-500' :
-                        app.status === 'rejected' ? 'bg-red-500' :
-                          'bg-amber-500'
-                      }`}>
-                      {app.status === 'approved' ? <CheckCircle size={10} className="text-white" /> :
-                        app.status === 'rejected' ? <XCircle size={10} className="text-white" /> :
-                          <Clock size={10} className="text-white" />}
-                    </div>
-                  </div>
+                  {(() => {
+                    const resolved = resolveApplicant(app);
+                    return (
+                      <div className="flex items-start gap-4">
+                        <div className="relative">
+                          <img
+                            src={resolved.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(resolved.name || 'U')}&background=0a66c2&color=fff`}
+                            className={`w-14 h-14 rounded-2xl object-cover shadow-md border-2 transition-all ${isHighlighted ? 'border-blue-500 scale-105' : 'border-white dark:border-slate-700'}`}
+                            alt=""
+                          />
+                        <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white dark:border-slate-700 flex items-center justify-center shadow-sm ${app.status === 'approved' ? 'bg-emerald-500' :
+                            app.status === 'rejected' ? 'bg-red-500' :
+                              'bg-amber-500'
+                          }`}>
+                          {app.status === 'approved' ? <CheckCircle size={10} className="text-white" /> :
+                            app.status === 'rejected' ? <XCircle size={10} className="text-white" /> :
+                              <Clock size={10} className="text-white" />}
+                        </div>
+                      </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="text-sm font-black text-slate-800 dark:text-white truncate">
-                          {isSentView ? (app.jobTitle || app.jobs?.title || 'وظيفة مهنية') : (app.applicant_data?.name || (app as any).applicantName || 'متقدم')}
-                        </h3>
-                        <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mb-1 flex items-center gap-1">
-                          <Briefcase size={10} /> {isSentView ? ((app as any).company || (app.jobs as any)?.company || 'الشركة المعلنة') : (app.jobTitle || app.jobs?.title || app.job?.title)}
-                        </p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <h3 className="text-sm font-black text-slate-800 dark:text-white truncate">
+                              {isSentView ? (app.jobTitle || app.jobs?.title || 'وظيفة مهنية') : resolved.name}
+                            </h3>
+                            <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mb-1 flex items-center gap-1">
+                              <Briefcase size={10} /> {isSentView ? ((app as any).company || (app.jobs as any)?.company || 'الشركة المعلنة') : (app.jobTitle || app.jobs?.title || app.job?.title)}
+                            </p>
 
                         {/* Status badge for sent applications */}
                         {isSentView && (
@@ -711,7 +738,9 @@ function ApplicationsListViewContent({
                     )}
                   </div>
                 </div>
-              </GlassCard>
+              );
+            })()}
+          </GlassCard>
             </motion.div>
           );
         })}
@@ -809,14 +838,15 @@ function ApplicationsListViewContent({
               </button>
             </div>
 
-            {/* ── Scrollable Feed (Snap Scrolling) ── */}
+            {/* ── Scrollable Feed (Smooth Scrolling) ── */}
             <div
               ref={detailContainerRef}
               onScroll={handleDetailScroll}
-              className="flex-1 overflow-y-auto snap-y snap-mandatory no-scrollbar bg-slate-100 dark:bg-slate-950"
-              style={{ scrollSnapType: 'y mandatory' }}
+              className="flex-1 overflow-y-auto no-scrollbar bg-slate-100 dark:bg-slate-950"
+              style={{ scrollBehavior: 'smooth' }}
             >
               {filteredApps.map((app, index) => {
+                const resolved = resolveApplicant(app);
                 const statusBadge = app.status === 'approved' 
                   ? { label: 'مقبول', cls: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' }
                   : app.status === 'rejected'
@@ -827,7 +857,7 @@ function ApplicationsListViewContent({
                   <div
                     key={app.id || index}
                     id={`app-detail-item-${index}`}
-                    className="w-full h-full min-h-full snap-start snap-always flex flex-col justify-between overflow-hidden relative"
+                    className="w-full h-full min-h-full flex flex-col justify-between overflow-hidden relative"
                   >
                     {/* Inner Scrollable Content with comfortable bottom padding */}
                     <div
@@ -842,7 +872,7 @@ function ApplicationsListViewContent({
                           <div className="flex items-center gap-4">
                             <div className="relative group">
                               <img
-                                src={app.applicant_data?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(app.applicant_data?.name || 'U')}&background=random`}
+                                src={resolved.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(resolved.name || 'U')}&background=random`}
                                 className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl object-cover border-4 border-white/30 shadow-2xl"
                                 referrerPolicy="no-referrer"
                                 alt=""
@@ -855,7 +885,7 @@ function ApplicationsListViewContent({
                             </div>
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className="text-xl sm:text-2xl font-black text-white">{app.applicant_data?.name}</h3>
+                                <h3 className="text-xl sm:text-2xl font-black text-white">{resolved.name}</h3>
                                 <span className={`px-3 py-1 rounded-full text-[10px] font-black border bg-white/20 text-white border-white/30`}>
                                   {statusBadge.label}
                                 </span>
@@ -1046,26 +1076,38 @@ function ApplicationsListViewContent({
                         </section>
                       )}
 
-                      {/* 📎 CV Download Link */}
-                      {(app.cv_url || app.applicant_data?.cvUrl) && (
-                        <a
-                          href={app.cv_url || app.applicant_data?.cvUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center justify-between p-5 bg-gradient-to-r from-[#0a66c2] to-[#004182] rounded-2xl text-white shadow-xl hover:scale-[1.01] transition-all group"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center border border-white/30">
-                              <FileText size={18} />
+                      {/* 📎 CV In-App Modal Preview */}
+                      {(() => {
+                        const cvTargetUrl = app.cv_url || app.applicant_data?.cvUrl || resolved.cvUrl;
+                        if (!cvTargetUrl) return null;
+                        return (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPreviewCVData({
+                                url: cvTargetUrl,
+                                userName: resolved.name,
+                                userAvatar: resolved.avatar,
+                              });
+                            }}
+                            className="w-full flex items-center justify-between p-5 bg-gradient-to-r from-[#0a66c2] to-[#004182] hover:from-[#08529c] hover:to-[#003468] rounded-2xl text-white shadow-xl hover:scale-[1.01] active:scale-[0.99] transition-all group text-right cursor-pointer"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center border border-white/30">
+                                <FileText size={18} />
+                              </div>
+                              <div>
+                                <span className="text-sm font-black block">معاينة السيرة الذاتية (CV) مباشرة</span>
+                                <span className="text-[10px] text-blue-100 font-bold">عرض آمن للملف بداخل التطبيق بدون خروج</span>
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-sm font-black block">تحميل السيرة الذاتية (CV)</span>
-                              <span className="text-[10px] text-blue-100 font-bold">الملف الأصلي المرفق من المتقدم</span>
+                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/20 text-white text-xs font-black group-hover:bg-white/30 transition-colors">
+                              <Eye size={15} />
+                              <span>فتح السيرة</span>
                             </div>
-                          </div>
-                          <ExternalLink size={18} className="text-white/70 group-hover:text-white" />
-                        </a>
-                      )}
+                          </button>
+                        );
+                      })()}
 
                       {/* ⚡ Decision & Action Controls Section (يصل إليها المستخدم عند التمرير لأسفل التفاصيل) */}
                       <section className="pt-4 space-y-4">
@@ -1199,6 +1241,15 @@ function ApplicationsListViewContent({
           />
         )}
       </AnimatePresence>
+
+      {/* ── In-App Secure PDF CV Viewer Modal ── */}
+      <PDFViewerModal
+        isOpen={!!previewCVData}
+        onClose={() => setPreviewCVData(null)}
+        pdfSource={previewCVData?.url || null}
+        userName={previewCVData?.userName}
+        userAvatar={previewCVData?.userAvatar}
+      />
     </div>
   );
 }

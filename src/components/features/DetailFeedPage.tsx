@@ -299,12 +299,12 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
         </div>
       </div>
 
-      {/* ── Vertical Snap Scroll Container ── */}
+      {/* ── Vertical Smooth Navigation Container ── */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-scroll snap-y snap-mandatory no-scrollbar"
+        className="flex-1 overflow-y-scroll no-scrollbar"
         style={{
-          scrollSnapType: 'y mandatory',
+          scrollBehavior: 'smooth',
           overscrollBehavior: 'contain',
           WebkitOverflowScrolling: 'touch' as any,
           touchAction: 'pan-y',
@@ -322,12 +322,10 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
               id={`detail-item-${index}`}
               data-index={index}
               ref={el => { itemsRef.current[index] = el; }}
-              className="w-full snap-start snap-always overflow-y-auto bg-white dark:bg-slate-950 relative"
+              className="w-full overflow-y-auto bg-white dark:bg-slate-950 relative transition-transform duration-200"
               style={{
                 height: '100%',
                 minHeight: '100%',
-                scrollSnapAlign: 'start',
-                scrollSnapStop: 'always',
               }}
             >
               {isItemJob ? (

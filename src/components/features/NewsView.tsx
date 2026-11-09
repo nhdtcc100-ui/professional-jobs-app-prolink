@@ -23,6 +23,10 @@ export { formatNewsText };
 const FALLBACK: NewsItem[] = [
   { id: 'f1', author: 'Elevate عراق', content: 'سوق العمل العراقي يشهد نمواً ملحوظاً في القطاعات التقنية والرقمية.', title: 'سوق العمل العراقي يشهد نمواً في قطاع التقنية', link: '#', pubDate: new Date().toISOString(), description: 'سوق العمل العراقي يشهد نمواً ملحوظاً في القطاعات التقنية والرقمية.', thumbnail: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=600&h=300&fit=crop', region: 'iraq', topic: 'وظائف', source: 'Elevate عراق' },
   { id: 'f2', author: 'Elevate عراق', content: 'الذكاء الاصطناعي يتصدر قائمة المهارات الأكثر طلباً في الأسواق العربية.', title: 'أهم 10 مهارات يبحث عنها أصحاب العمل العرب في 2026', link: '#', pubDate: new Date(Date.now() - 3.6e6 * 3).toISOString(), description: 'الذكاء الاصطناعي يتصدر قائمة المهارات الأكثر طلباً في الأسواق العربية.', thumbnail: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600&h=300&fit=crop', region: 'arab', topic: 'وظائف', source: 'Elevate عراق' },
+  { id: 'f-pol-1', author: 'الجزيرة - سياسة', content: 'تحركات دبلوماسية مكثفة واجتماعات لتعزيز الاستقرار وتنسيق المواقف الاقتصادية والتنموية في المنطقة.', title: 'قمة دولية تبحث آفاق التعاون الاقتصادي والاستقرار الدبلوماسي', link: 'https://www.aljazeera.net', pubDate: new Date(Date.now() - 3.6e6 * 2).toISOString(), description: 'تحركات دبلوماسية مكثفة واجتماعات لتعزيز الاستقرار في المنطقة.', thumbnail: 'https://images.unsplash.com/photo-1541872703-74c5e44368f9?w=600&h=300&fit=crop', region: 'arab', topic: 'سياسة', source: 'الجزيرة - سياسة' },
+  { id: 'f-pol-2', author: 'BBC عربي', content: 'الحكومة العراقية تطلق حزمة قرارات تنموية جديدة لتنظيم الاستثمارات ومشاريع البنية التحتية والمنافذ التجارية.', title: 'الحكومة تعلن عن مشاريع استراتيجية كبرى لربط المدن والمناطق الصناعية', link: 'https://www.bbc.com/arabic', pubDate: new Date(Date.now() - 3.6e6 * 4).toISOString(), description: 'حزمة قرارات تنموية جديدة لتنظيم الاستثمارات ومشاريع البنية التحتية.', thumbnail: 'https://images.unsplash.com/photo-1577495508048-b635879837f1?w=600&h=300&fit=crop', region: 'iraq', topic: 'سياسة', source: 'BBC عربي' },
+  { id: 'f-spo-1', author: 'كووورة - رياضة', content: 'المنتخب العراقي يواصل تدريباته المكثفة استعداداً للتصفيات الحاسمة المؤهلة لكأس العالم وسط دعم جماهيري واسع.', title: 'أسود الرافدين يواصلون التحضيرات لتصفيات المونديال بروح معنوية عالية', link: 'https://www.kooora.com', pubDate: new Date(Date.now() - 3.6e6 * 1).toISOString(), description: 'تدريبات مكثفة لمنتخب العراق استعداداً للتصفيات الحاسمة.', thumbnail: 'https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=600&h=300&fit=crop', region: 'iraq', topic: 'رياضة', source: 'كووورة - رياضة' },
+  { id: 'f-spo-2', author: 'FilGoal - رياضة', content: 'مواجهات نارية في الدوريات الأوروبية الكبرى ومنافسة مشتعلة على صدارة دوري أبطال أوروبا والبطولات القارية.', title: 'نتائج وترتيب الجولة الحاسمة في دوري أبطال أوروبا والدوريات الكبرى', link: 'https://www.filgoal.com', pubDate: new Date(Date.now() - 3.6e6 * 5).toISOString(), description: 'منافسة مشتعلة على صدارة دوري أبطال أوروبا والبطولات القارية.', thumbnail: 'https://images.unsplash.com/photo-1579952363873-27f3bade9f55?w=600&h=300&fit=crop', region: 'global', topic: 'رياضة', source: 'FilGoal - رياضة' },
   { id: 'f3', author: 'Elevate عراق', content: 'تحولات كبرى في سوق العمل العالمي بسبب تقنيات الذكاء الاصطناعي التوليدي.', title: 'الذكاء الاصطناعي يعيد رسم خارطة التوظيف العالمي', link: '#', pubDate: new Date(Date.now() - 3.6e6 * 24).toISOString(), description: 'تحولات كبرى في سوق العمل العالمي بسبب تقنيات الذكاء الاصطناعي التوليدي.', thumbnail: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=600&h=300&fit=crop', region: 'global', topic: 'تقنية', source: 'Elevate عراق' },
   { id: 'f4', author: 'Elevate عراق', content: 'الإمارات تطلق حزمة مبادرات لدعم المواهب الرقمية والمبرمجين.', title: 'الإمارات تطلق مبادرات لاستقطاب المواهب الرقمية', link: '#', pubDate: new Date(Date.now() - 3.6e6 * 5).toISOString(), description: 'الإمارات تطلق حزمة مبادرات لدعم المواهب الرقمية والمبرمجين.', thumbnail: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=600&h=300&fit=crop', region: 'arab', topic: 'اقتصاد', source: 'Elevate عراق' },
   { id: 'f5', author: 'Elevate عراق', content: 'زيادة ملحوظة في اعتماد الشركات العراقية على نظام العمل عن بعد.', title: 'فرص العمل عن بُعد في ازدياد مستمر بالعراق', link: '#', pubDate: new Date(Date.now() - 3.6e6 * 10).toISOString(), description: 'زيادة ملحوظة في اعتماد الشركات العراقية على نظام العمل عن بعد.', thumbnail: 'https://images.unsplash.com/photo-1587560699334-cc4ff634909a?w=600&h=300&fit=crop', region: 'iraq', topic: 'مقالات', source: 'Elevate عراق' },
@@ -123,6 +127,8 @@ const fetchFeed = async (feed: { url: string; region: NewsItem['region']; label:
 const assignTopic = (text: string): NewsItem['topic'] => {
   const t = text.toLowerCase();
   if (/فرصة عمل|فرص عمل|مطلوب موظف|مطلوب موظفة|وظائف|وظيفة|توظيف|job|career|hiring|recruit|شواغر|سيرة ذاتية|التقديم على/.test(t)) return 'وظائف';
+  if (/سياسة|سياسي|حكومة|برلمان|وزير|انتخاب|رئيس|دبلوماسي|علاقات دولية|مفاوضات|politics|government|parliament|minister/.test(t)) return 'سياسة';
+  if (/رياضة|رياضي|كرة قدم|مباراة|بطولة|دوري|هدف|لاعب|نادي|كأس|مونديال|منتخب|sport|football|match|fifa|league/.test(t)) return 'رياضة';
   if (/تقنية|تكنول|ذكاء|برمج|tech|software|ai|digital|رقمي/.test(t)) return 'تقنية';
   if (/اقتصاد|اقتصادي|سوق|نفط|بورصة|finance|market|invest|gdp/.test(t)) return 'اقتصاد';
   return 'مقالات';
@@ -140,6 +146,8 @@ const REGION_IMGS: Record<string, string> = {
 };
 const TOPIC_IMGS: Record<string, string> = {
   وظائف: APP_PLACEHOLDER,
+  سياسة: APP_PLACEHOLDER,
+  رياضة: APP_PLACEHOLDER,
   تقنية: APP_PLACEHOLDER,
   اقتصاد: APP_PLACEHOLDER,
   مقالات: APP_PLACEHOLDER,
@@ -236,26 +244,31 @@ export function NewsCarousel({ appUser, onViewAll }: { appUser: any, onViewAll?:
 
   useEffect(() => {
     const loadNews = async () => {
-      setLoading(true);
       try {
-        const cached = sessionStorage.getItem('prolink_news_v4');
+        const cached = localStorage.getItem('prolink_news_cache_v2') || sessionStorage.getItem('prolink_news_v4');
         if (cached) {
-          const parsed = JSON.parse(cached) as NewsItem[];
-          const filtered = parsed.filter(n => n.region === 'iraq');
-          if (filtered.length > 0) {
-            setItems(filtered.slice(0, 8));
-            setLoading(false);
-            return;
-          }
+          try {
+            const parsedObj = JSON.parse(cached);
+            const parsed: NewsItem[] = Array.isArray(parsedObj) ? parsedObj : (parsedObj.data || []);
+            const jobNews = parsed.filter(n => n.topic === 'وظائف' || /فرصة|وظيفة|وظائف|تعيين|توظيف|شواغر|سيرة ذاتية|التقديم على/i.test(n.title + ' ' + (n.description || '')));
+            if (jobNews.length > 0) {
+              setItems(jobNews.slice(0, 8));
+              setLoading(false);
+              return;
+            }
+          } catch {}
         }
 
         const sources = newsService.getDefaultSources();
         const results = await Promise.all(sources.map(s => newsService.fetchRSS(s.url, s.name)));
         const flat = results.flat().sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+        const jobNews = flat.filter(n => n.topic === 'وظائف' || /فرصة|وظيفة|وظائف|تعيين|توظيف|شواغر|سيرة ذاتية|التقديم على/i.test(n.title + ' ' + (n.description || '')));
         
-        if (flat.length > 0) {
+        if (jobNews.length > 0) {
+          setItems(jobNews.slice(0, 8));
+          sessionStorage.setItem('prolink_news_v4', JSON.stringify(jobNews));
+        } else if (flat.length > 0) {
           setItems(flat.slice(0, 8));
-          sessionStorage.setItem('prolink_news_v4', JSON.stringify(flat));
         }
       } catch (e) {
         console.error("NewsCarousel error:", e);
@@ -392,11 +405,11 @@ const CACHE_TTL_MS = 15 * 60 * 1000;
 
 const getInitialNews = (): NewsItem[] => {
   try {
-    const raw = sessionStorage.getItem(CACHE_KEY_MAIN);
+    const raw = localStorage.getItem(CACHE_KEY_MAIN) || sessionStorage.getItem(CACHE_KEY_MAIN);
     if (!raw) return FALLBACK;
     const { ts, data } = JSON.parse(raw);
-    if (Date.now() - ts > CACHE_TTL_MS) return FALLBACK;
-    return data as NewsItem[];
+    if (Array.isArray(data) && data.length > 0) return data;
+    return FALLBACK;
   } catch { return FALLBACK; }
 };
 
@@ -407,7 +420,7 @@ export function NewsView({ appUser }: { appUser: any }) {
   const [loading, setLoading] = useState(false);
   const [isLive, setIsLive] = useState(() => {
     try {
-      const raw = sessionStorage.getItem(CACHE_KEY_MAIN);
+      const raw = localStorage.getItem(CACHE_KEY_MAIN) || sessionStorage.getItem(CACHE_KEY_MAIN);
       return !!raw;
     } catch { return false; }
   });
@@ -443,16 +456,20 @@ export function NewsView({ appUser }: { appUser: any }) {
 
   const getCache = (): NewsItem[] | null => {
     try {
-      const raw = sessionStorage.getItem(CACHE_KEY_MAIN);
+      const raw = localStorage.getItem(CACHE_KEY_MAIN) || sessionStorage.getItem(CACHE_KEY_MAIN);
       if (!raw) return null;
       const { ts, data } = JSON.parse(raw);
-      if (Date.now() - ts > CACHE_TTL_MS) { sessionStorage.removeItem(CACHE_KEY_MAIN); return null; }
+      if (Date.now() - ts > CACHE_TTL_MS && (!data || data.length === 0)) return null;
       return data;
     } catch { return null; }
   };
 
   const setCache = (items: NewsItem[]) => {
-    try { sessionStorage.setItem(CACHE_KEY_MAIN, JSON.stringify({ ts: Date.now(), data: items })); } catch {}
+    try {
+      const payload = JSON.stringify({ ts: Date.now(), data: items });
+      localStorage.setItem(CACHE_KEY_MAIN, payload);
+      sessionStorage.setItem(CACHE_KEY_MAIN, payload);
+    } catch {}
   };
 
   const fetchNews = useCallback(async (force = false) => {
@@ -494,12 +511,16 @@ export function NewsView({ appUser }: { appUser: any }) {
         // ✅ Strict source filter: only keep items from registered sources
         .filter(n => !n.source || allowedSources.has(n.source));
 
-      if (collected.length > 0) {
+      // Always include political, sports, and economic news links so topic filters are rich and responsive
+      const nonJobFallbacks = FALLBACK.filter(f => f.topic !== 'وظائف');
+      const allNews = [...collected, ...nonJobFallbacks];
+
+      if (allNews.length > 0) {
         const seen = new Set<string>();
-        const merged = collected
+        const merged = allNews
           .filter(n => { const k = n.title.slice(0, 40); if (seen.has(k)) return false; seen.add(k); return true; })
           .sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
-          .slice(0, 60);
+          .slice(0, 80);
 
         setNews(merged);
         setIsLive(true);
@@ -558,7 +579,7 @@ export function NewsView({ appUser }: { appUser: any }) {
     { id: 'global', label: '🌐 عالمي', icon: Globe2, cls: 'bg-slate-700' },
   ] as const;
 
-  const TOPICS = ['الكل', 'وظائف', 'تقنية', 'اقتصاد', 'مقالات'];
+  const TOPICS = ['الكل', 'وظائف', 'سياسة', 'رياضة', 'تقنية', 'اقتصاد', 'مقالات'];
 
   const filtered = React.useMemo(() => {
     return news.filter(n => {
