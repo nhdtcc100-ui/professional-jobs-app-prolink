@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState, useEffect, useMemo, useRef, startTransition } from 'react';
+import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import {
   Home, Briefcase, Globe, MessageSquare, MoreHorizontal,
   Users, Info, LogOut, Shield, Phone, Building2, Moon, Sun, Wrench, LogIn, Settings
 } from 'lucide-react';
-import { DrawerItem } from './Navigation';
 import { AppUser } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 import { supabase } from '../../lib/supabase';
@@ -33,6 +32,32 @@ const NAV_ITEMS = [
   { id: 'messages', icon: MessageSquare, label: 'الرسائل'  },
   { id: 'more',     icon: MoreHorizontal,label: 'المزيد'   },
 ];
+
+// ── Glassy Sidebar V5 Variants ─────────────────────────────────────────────
+const panelVariants = {
+  hidden: { x: '100%', opacity: 0.6 },
+  show: {
+    x: 0,
+    opacity: 1,
+    transition: {
+      type: 'spring' as const,
+      stiffness: 380,
+      damping: 34,
+      when: 'beforeChildren' as const,
+      staggerChildren: 0.035,
+    },
+  },
+  exit: {
+    x: '100%',
+    opacity: 0,
+    transition: { duration: 0.18 },
+  },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, x: 16 },
+  show: { opacity: 1, x: 0 },
+};
 
 export const MobileNav: React.FC<MobileNavProps> = ({
   activeTab, setActiveTab, showMobileMenu, setShowMobileMenu,
@@ -69,6 +94,10 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 
   const activeNavId = showMobileMenu ? 'more' : activeTab;
 
+  // ── Hover & Active State for Glassy Sidebar V5
+  const [hoverTab, setHoverTab] = useState<string | null>(null);
+  const currentDrawerTab = hoverTab ?? activeTab;
+
   // ── حماية الـ backdrop: لا يستجيب حتى يمر 200ms من فتح الدرج
   // هذا يمنع إغلاق الدرج فور الفتح بسبب bubble من onPointerDown
   const backdropActiveRef = useRef(false);
@@ -81,6 +110,129 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       backdropActiveRef.current = false;
     }
   }, [showMobileMenu]);
+
+  // ── عناصر القائمة الجانبية الموحدة
+  const drawerItems = useMemo(() => {
+    const list: Array<{
+      id: string;
+      label: string;
+      icon: any;
+      color: string;
+      badge?: number | string;
+      onClick: () => void;
+      preload?: () => void;
+    }> = [];
+
+    if (appUser?.isAdmin) {
+      list.push({
+        id: 'calls',
+        label: 'المكالمات والاتصال',
+        icon: Phone,
+        color: 'text-emerald-500',
+        onClick: () => setActiveTab('calls'),
+        preload: () => preloadTab('calls'),
+      });
+    }
+
+    list.push({
+      id: 'network',
+      label: 'شبكتي المهنية',
+      icon: Users,
+      color: 'text-violet-500',
+      badge: pendingRequestsCount > 0 ? (pendingRequestsCount > 9 ? '9+' : pendingRequestsCount) : undefined,
+      onClick: () => setActiveTab('network'),
+      preload: () => preloadTab('network'),
+    });
+
+    if (appUser?.isAdmin) {
+      list.push({
+        id: 'erp',
+        label: 'نظام الموارد البشرية (ERP)',
+        icon: Building2,
+        color: 'text-blue-500',
+        onClick: () => setActiveTab('erp'),
+        preload: () => preloadTab('erp'),
+      });
+    }
+
+    list.push({
+      id: 'groups',
+      label: 'المجموعات المهنية 👥',
+      icon: MessageSquare,
+      color: 'text-indigo-500',
+      onClick: () => setActiveTab('groups'),
+      preload: () => preloadTab('groups'),
+    });
+
+    list.push({
+      id: 'services',
+      label: 'سوق الخدمات والمهن 🔧',
+      icon: Wrench,
+      color: 'text-blue-500',
+      onClick: () => setActiveTab('services'),
+      preload: () => preloadTab('services'),
+    });
+
+    if (appUser?.isAdmin) {
+      list.push({
+        id: 'admin',
+        label: 'لوحة التحكم العليا',
+        icon: Shield,
+        color: 'text-red-500',
+        onClick: () => setShowAdmin(true),
+      });
+    }
+
+    list.push({
+      id: 'about',
+      label: 'عن منصة عمل أولاً',
+      icon: Info,
+      color: 'text-amber-500',
+      onClick: () => setActiveTab('about'),
+      preload: () => preloadTab('about'),
+    });
+
+    if (appUser) {
+      list.push({
+        id: 'settings',
+        label: 'الإعدادات ⚙️',
+        icon: Settings,
+        color: 'text-blue-500',
+        onClick: () => setActiveTab('settings'),
+        preload: () => preloadTab('settings'),
+      });
+    }
+
+    if (toggleTheme) {
+      list.push({
+        id: 'theme',
+        label: theme === 'dark' ? 'الوضع الفاتح ☀️' : 'الوضع الليلي 🌙',
+        icon: theme === 'dark' ? Sun : Moon,
+        color: theme === 'dark' ? 'text-amber-500' : 'text-indigo-500',
+        onClick: () => toggleTheme(),
+      });
+    }
+
+    if (appUser) {
+      list.push({
+        id: 'logout',
+        label: 'تسجيل الخروج',
+        icon: LogOut,
+        color: 'text-red-500',
+        onClick: () => logout(),
+      });
+    } else {
+      list.push({
+        id: 'login',
+        label: 'تسجيل الدخول',
+        icon: LogIn,
+        color: 'text-blue-500',
+        onClick: () => window.dispatchEvent(new CustomEvent('prolink:exitGuestMode')),
+      });
+    }
+
+    return list;
+  }, [appUser, pendingRequestsCount, theme, toggleTheme, logout, setShowAdmin, setActiveTab]);
 
   return (
     <>
@@ -145,20 +297,36 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                 type="button"
                 whileTap={{ scale: 0.92 }}
                 onPointerDown={() => {
-                  preloadTab(item.id);
+                  if (item.id === 'more') {
+                    preloadTab('network');
+                    preloadTab('services');
+                    preloadTab('about');
+                  } else {
+                    preloadTab(item.id);
+                  }
+                  try { navigator.vibrate?.([8]); } catch (_) {}
+                }}
+                onMouseEnter={() => {
+                  if (item.id === 'more') {
+                    preloadTab('network');
+                    preloadTab('services');
+                    preloadTab('about');
+                  } else {
+                    preloadTab(item.id);
+                  }
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   try { navigator.vibrate?.([8]); } catch (_) {}
                   if (item.id === 'more') {
                     setShowMobileMenu(true);
                   } else {
+                    startTransition(() => {
+                      setActiveTab(item.id);
+                    });
                     setShowMobileMenu(false);
-                    setActiveTab(item.id);
                   }
-                }}
-                onMouseEnter={() => {
-                  preloadTab(item.id);
-                }}
-                onClick={(e) => {
-                  e.preventDefault();
                 }}
                 className="relative flex flex-col items-center justify-center flex-1 h-13 select-none cursor-pointer focus:outline-none bg-transparent border-0 p-0"
                 style={{ zIndex: 2 }}
@@ -253,229 +421,194 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       </div>
 
       {/* ══════════════════════════════════════════════════════════════════════
-          Mobile Side Drawer — Soft Neumorphic Glass Luxury
+          Glassy Sidebar V5 — Floating Luxury Blur & Staggered Cascading Motion
           ══════════════════════════════════════════════════════════════════════ */}
-      <AnimatePresence>
-        {showMobileMenu && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              onClick={() => { if (backdropActiveRef.current) setShowMobileMenu(false); }}
-              className="fixed inset-0 z-[100]"
-              style={{ background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)' }}
-            />
-
-            {/* Drawer Panel */}
-            <motion.div
-              initial={{ x: '100%', opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: '100%', opacity: 0 }}
-              transition={{ type: 'spring', damping: 28, stiffness: 240 }}
-              className="fixed top-0 right-0 bottom-0 z-[110] flex flex-col"
-              style={{
-                width: '82vw',
-                maxWidth: 340,
-                background: 'rgba(255, 255, 255, 0.94)',
-                backdropFilter: 'blur(32px)',
-                WebkitBackdropFilter: 'blur(32px)',
-                borderLeft: '1px solid rgba(148, 163, 184, 0.18)',
-                boxShadow: '-16px 0 48px rgba(15, 23, 42, 0.14)',
-              }}
-              dir="rtl"
-            >
-              {/* Dark overlay for drawer */}
-              <div className="absolute inset-0 dark:bg-slate-900/95 pointer-events-none" />
-
-              {/* Top glass shine */}
-              <div
-                className="absolute top-0 left-4 right-4 h-px"
-                style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.7), transparent)' }}
+      <MotionConfig reducedMotion="user">
+        <AnimatePresence>
+          {showMobileMenu && (
+            <>
+              {/* Backdrop with soft blur and click protection */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                onClick={() => { if (backdropActiveRef.current) setShowMobileMenu(false); }}
+                className="fixed inset-0 z-[109] bg-black/40 backdrop-blur-xs"
               />
 
-              {/* Drawer Header */}
-              <div className="relative z-10 p-5 border-b border-slate-100/60 dark:border-slate-800/60">
-                {appUser ? (
-                  <>
-                    <div
-                      className="flex items-center gap-3 cursor-pointer group"
-                      onMouseEnter={() => preloadTab('profile')}
-                      onPointerDown={() => { setSelectedProfile(appUser); setActiveTab('profile'); setShowMobileMenu(false); }}
-                      onClick={() => { setSelectedProfile(appUser); setActiveTab('profile'); setShowMobileMenu(false); }}
-                    >
-                      {appUser.avatar ? (
-                        <div className="relative">
-                          <img
-                            src={appUser.avatar}
-                            className="w-12 h-12 rounded-2xl border-2 border-blue-200 dark:border-blue-800 shadow-md object-cover group-hover:scale-105 transition-transform"
-                            alt={appUser?.name}
-                          />
-                          <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900" />
-                        </div>
-                      ) : (
-                        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-lg font-black shadow-md">
-                          {appUser?.name?.charAt(0) || '?'}
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-black text-slate-900 dark:text-white text-sm truncate">{appUser?.name}</p>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span
-                            className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full"
-                            style={{
-                              background: appUser?.role === 'employer' ? 'rgba(59,130,246,0.1)' : appUser?.role === 'freelancer' ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)',
-                              color: appUser?.role === 'employer' ? '#3b82f6' : appUser?.role === 'freelancer' ? '#f59e0b' : '#10b981',
-                            }}
-                          >
-                            {appUser?.role === 'employer' ? 'صاحب عمل 💼' : appUser?.role === 'freelancer' ? 'عمل حر ⚡' : 'باحث عن عمل 🔍'}
-                          </span>
+              {/* Floating Glassy Panel (RTL: right-2 top-2 bottom-2) */}
+              <motion.aside
+                dir="rtl"
+                variants={panelVariants}
+                initial="hidden"
+                animate="show"
+                exit="exit"
+                className="fixed right-2 top-2 bottom-2 z-[110] w-[84%] max-w-[325px]
+                           rounded-[28px] border border-white/40 dark:border-white/10 shadow-2xl
+                           bg-white/80 dark:bg-slate-900/85 backdrop-blur-2xl
+                           flex flex-col overflow-hidden"
+                style={{
+                  paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
+                  paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)',
+                  boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.2)',
+                }}
+              >
+                {/* Top Subtle Sheen Reflection */}
+                <div
+                  className="absolute top-0 left-6 right-6 h-px rounded-full pointer-events-none"
+                  style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.8), transparent)' }}
+                />
+
+                {/* ── 1. Header: User Profile Card & Quick Stats ── */}
+                <div className="relative z-10 p-4 border-b border-slate-200/50 dark:border-slate-800/60 shrink-0">
+                  {appUser ? (
+                    <>
+                      <div
+                        className="flex items-center gap-3 cursor-pointer group"
+                        onMouseEnter={() => preloadTab('profile')}
+                        onPointerDown={() => preloadTab('profile')}
+                        onClick={() => {
+                          startTransition(() => {
+                            setSelectedProfile(appUser);
+                            setActiveTab('profile');
+                          });
+                          setShowMobileMenu(false);
+                        }}
+                      >
+                        {appUser.avatar ? (
+                          <div className="relative shrink-0">
+                            <img
+                              src={appUser.avatar}
+                              className="w-11 h-11 rounded-2xl border-2 border-blue-200 dark:border-blue-800 shadow-md object-cover group-hover:scale-105 transition-transform"
+                              alt={appUser?.name}
+                            />
+                            <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-900" />
+                          </div>
+                        ) : (
+                          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white text-base font-black shadow-md shrink-0">
+                            {appUser?.name?.charAt(0) || '?'}
+                          </div>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="font-black text-slate-900 dark:text-white text-sm truncate">{appUser?.name}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span
+                              className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full"
+                              style={{
+                                background: appUser?.role === 'employer' ? 'rgba(59,130,246,0.1)' : appUser?.role === 'freelancer' ? 'rgba(245,158,11,0.1)' : 'rgba(16,185,129,0.1)',
+                                color: appUser?.role === 'employer' ? '#3b82f6' : appUser?.role === 'freelancer' ? '#f59e0b' : '#10b981',
+                              }}
+                            >
+                              {appUser?.role === 'employer' ? 'صاحب عمل 💼' : appUser?.role === 'freelancer' ? 'عمل حر ⚡' : 'باحث عن عمل 🔍'}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Stats */}
-                    <div
-                      className="mt-4 grid grid-cols-3 gap-2 p-3 rounded-2xl"
-                      style={{
-                        background: 'rgba(59,130,246,0.05)',
-                        border: '1px solid rgba(59,130,246,0.1)',
-                      }}
-                    >
-                      {[
-                        { label: 'المنشورات', value: myPostsCount, color: '#3b82f6' },
-                        { label: appUser?.role === 'employer' ? 'المتقدمون' : 'طلباتي', value: appUser?.role === 'employer' ? applicantsCount : '—', color: '#6366f1' },
-                        { label: 'الاتصالات', value: userConnectionsCount, color: '#8b5cf6' },
-                      ].map(stat => (
-                        <div key={stat.label} className="text-center">
-                          <p className="text-sm font-black" style={{ color: stat.color }}>{stat.value}</p>
-                          <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500 mt-0.5">{stat.label}</p>
-                        </div>
-                      ))}
+                      {/* Stats */}
+                      <div
+                        className="mt-3 grid grid-cols-3 gap-1.5 p-2 rounded-2xl"
+                        style={{
+                          background: 'rgba(59,130,246,0.06)',
+                          border: '1px solid rgba(59,130,246,0.12)',
+                        }}
+                      >
+                        {[
+                          { label: 'المنشورات', value: myPostsCount, color: '#3b82f6' },
+                          { label: appUser?.role === 'employer' ? 'المتقدمون' : 'طلباتي', value: appUser?.role === 'employer' ? applicantsCount : '—', color: '#6366f1' },
+                          { label: 'الاتصالات', value: userConnectionsCount, color: '#8b5cf6' },
+                        ].map(stat => (
+                          <div key={stat.label} className="text-center">
+                            <p className="text-xs font-black" style={{ color: stat.color }}>{stat.value}</p>
+                            <p className="text-[8.5px] font-bold text-slate-400 dark:text-slate-500">{stat.label}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="p-1 text-center">
+                      <div className="w-12 h-12 mx-auto rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30 mb-2">
+                        <LogIn size={22} />
+                      </div>
+                      <h3 className="font-black text-slate-900 dark:text-white text-sm">أهلاً بك في منصة عمل</h3>
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 leading-relaxed">
+                        سجّل الدخول للتواصل مع المهنيين والتقديم على الوظائف.
+                      </p>
+                      <button
+                        onClick={() => {
+                          setShowMobileMenu(false);
+                          window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'));
+                        }}
+                        className="mt-2.5 w-full py-2 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-xs rounded-xl shadow-md hover:from-blue-700 hover:to-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <LogIn size={13} />
+                        تسجيل الدخول / إنشاء حساب
+                      </button>
                     </div>
-                  </>
-                ) : (
-                  <div className="p-1 text-center">
-                    <div className="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/30 mb-3">
-                      <LogIn size={26} />
-                    </div>
-                    <h3 className="font-black text-slate-900 dark:text-white text-base">أهلاً بك في منصة عمل</h3>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
-                      أنت تتصفح كزائر، سجّل الدخول للتواصل مع المهنيين والتقديم على الوظائف.
-                    </p>
-                    <button
-                      onClick={() => {
-                        setShowMobileMenu(false);
-                        window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'));
-                      }}
-                      className="mt-3 w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-xs rounded-xl shadow-md hover:from-blue-700 hover:to-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2"
-                    >
-                      <LogIn size={14} />
-                      تسجيل الدخول / إنشاء حساب
-                    </button>
-                  </div>
-                )}
-              </div>
-
-                {/* Drawer Items */}
-              <div className="relative z-10 flex-1 overflow-y-auto p-4 space-y-1.5">
-                {appUser?.isAdmin && (
-                  <DrawerItem
-                    icon={<Phone size={20} className="text-emerald-500" />}
-                    label="المكالمات والاتصال"
-                    onClick={() => { setActiveTab('calls'); setShowMobileMenu(false); }}
-                    color="text-emerald-700 dark:text-emerald-300"
-                  />
-                )}
-                <div className="relative">
-                  <DrawerItem
-                    icon={<Users size={20} className="text-violet-500" />}
-                    label="شبكتي المهنية"
-                    onMouseEnter={() => preloadTab('network')}
-                    onClick={() => { setActiveTab('network'); setShowMobileMenu(false); }}
-                    color="text-violet-700 dark:text-violet-300"
-                  />
-                  {pendingRequestsCount > 0 && (
-                    <span className="absolute top-3 left-4 px-2 py-0.5 bg-red-500 text-white font-black text-[9px] rounded-full shadow">
-                      {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount} جديد
-                    </span>
                   )}
                 </div>
-                {appUser?.isAdmin && (
-                  <DrawerItem
-                    icon={<Building2 size={20} className="text-blue-500" />}
-                    label="نظام الموارد البشرية (ERP)"
-                    onMouseEnter={() => preloadTab('erp')}
-                    onClick={() => { setActiveTab('erp'); setShowMobileMenu(false); }}
-                    color="text-blue-700 dark:text-blue-300"
-                  />
-                )}
-                <DrawerItem
-                  icon={<MessageSquare size={20} className="text-indigo-500" />}
-                  label="المجموعات المهنية 👥"
-                  onMouseEnter={() => preloadTab('groups')}
-                  onClick={() => { setActiveTab('groups'); setShowMobileMenu(false); }}
-                  color="text-indigo-700 dark:text-indigo-300"
-                />
-                <DrawerItem
-                  icon={<Wrench size={20} className="text-blue-500" />}
-                  label="سوق الخدمات والمهن 🔧"
-                  onMouseEnter={() => preloadTab('services')}
-                  onClick={() => { setActiveTab('services'); setShowMobileMenu(false); }}
-                  color="text-blue-700 dark:text-blue-300"
-                />
-                {appUser?.isAdmin && (
-                  <DrawerItem
-                    icon={<Shield size={20} className="text-red-500" />}
-                    label="لوحة التحكم العليا"
-                    onClick={() => { setShowAdmin(true); setShowMobileMenu(false); }}
-                    color="text-red-700 dark:text-red-300"
-                  />
-                )}
-                <DrawerItem
-                  icon={<Info size={20} className="text-amber-500" />}
-                  label="عن منصة عمل أولاً"
-                  onMouseEnter={() => preloadTab('about')}
-                  onClick={() => { setActiveTab('about'); setShowMobileMenu(false); }}
-                  color="text-amber-700 dark:text-amber-300"
-                />
-                {appUser && (
-                  <DrawerItem
-                    icon={<Settings size={20} className="text-blue-500" />}
-                    label="الإعدادات ⚙️"
-                    onMouseEnter={() => preloadTab('settings')}
-                    onClick={() => { setActiveTab('settings'); setShowMobileMenu(false); }}
-                    color="text-blue-700 dark:text-blue-300"
-                  />
-                )}
-                {toggleTheme && (
-                  <DrawerItem
-                    icon={theme === 'dark' ? <Sun size={20} className="text-amber-500" /> : <Moon size={20} className="text-indigo-500" />}
-                    label={theme === 'dark' ? 'الوضع الفاتح ☀️' : 'الوضع الليلي 🌙'}
-                    onClick={() => { toggleTheme(); setShowMobileMenu(false); }}
-                    color={theme === 'dark' ? 'text-amber-700 dark:text-amber-300' : 'text-indigo-700 dark:text-indigo-300'}
-                  />
-                )}
-                {appUser ? (
-                  <DrawerItem icon={<LogOut size={20} className="text-red-500" />} label="تسجيل الخروج" onClick={() => { setShowMobileMenu(false); logout(); }} color="text-red-700 dark:text-red-300" />
-                ) : (
-                  <DrawerItem icon={<LogIn size={20} className="text-blue-500" />} label="تسجيل الدخول" onClick={() => { setShowMobileMenu(false); window.dispatchEvent(new CustomEvent('prolink:exitGuestMode')); }} color="text-blue-700 dark:text-blue-300" />
-                )}
-              </div>
 
+                {/* ── 2. Navigation Items: Staggered Entrance + Side-Pill Indicator ── */}
+                <nav className="relative z-10 flex-1 overflow-y-auto p-3 space-y-1 no-scrollbar">
+                  {drawerItems.map((it) => {
+                    const Icon = it.icon;
+                    const isCurrent = currentDrawerTab === it.id;
+                    return (
+                      <motion.button
+                        key={it.id}
+                        variants={itemVariants}
+                        type="button"
+                        onPointerDown={() => {
+                          it.preload?.();
+                          try { navigator.vibrate?.([6]); } catch (_) {}
+                        }}
+                        onPointerEnter={() => setHoverTab(it.id)}
+                        onPointerLeave={() => setHoverTab(null)}
+                        onClick={() => {
+                          startTransition(() => {
+                            it.onClick();
+                          });
+                          setShowMobileMenu(false);
+                        }}
+                        whileTap={{ scale: 0.96 }}
+                        className="relative w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl text-right cursor-pointer select-none transition-colors border-0 bg-transparent focus:outline-none"
+                      >
+                        {/* Sliding Active Pill (Glassy V5 spring) */}
+                        {isCurrent && (
+                          <motion.span
+                            layoutId="side-pill"
+                            className="absolute inset-0 rounded-2xl bg-white/70 dark:bg-white/10 shadow-xs border border-white/50 dark:border-white/10"
+                            transition={{ type: 'spring', stiffness: 500, damping: 36 }}
+                          />
+                        )}
+                        <div className={`relative p-2 rounded-xl bg-slate-100/60 dark:bg-slate-800/60 ${it.color} shrink-0`}>
+                          <Icon size={18} />
+                        </div>
+                        <span className="relative font-black text-xs sm:text-sm text-slate-800 dark:text-slate-100 flex-1 truncate">
+                          {it.label}
+                        </span>
+                        {it.badge && (
+                          <span className="relative mr-auto text-[9.5px] font-black px-2 py-0.5 rounded-full bg-red-500 text-white shadow-xs shrink-0">
+                            {it.badge}
+                          </span>
+                        )}
+                      </motion.button>
+                    );
+                  })}
+                </nav>
 
-              {/* Footer */}
-              <div className="relative z-10 p-5 border-t border-slate-100/50 dark:border-slate-800/50">
-                <p className="text-[9px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest text-center">
-                  منصة عمل أولاً — ProLink v2.6.0
-                </p>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+                {/* ── 3. Footer ── */}
+                <div className="relative z-10 px-4 py-3 border-t border-slate-200/50 dark:border-slate-800/60 shrink-0">
+                  <p className="text-[8.5px] font-black text-slate-400 dark:text-slate-600 uppercase tracking-widest text-center">
+                    منصة عمل أولاً — ProLink v2.6.0
+                  </p>
+                </div>
+              </motion.aside>
+            </>
+          )}
+        </AnimatePresence>
+      </MotionConfig>
     </>
   );
 };
