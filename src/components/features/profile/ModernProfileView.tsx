@@ -85,80 +85,125 @@ export function ModernProfileView({
 
   const effectiveUserId = user?.id || profile?.id;
 
-  // ─── 1. Avatar Upload (via mobileUploadService – FIX all 10 issues) ───────────
+  // ─── Direct Client-to-Supabase Mobile Upload ─────────────────────────────────
+  const handleMobileDirectUpload = async (
+    file: File,
+    fileCategory: 'avatar' | 'cover' | 'cv',
+    userId: string
+  ): Promise<string> => {
+    // فحص أن حجم الملف أكبر من صفر (لمنع تفريغ الذاكرة في متصفحات الموبايل)
+    if (!file || file.size === 0) {
+      throw new Error('عذراً، يبدو أن الملف فارغ أو تعذر على المتصفح قراءته من الموبايل. جرب اختيار ملف آخر.');
+    }
+
+    // 1. تحديد الامتداد الآمن واسم الحاوية
+    const rawExt = (file.name || '').split('.').pop()?.toLowerCase() || (fileCategory === 'cv' ? 'pdf' : 'jpg');
+    const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx'].includes(rawExt)
+      ? rawExt
+      : (fileCategory === 'cv' ? 'pdf' : 'jpg');
+
+    const bucketName = fileCategory === 'cv' ? 'resumes' : 'profiles';
+    const fileName = `${userId}_${fileCategory}_${Date.now()}.${safeExt}`;
+    const filePath = `${userId}/${fileName}`;
+    const contentType = file.type || (fileCategory === 'cv' ? 'application/pdf' : 'image/jpeg');
+
+    // 2. الرفع المباشر إلى Supabase Storage بدون وسيط
+    let uploadError: any = null;
+    const { error: err1 } = await supabase.storage
+      .from(bucketName)
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType,
+      });
+
+    uploadError = err1;
+
+    // حاوية احتياطية في حال تعذر الحاوية الأولى
+    let finalBucket = bucketName;
+    if (uploadError) {
+      console.warn(`[DirectUpload] ${bucketName} failed (${uploadError.message}), trying fallback 'images'...`);
+      const { error: err2 } = await supabase.storage
+        .from('images')
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true,
+          contentType,
+        });
+      if (!err2) {
+        finalBucket = 'images';
+        uploadError = null;
+      }
+    }
+
+    if (uploadError) {
+      throw new Error(uploadError.message || 'تعذر رفع الملف إلى وحدة التخزين السحابية');
+    }
+
+    // 3. جلب الرابط العام للملف المرفوع
+    const { data: publicUrlData } = supabase.storage
+      .from(finalBucket)
+      .getPublicUrl(filePath);
+
+    return publicUrlData.publicUrl;
+  };
+
+  // ─── 1. Avatar Upload (Direct Client-to-Supabase) ───────────────────────────
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawFile = e.target?.files?.[0];
+    if (e.target) e.target.value = ''; // Reset input to allow selecting same file again
     if (!rawFile || !effectiveUserId) return;
 
-    // Diagnostic logging for mobile debugging
-    console.log("File details (Avatar):", {
-      name: rawFile.name,
-      size: rawFile.size,
-      type: rawFile.type,
-      isMobile: /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
-    });
-
-    // Normalize file object with explicit MIME type (prevents Mobile blob corruption)
-    const ext = (rawFile.name || '').split('.').pop()?.toLowerCase() || 'jpg';
-    const cleanType = rawFile.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
-    const safeFile = new File([rawFile], rawFile.name || `avatar_${Date.now()}.${ext}`, {
-      type: cleanType,
-    });
+    if (rawFile.size === 0) {
+      addToast('عذراً، الملف فارغ أو تعذر على المتصفح قراءته من الموبايل.', 'error');
+      return;
+    }
 
     try {
       setIsUploadingAvatar(true);
-      // Instant preview
-      const localUrl = URL.createObjectURL(safeFile);
+      const localUrl = URL.createObjectURL(rawFile);
       setAvatar(localUrl);
 
-      // Background upload via mobileUploadService (RAM snapshot + multi-bucket + fallback)
-      const { uploadPromise } = await mobileUploadService.uploadFile(safeFile, 'avatar', effectiveUserId);
-      const finalUrl = await uploadPromise;
+      // الرفع المباشر إلى Supabase Storage
+      const publicUrl = await handleMobileDirectUpload(rawFile, 'avatar', effectiveUserId);
 
-      setAvatar(finalUrl);
-      await profileService.updateProfile(effectiveUserId, { avatar: finalUrl, avatar_url: finalUrl });
-      if (setAppUser) setAppUser((prev: any) => ({ ...prev, avatar: finalUrl, avatar_url: finalUrl }));
-      addToast('✅ تم تحديث الصورة الشخصية بنجاح!', 'success');
+      setAvatar(publicUrl);
+      await profileService.updateProfile(effectiveUserId, { avatar: publicUrl, avatar_url: publicUrl });
+      if (setAppUser) setAppUser((prev: any) => ({ ...prev, avatar: publicUrl, avatar_url: publicUrl }));
+      addToast('✅ تم رفع وتحديث الصورة الشخصية بنجاح!', 'success');
     } catch (err: any) {
+      console.error('Avatar direct upload error:', err);
       addToast('تعذر رفع الصورة: ' + (err?.message || ''), 'error');
     } finally {
       setIsUploadingAvatar(false);
     }
   };
 
-  // ─── 2. Cover Photo Upload (via mobileUploadService) ─────────────────────────
+  // ─── 2. Cover Photo Upload (Direct Client-to-Supabase) ───────────────────────
   const handleCoverChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const rawFile = e.target?.files?.[0];
+    if (e.target) e.target.value = ''; // Reset input
     if (!rawFile || !effectiveUserId) return;
 
-    // Diagnostic logging for mobile debugging
-    console.log("File details (Cover):", {
-      name: rawFile.name,
-      size: rawFile.size,
-      type: rawFile.type,
-      isMobile: /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
-    });
-
-    // Normalize file object with explicit MIME type (prevents Mobile blob corruption)
-    const ext = (rawFile.name || '').split('.').pop()?.toLowerCase() || 'jpg';
-    const cleanType = rawFile.type || (ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg');
-    const safeFile = new File([rawFile], rawFile.name || `cover_${Date.now()}.${ext}`, {
-      type: cleanType,
-    });
+    if (rawFile.size === 0) {
+      addToast('عذراً، الملف فارغ أو تعذر على المتصفح قراءته من الموبايل.', 'error');
+      return;
+    }
 
     try {
       setIsUploadingCover(true);
-      const localUrl = URL.createObjectURL(safeFile);
+      const localUrl = URL.createObjectURL(rawFile);
       setCoverUrl(localUrl);
 
-      const { uploadPromise } = await mobileUploadService.uploadFile(safeFile, 'cover', effectiveUserId);
-      const finalUrl = await uploadPromise;
+      // الرفع المباشر إلى Supabase Storage
+      const publicUrl = await handleMobileDirectUpload(rawFile, 'cover', effectiveUserId);
 
-      setCoverUrl(finalUrl);
-      await profileService.updateProfile(effectiveUserId, { cover_url: finalUrl, coverUrl: finalUrl } as any);
-      if (setAppUser) setAppUser((prev: any) => ({ ...prev, cover_url: finalUrl, coverUrl: finalUrl }));
-      addToast('✅ تم تحديث صورة الغلاف بنجاح!', 'success');
+      setCoverUrl(publicUrl);
+      await profileService.updateProfile(effectiveUserId, { cover_url: publicUrl, coverUrl: publicUrl } as any);
+      if (setAppUser) setAppUser((prev: any) => ({ ...prev, cover_url: publicUrl, coverUrl: publicUrl }));
+      addToast('✅ تم رفع وتحديث صورة الغلاف بنجاح!', 'success');
     } catch (err: any) {
+      console.error('Cover direct upload error:', err);
       addToast('تعذر رفع صورة الغلاف: ' + (err?.message || ''), 'error');
     } finally {
       setIsUploadingCover(false);
@@ -292,31 +337,16 @@ export function ModernProfileView({
     if (!pendingCVFile && !cvUrl) { addToast('يرجى اختيار ملف السيرة الذاتية أولاً', 'error'); return; }
     try {
       setSavingCV(true);
-      setCvUploadProgress(10);
+      setCvUploadProgress(20);
       let finalUrl = cvUrl;
       if (pendingCVFile) {
-        addToast('⏳ جاري رفع السيرة الذاتية في الخلفية...', 'info');
+        addToast('⏳ جاري رفع السيرة الذاتية مباشرة إلى Supabase...', 'info');
+        setCvUploadProgress(40);
 
-        // Use mobileUploadService with live progress (all 10 fixes applied)
-        const { uploadPromise } = await mobileUploadService.uploadFile(
-          pendingCVFile,
-          'cv',
-          effectiveUserId,
-          {
-            onProgress: (ev) => {
-              // Map phases to 0-100 progress
-              const phaseMap: Record<string, number> = {
-                reading: 15, compressing: 25, uploading: 60, done: 95,
-              };
-              setCvUploadProgress(phaseMap[ev.phase] ?? (ev.percent > 0 ? ev.percent : 20));
-            },
-          }
-        );
+        // Direct Client-to-Supabase upload
+        finalUrl = await handleMobileDirectUpload(pendingCVFile, 'cv', effectiveUserId);
 
-        setCvUploadProgress(60);
-        finalUrl = await uploadPromise;
         setCvUploadProgress(90);
-
         setCvUrl(finalUrl);
         setPendingCVFile(null);
         setPendingCVName(null);
