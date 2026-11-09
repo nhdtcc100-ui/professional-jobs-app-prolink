@@ -10,7 +10,6 @@ export default defineConfig(({mode}) => {
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },
-    root: __dirname,
     resolve: {
       alias: {
         '@': path.resolve(__dirname, 'src'),
@@ -18,7 +17,7 @@ export default defineConfig(({mode}) => {
     },
     base: '/professional-jobs-app-prolink/',
     build: {
-      outDir: path.resolve(__dirname, 'dist'),
+      outDir: 'dist',
       emptyOutDir: true,
     },
     server: {

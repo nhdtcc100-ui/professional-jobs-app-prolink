@@ -154,20 +154,24 @@ export function ModernProfileView({
     }
 
     if (uploadError) {
+      console.error(`[DirectUpload] Upload error in bucket '${bucketName}':`, uploadError);
+      const statusCode = uploadError.statusCode || (uploadError as any)?.status || 'N/A';
       const isRls = uploadError.message?.toLowerCase().includes('row-level security') ||
                     uploadError.message?.toLowerCase().includes('violates') ||
                     uploadError.message?.toLowerCase().includes('policy') ||
                     uploadError.message?.toLowerCase().includes('unauthorized') ||
-                    uploadError.statusCode === '403';
+                    String(statusCode) === '403';
 
       if (isRls) {
         throw new Error(
-          `🔒 رُفض الرفع بسبب سياسة الأمان (RLS Policy): ${uploadError.message}.\n` +
-          (currentSession ? `(الحساب مسجل: ${currentSession.user?.email || 'نعم'})` : `(تنبيه: الجلسة غير موجودة على متصفح الهاتف - Session is Null)`) +
-          `\nيرجى تنفيذ ملف FIX_COVER_AND_AVATAR_STORAGE_PERMISSIONS.sql في لوحة Supabase لمنح الصلاحيات للموبايل.`
+          `🔒 رُفض الرفع بسبب سياسة الأمان RLS في Supabase:\n` +
+          `• كود الخطأ: ${statusCode}\n` +
+          `• الرسالة: ${uploadError.message}\n` +
+          `• الجلسة: ${currentSession ? `مسجل (${currentSession.user?.email || currentSession.user?.id})` : '❌ غير مسجل (Session = NULL)'}\n` +
+          `• الحل: نفّذ كود SQL لفتح صلاحيات التخزين في لوحة Supabase.`
         );
       }
-      throw new Error(uploadError.message || 'تعذر رفع الملف إلى وحدة التخزين السحابية');
+      throw new Error(`خطأ Supabase Storage (${statusCode}): ${uploadError.message || JSON.stringify(uploadError)}`);
     }
 
     // 3. جلب الرابط العام للملف المرفوع
@@ -195,20 +199,23 @@ export function ModernProfileView({
     if (!rawFile || !effectiveUserId) return;
 
     if (rawFile.size === 0) {
-      addToast('عذراً، الملف فارغ أو تعذر على المتصفح قراءته من الموبايل.', 'error');
+      alert('⚠️ المتصفح أعاد ملفاً فارغاً (0 بايت).');
       if (targetInput) targetInput.value = '';
       return;
     }
 
     try {
       setIsUploadingAvatar(true);
+      const fileKB = (rawFile.size / 1024).toFixed(1);
+      console.log(`[AvatarUpload] File selected: ${rawFile.name} (${fileKB} KB), type: ${rawFile.type}`);
 
       // Snapshot file into RAM immediately before browser/OS drops handle
       let workingFile = rawFile;
       try {
         const ab = await rawFile.arrayBuffer();
         workingFile = new File([ab], rawFile.name || 'avatar.jpg', { type: rawFile.type || 'image/jpeg' });
-      } catch {
+      } catch (abErr) {
+        console.warn('[AvatarUpload] arrayBuffer warning, using rawFile:', abErr);
         workingFile = rawFile;
       }
 
@@ -220,9 +227,12 @@ export function ModernProfileView({
       await profileService.updateProfile(effectiveUserId, { avatar: publicUrl, avatar_url: publicUrl });
       if (setAppUser) setAppUser((prev: any) => ({ ...prev, avatar: publicUrl, avatar_url: publicUrl }));
       addToast('✅ تم رفع وتحديث الصورة الشخصية بنجاح!', 'success');
+      alert(`✅ نجح رفع الصورة الشخصية على الهاتف!\n• الملف: ${rawFile.name} (${fileKB} KB)\n• الرابط: ${publicUrl}`);
     } catch (err: any) {
       console.error('Avatar direct upload error:', err);
-      addToast('تعذر رفع الصورة: ' + (err?.message || ''), 'error');
+      const errMsg = err?.message || JSON.stringify(err);
+      addToast('تعذر رفع الصورة: ' + errMsg, 'error');
+      alert(`❌ خطأ رفع الصورة الشخصية:\n${errMsg}`);
     } finally {
       setIsUploadingAvatar(false);
       // Reset input ONLY after upload finishes to prevent Safari/Android GC abort
@@ -237,20 +247,23 @@ export function ModernProfileView({
     if (!rawFile || !effectiveUserId) return;
 
     if (rawFile.size === 0) {
-      addToast('عذراً، الملف فارغ أو تعذر على المتصفح قراءته من الموبايل.', 'error');
+      alert('⚠️ المتصفح أعاد ملفاً فارغاً (0 بايت).');
       if (targetInput) targetInput.value = '';
       return;
     }
 
     try {
       setIsUploadingCover(true);
+      const fileKB = (rawFile.size / 1024).toFixed(1);
+      console.log(`[CoverUpload] File selected: ${rawFile.name} (${fileKB} KB), type: ${rawFile.type}`);
 
       // Snapshot file into RAM immediately
       let workingFile = rawFile;
       try {
         const ab = await rawFile.arrayBuffer();
         workingFile = new File([ab], rawFile.name || 'cover.jpg', { type: rawFile.type || 'image/jpeg' });
-      } catch {
+      } catch (abErr) {
+        console.warn('[CoverUpload] arrayBuffer warning, using rawFile:', abErr);
         workingFile = rawFile;
       }
 
@@ -262,9 +275,12 @@ export function ModernProfileView({
       await profileService.updateProfile(effectiveUserId, { cover_url: publicUrl, coverUrl: publicUrl } as any);
       if (setAppUser) setAppUser((prev: any) => ({ ...prev, cover_url: publicUrl, coverUrl: publicUrl }));
       addToast('✅ تم رفع وتحديث صورة الغلاف بنجاح!', 'success');
+      alert(`✅ نجح رفع صورة الغلاف على الهاتف!\n• الملف: ${rawFile.name} (${fileKB} KB)\n• الرابط: ${publicUrl}`);
     } catch (err: any) {
       console.error('Cover direct upload error:', err);
-      addToast('تعذر رفع صورة الغلاف: ' + (err?.message || ''), 'error');
+      const errMsg = err?.message || JSON.stringify(err);
+      addToast('تعذر رفع صورة الغلاف: ' + errMsg, 'error');
+      alert(`❌ خطأ رفع صورة الغلاف:\n${errMsg}`);
     } finally {
       setIsUploadingCover(false);
       // Reset input ONLY after upload finishes
@@ -357,35 +373,81 @@ export function ModernProfileView({
   };
 
   // ─── 5. CV Upload – Non-blocking, all mobile fixes applied ──────────────────
-  const handleCVFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target?.files?.[0];
+  const handleCVFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const targetInput = e.target;
+    const file = targetInput?.files?.[0];
     if (!file) return;
 
-    if (file.size > 25 * 1024 * 1024) {
-      addToast('حجم الملف كبير جداً (الحد الأقصى 25 ميغابايت)', 'error');
+    if (!effectiveUserId) {
+      alert('⚠️ يرجى تسجيل الدخول أولاً لتتمكن من رفع السيرة الذاتية.');
       return;
     }
 
-    // RAM snapshot immediately so Android content:// URI doesn't expire
-    try {
-      const ab = await Promise.race<ArrayBuffer>([
-        file.arrayBuffer(),
-        new Promise<ArrayBuffer>((_, reject) =>
-          setTimeout(() => reject(new Error('snapshot timeout')), 10000)
-        ),
-      ]);
-      const mime = file.type || 'application/pdf';
-      const snap = new File([new Blob([ab], { type: mime })], file.name, { type: mime });
-      (snap as any).__isSnapshot = true;
-      setPendingCVFile(snap);
-    } catch {
-      setPendingCVFile(file);
+    if (file.size === 0) {
+      alert('⚠️ المتصفح أعاد ملفاً فارغاً (0 بايت).');
+      if (targetInput) targetInput.value = '';
+      return;
     }
 
-    const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-    setPendingCVName(`${file.name} (${sizeMB} MB)`);
-    addToast(`📄 تم اختيار "${file.name}" — اضغط حفظ لرفعه.`, 'info');
-  }, [addToast]);
+    if (file.size > 25 * 1024 * 1024) {
+      alert('⚠️ حجم الملف كبير جداً (الحد الأقصى 25 ميغابايت)');
+      if (targetInput) targetInput.value = '';
+      return;
+    }
+
+    try {
+      setSavingCV(true);
+      setCvUploadProgress(15);
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      const fileName = file.name || 'resume.pdf';
+      setPendingCVName(`${fileName} (${sizeMB} MB)`);
+      console.log(`[CVUpload] File selected: ${fileName} (${sizeMB} MB), type: ${file.type}`);
+
+      // RAM snapshot immediately so Android content:// URI doesn't expire
+      let workingFile = file;
+      try {
+        const ab = await Promise.race<ArrayBuffer>([
+          file.arrayBuffer(),
+          new Promise<ArrayBuffer>((_, reject) =>
+            setTimeout(() => reject(new Error('snapshot timeout')), 10000)
+          ),
+        ]);
+        const mime = file.type || 'application/pdf';
+        workingFile = new File([new Blob([ab], { type: mime })], fileName, { type: mime });
+        (workingFile as any).__isSnapshot = true;
+        setCvUploadProgress(35);
+      } catch (abErr) {
+        console.warn('[CVUpload] arrayBuffer warning, using raw file:', abErr);
+        workingFile = file;
+      }
+
+      setCvUploadProgress(50);
+      addToast('⏳ جاري رفع السيرة الذاتية إلى التخزين السحابي...', 'info');
+
+      const publicUrl = await handleMobileDirectUpload(workingFile, 'cv', effectiveUserId);
+      setCvUploadProgress(85);
+      setCvUrl(publicUrl);
+      setPendingCVFile(null);
+      setPendingCVName(null);
+
+      await profileService.updateProfile(effectiveUserId, { cvUrl: publicUrl, cv_url: publicUrl });
+      if (setAppUser) setAppUser((prev: any) => ({ ...prev, cvUrl: publicUrl, cv_url: publicUrl }));
+      setCvUploadProgress(100);
+
+      addToast('✅ تم رفع وتثبيت السيرة الذاتية بنجاح!', 'success');
+      alert(`✅ نجح رفع وتثبيت السيرة الذاتية على الهاتف بنجاح!\n• الملف: ${fileName} (${sizeMB} MB)\n• الرابط:\n${publicUrl}`);
+      setTimeout(() => setCvUploadProgress(0), 1800);
+    } catch (err: any) {
+      setCvUploadProgress(0);
+      console.error('[CVUpload] Error uploading CV:', err);
+      const errMsg = err?.message || JSON.stringify(err) || 'خطأ غير معروف';
+      addToast('فشل حفظ السيرة الذاتية: ' + errMsg, 'error');
+      alert(`❌ فشل رفع السيرة الذاتية على الهاتف:\n${errMsg}`);
+    } finally {
+      setSavingCV(false);
+      if (targetInput) targetInput.value = '';
+    }
+  };
 
   const handleSaveCV = async () => {
     if (!effectiveUserId) { addToast('يرجى تسجيل الدخول أولاً', 'error'); return; }
@@ -409,11 +471,14 @@ export function ModernProfileView({
       if (setAppUser) setAppUser((prev: any) => ({ ...prev, cvUrl: finalUrl, cv_url: finalUrl }));
       setCvUploadProgress(100);
       addToast('✅ تم حفظ وتثبيت السيرة الذاتية بنجاح!', 'success');
+      alert(`✅ نجح حفظ وتثبيت السيرة الذاتية على الهاتف بنجاح!\nالرابط:\n${finalUrl}`);
       setTimeout(() => setCvUploadProgress(0), 1800);
     } catch (err: any) {
       setCvUploadProgress(0);
-      const msg = err?.message || 'خطأ غير معروف';
+      const msg = err?.message || JSON.stringify(err) || 'خطأ غير معروف';
+      console.error('CV upload error:', err);
       addToast('فشل حفظ السيرة الذاتية: ' + msg, 'error');
+      alert(`❌ فشل رفع السيرة الذاتية على الهاتف:\n${msg}`);
     } finally {
       setSavingCV(false);
     }
@@ -465,9 +530,40 @@ export function ModernProfileView({
 
       {/* ─── Top Header ────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-1 py-2">
-        <h1 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">
-          {isMe ? 'إعدادات الحساب' : 'الملف الشخصي'}
-        </h1>
+        <div className="flex items-center gap-2.5">
+          <h1 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">
+            {isMe ? 'إعدادات الحساب' : 'الملف الشخصي'}
+          </h1>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const { data: { session }, error: sErr } = await supabase.auth.getSession();
+                const uEmail = session?.user?.email || (session?.user as any)?.phone || 'لا يوجد';
+                const uId = session?.user?.id || 'لا يوجد';
+                const hasUrl = Boolean(import.meta.env.VITE_SUPABASE_URL);
+                const hasKey = Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY);
+                alert(
+                  `📱 تشخيص الهاتف والاتصال:\n` +
+                  `━━━━━━━━━━━━━━━━━━\n` +
+                  `• الرابط الحالي: ${window.location.origin}\n` +
+                  `• الجلسة (Session): ${session ? '✅ نشطة' : '❌ مفقودة (NULL)'}\n` +
+                  `• المستخدم: ${uEmail}\n` +
+                  `• المعرف (UID): ${uId}\n` +
+                  `• خادم Supabase: ${hasUrl ? 'متوفر ✅' : 'مفقود ❌'}\n` +
+                  `• المفتاح Anon: ${hasKey ? 'متوفر ✅' : 'مفقود ❌'}\n` +
+                  (sErr ? `• خطأ: ${sErr.message}\n` : '')
+                );
+              } catch (e: any) {
+                alert(`خطأ أثناء التشخيص: ${e?.message}`);
+              }
+            }}
+            className="text-[10px] font-bold text-[#0a66c2] dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-1 rounded-xl border border-blue-200 dark:border-blue-900 flex items-center gap-1 active:scale-95 transition-all cursor-pointer shadow-sm"
+          >
+            <ShieldCheck size={12} />
+            <span>فحص الجلسة 🔍</span>
+          </button>
+        </div>
         {onBack && (
           <button
             onClick={onBack}
@@ -520,17 +616,14 @@ export function ModernProfileView({
             </div>
           )}
           {isMe && (
-            <>
-              <button
-                type="button"
-                onClick={handleCoverButtonClick}
-                className="absolute bottom-3 left-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 hover:bg-black/70 text-white text-xs font-bold backdrop-blur-sm transition-all border border-white/20 active:scale-95 cursor-pointer shadow-lg"
-              >
-                <Camera size={13} />
-                <span>تغيير الغلاف</span>
-              </button>
-              <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverChange} />
-            </>
+            <label
+              htmlFor="cover-file-input"
+              className="absolute bottom-3 left-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 hover:bg-black/70 text-white text-xs font-bold backdrop-blur-sm transition-all border border-white/20 active:scale-95 cursor-pointer shadow-lg"
+            >
+              <Camera size={13} />
+              <span>تغيير الغلاف</span>
+              <input id="cover-file-input" ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverChange} />
+            </label>
           )}
         </div>
 
@@ -548,17 +641,14 @@ export function ModernProfileView({
                 </div>
               )}
               {isMe && (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleAvatarButtonClick}
-                    className="absolute -top-1.5 -right-1.5 w-8 h-8 rounded-full bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900 transition-all active:scale-90 cursor-pointer hover:scale-110"
-                    title="تغيير الصورة الشخصية"
-                  >
-                    <Pencil size={13} />
-                  </button>
-                  <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
-                </>
+                <label
+                  htmlFor="avatar-file-input"
+                  className="absolute -top-1.5 -right-1.5 w-8 h-8 rounded-full bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900 transition-all active:scale-90 cursor-pointer hover:scale-110"
+                  title="تغيير الصورة الشخصية"
+                >
+                  <Pencil size={13} />
+                  <input id="avatar-file-input" ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+                </label>
               )}
             </div>
             {/* Card title */}
@@ -871,16 +961,18 @@ export function ModernProfileView({
                 <Download size={14} /><span>تحميل CV</span>
               </a>
               {isMe && (
-                <button type="button" onClick={() => cvInputRef.current?.click()}
-                  className="col-span-2 sm:col-span-1 py-2.5 px-3 bg-gradient-to-l from-[#0a66c2] to-[#004182] hover:from-[#004182] hover:to-[#0a66c2] text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer">
+                <label
+                  htmlFor="cv-file-input"
+                  className="col-span-2 sm:col-span-1 py-2.5 px-3 bg-gradient-to-l from-[#0a66c2] to-[#004182] hover:from-[#004182] hover:to-[#0a66c2] text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                >
                   <RefreshCw size={13} /><span>استبدال الملف</span>
-                </button>
+                </label>
               )}
             </div>
           </div>
         ) : (
-          <div
-            onClick={() => isMe && cvInputRef.current?.click()}
+          <label
+            htmlFor={isMe ? "cv-file-input" : undefined}
             className={`p-6 sm:p-8 rounded-2xl border-2 border-dashed border-blue-200 dark:border-blue-800/60 bg-blue-50/30 dark:bg-blue-950/10 flex flex-col items-center justify-center text-center gap-3 transition-all ${isMe ? 'hover:bg-blue-50 dark:hover:bg-blue-950/20 cursor-pointer active:scale-[0.99]' : ''}`}
           >
             <div className="w-14 h-14 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-300 flex items-center justify-center shadow-sm">
@@ -892,13 +984,18 @@ export function ModernProfileView({
               </p>
               <p className="text-[11px] font-bold text-slate-400 mt-1">PDF أو Word — الحد الأقصى 25 ميغابايت</p>
             </div>
-          </div>
+          </label>
         )}
 
         {isMe && (
-          <input ref={cvInputRef} type="file"
-            accept=".pdf,.doc,.docx,application/pdf,application/msword"
-            className="hidden" onChange={handleCVFileSelect} />
+          <input
+            id="cv-file-input"
+            ref={cvInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            className="hidden"
+            onChange={handleCVFileSelect}
+          />
         )}
 
         {isMe && (pendingCVFile || cvUrl) && (
