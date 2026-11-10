@@ -68,16 +68,25 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
   const renderTaskRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  // ─── Lock body scroll while open ──────────────────────────────────────────────
+  // ─── Lock body scroll while open & defensive cleanup ──────────────────────────
   useEffect(() => {
     if (isOpen) {
-      const originalOverflow = document.body.style.overflow;
       document.body.style.overflow = 'hidden';
       return () => {
-        document.body.style.overflow = originalOverflow;
+        document.body.style.overflow = '';
       };
+    } else {
+      document.body.style.overflow = '';
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        document.body.style.overflow = '';
+      } catch (_) {}
+    };
+  }, []);
 
   // ─── 1. Load Document ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -237,23 +246,33 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
   const handleNextPage = () => setCurrentPage(prev => Math.min(prev + 1, numPages));
   const handlePrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
 
-  if (!isOpen || typeof document === 'undefined') return null;
+  if (typeof document === 'undefined') return null;
 
-  const modalNode = (
-    <AnimatePresence>
-      <motion.div
-        className="fixed inset-x-0 top-16 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md"
-        style={{ bottom: 'calc(4.35rem + env(safe-area-inset-bottom, 0px))' }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-      >
+  return createPortal(
+    <AnimatePresence
+      onExitComplete={() => {
+        try {
+          document.body.style.overflow = '';
+        } catch (_) {}
+      }}
+    >
+      {isOpen && (
         <motion.div
-          initial={{ scale: 0.94, opacity: 0, y: 15 }}
-          animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.94, opacity: 0, y: 15 }}
-          transition={{ type: 'spring', stiffness: 340, damping: 28 }}
+          key="pdf-viewer-backdrop"
+          className="fixed inset-x-0 top-16 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md"
+          style={{ bottom: 'calc(4.35rem + env(safe-area-inset-bottom, 0px))' }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+          onClick={onClose}
+        >
+          <motion.div
+            key="pdf-viewer-modal"
+            initial={{ scale: 0.94, opacity: 0, y: 15 }}
+            animate={{ scale: 1, opacity: 1, y: 0 }}
+            exit={{ scale: 0.94, opacity: 0, y: 15 }}
+            transition={{ type: 'spring', stiffness: 340, damping: 28 }}
           className="w-full h-full max-w-4xl max-h-full bg-white dark:bg-slate-900 rounded-3xl shadow-2xl flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
           dir="rtl"
           onClick={(e) => e.stopPropagation()}
@@ -422,8 +441,8 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
           </div>
         </motion.div>
       </motion.div>
-    </AnimatePresence>
+      )}
+    </AnimatePresence>,
+    document.body
   );
-
-  return createPortal(modalNode, document.body);
 };

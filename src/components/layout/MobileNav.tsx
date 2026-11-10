@@ -277,7 +277,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
           Minimal Luxury Dock (10) — Compact Neumorphic Capsule & Floating Bubble
           ══════════════════════════════════════════════════════════════════════ */}
       <div
-        className="md:hidden fixed bottom-0 left-0 right-0 z-[60] flex justify-center items-center pointer-events-none"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-[80] flex justify-center items-center pointer-events-none"
         style={{
           paddingBottom: 'calc(max(env(safe-area-inset-bottom, 0px), 0.75rem) + 0.35rem)',
           paddingLeft: '0.85rem',

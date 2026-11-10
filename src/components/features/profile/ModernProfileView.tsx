@@ -11,7 +11,9 @@ import { supabase } from '../../../lib/supabase';
 import { profileService } from '../../../lib/services/profileService';
 import { cvService } from '../../../lib/services/cvService';
 import { mobileUploadService } from '../../../lib/services/mobileUploadService';
-import { AppUser } from '../../../types';
+import { AppUser, Post } from '../../../types';
+import { useAppContext } from '../../../contexts/AppContext';
+import { PostNewsCard } from '../PostNewsCard';
 import { PDFViewerModal } from '../../common/PDFViewerModal';
 
 interface ModernProfileViewProps {
@@ -166,6 +168,67 @@ export function ModernProfileView({
 
   const effectiveUserId = user?.id || profile?.id;
 
+  // ─── Profile Tabs & Posts State ──────────────────────────────────────────────
+  const [activeProfileTab, setActiveProfileTab] = useState<'info' | 'posts'>('info');
+  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab } = useAppContext();
+  const [profilePosts, setProfilePosts] = useState<Post[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+
+  const targetUserId = profile?.id || effectiveUserId;
+
+  const fetchProfilePosts = useCallback(async () => {
+    if (!targetUserId) return;
+    setLoadingPosts(true);
+    try {
+      const { data, error } = await (supabase as any)
+        .from('posts')
+        .select('*')
+        .eq('author_id', targetUserId)
+        .order('created_at', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        const mapped: Post[] = data.map((p: any) => ({
+          id: p.id,
+          authorId: p.author_id,
+          authorName: p.author_name || profile?.name || 'مستخدم',
+          authorAvatar: p.author_avatar || avatar,
+          authorTitle: p.author_title || title || 'عضو في ProLink',
+          content: p.content || '',
+          imageUrl: p.image_url,
+          videoUrl: p.video_url,
+          timestamp: p.created_at,
+          created_at: p.created_at,
+          likesCount: p.likes_count || 0,
+          dislikesCount: p.dislikes_count || 0,
+          post_type: p.post_type,
+          article_title: p.article_title,
+        }));
+        setProfilePosts(mapped);
+      } else {
+        const matched = allContextPosts.filter(
+          p => p.authorId === targetUserId || (p as any).author_id === targetUserId
+        );
+        setProfilePosts(matched);
+      }
+    } catch (_) {
+      const matched = allContextPosts.filter(
+        p => p.authorId === targetUserId || (p as any).author_id === targetUserId
+      );
+      setProfilePosts(matched);
+    } finally {
+      setLoadingPosts(false);
+    }
+  }, [targetUserId, profile?.name, avatar, title, allContextPosts]);
+
+  React.useEffect(() => {
+    fetchProfilePosts();
+  }, [fetchProfilePosts]);
+
+  const handleDeletePostInProfile = (postId: string) => {
+    setProfilePosts(prev => prev.filter(p => p.id !== postId));
+    setContextPosts?.(prev => prev.filter(p => p.id !== postId));
+  };
+
   // ─── فتح نافذة CV (معاينة حقيقية عبر Canvas بدون iframe أو جوجل دوكس) ────────
   const openCVModal = async () => {
     const targetCvUrl = cvUrl || profile?.cvUrl || (profile as any)?.cv_url || '';
@@ -220,7 +283,7 @@ export function ModernProfileView({
         a.href = u;
         a.download = pendingCVFile.name || 'CV.pdf';
         a.click();
-        URL.revokeObjectURL(u);
+        setTimeout(() => URL.revokeObjectURL(u), 4000);
         addToast('✅ بدأ تحميل الملف', 'success');
         return;
       }
@@ -244,11 +307,21 @@ export function ModernProfileView({
 
       let fetchUrl = cvUrl;
       if (storagePath) {
-        const { data: sd } = await supabase.storage.from(bucket).createSignedUrl(storagePath, 120);
-        if (sd?.signedUrl) fetchUrl = sd.signedUrl;
+        try {
+          const { data: sd } = await supabase.storage.from(bucket).createSignedUrl(storagePath, 120);
+          if (sd?.signedUrl) fetchUrl = sd.signedUrl;
+        } catch (_) {}
       }
 
-      const res = await fetch(fetchUrl);
+      // Safe fetch with 10s timeout
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 10000);
+      let res: Response;
+      try {
+        res = await fetch(fetchUrl, { signal: ctrl.signal });
+      } finally {
+        clearTimeout(timer);
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const blob = await res.blob();
       const bUrl = URL.createObjectURL(blob);
@@ -257,7 +330,7 @@ export function ModernProfileView({
       const isDoc = cvUrl.toLowerCase().includes('.doc');
       a.download = `CV_${profile?.name || 'User'}.${isDoc ? 'docx' : 'pdf'}`;
       a.click();
-      setTimeout(() => URL.revokeObjectURL(bUrl), 2000);
+      setTimeout(() => URL.revokeObjectURL(bUrl), 4000);
       addToast('✅ تم تنزيل السيرة الذاتية بنجاح', 'success');
     } catch (err: any) {
       console.error('[handleDownloadCV] error:', err);
@@ -1079,9 +1152,61 @@ export function ModernProfileView({
         </div>
       </motion.div>
 
-      {/* ══════════════════════════════════════════════════════════════════════════
-          CARD 2 — رقم الهاتف
-          ══════════════════════════════════════════════════════════════════════════ */}
+      {/* ─── Profile Sub-Navigation Tabs with Animated Sliding Pill ─── */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-1.5 border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-1.5 relative select-none">
+        <button
+          type="button"
+          onClick={() => setActiveProfileTab('info')}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all relative z-10 flex items-center justify-center gap-2 cursor-pointer ${
+            activeProfileTab === 'info'
+              ? 'text-white'
+              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          {activeProfileTab === 'info' && (
+            <motion.div
+              layoutId="profile-tab-indicator"
+              className="absolute inset-0 bg-gradient-to-r from-[#0a66c2] to-[#004182] rounded-xl shadow-md z-[-1]"
+              transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+            />
+          )}
+          <User size={15} />
+          <span>الملف الشخصي</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveProfileTab('posts')}
+          className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all relative z-10 flex items-center justify-center gap-2 cursor-pointer ${
+            activeProfileTab === 'posts'
+              ? 'text-white'
+              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          {activeProfileTab === 'posts' && (
+            <motion.div
+              layoutId="profile-tab-indicator"
+              className="absolute inset-0 bg-gradient-to-r from-[#0a66c2] to-[#004182] rounded-xl shadow-md z-[-1]"
+              transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+            />
+          )}
+          <FileText size={15} />
+          <span>المنشورات والمقالات</span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+            activeProfileTab === 'posts'
+              ? 'bg-white/20 text-white'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+          }`}>
+            {profilePosts.length}
+          </span>
+        </button>
+      </div>
+
+      {activeProfileTab === 'info' ? (
+        <>
+          {/* ══════════════════════════════════════════════════════════════════════════
+              CARD 2 — رقم الهاتف
+              ══════════════════════════════════════════════════════════════════════════ */}
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1369,6 +1494,75 @@ export function ModernProfileView({
           </button>
         )}
       </motion.div>
+      )}
+        </>
+      ) : (
+        /* ─── Posts & Articles Tab Content ─── */
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          className="space-y-4"
+        >
+          {/* Header Action Bar */}
+          <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm">
+            <div>
+              <h3 className="font-black text-sm text-slate-800 dark:text-white">منشورات ومقالات {profile?.name}</h3>
+              <p className="text-[11px] font-bold text-slate-400 mt-0.5">
+                {profilePosts.length === 0 ? 'لا توجد مشاركات حتى الآن' : `${profilePosts.length} مشاركة منشورة`}
+              </p>
+            </div>
+            {isMe && (
+              <button
+                type="button"
+                onClick={() => { setActiveTab?.('home'); addToast('يمكنك كتابة مقال أو مشاركة صورة من صندوق النشر 🚀'); }}
+                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-black rounded-xl shadow-md hover:brightness-110 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <FileText size={14} />
+                <span>+ مقال / منشور جديد</span>
+              </button>
+            )}
+          </div>
+
+          {/* Posts List / Empty State / Loader */}
+          {loadingPosts ? (
+            <div className="p-12 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 flex flex-col items-center justify-center gap-3">
+              <Loader2 size={28} className="animate-spin text-[#0a66c2]" />
+              <p className="text-xs font-bold text-slate-400">جاري تحميل المنشورات والمقالات...</p>
+            </div>
+          ) : profilePosts.length === 0 ? (
+            <div className="p-10 text-center bg-white dark:bg-slate-900 rounded-3xl border border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400 flex items-center justify-center shadow-sm">
+                <FileText size={26} />
+              </div>
+              <h4 className="font-black text-sm text-slate-800 dark:text-white">لا توجد منشورات أو مقالات بعد</h4>
+              <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
+                {isMe ? 'شارك أفكارك المهنية، صورك، أو مقالاتك مع المجتمع المهني لزيادة فرصك.' : 'لم يقم هذا المستخدم بنشر أي مقالات أو صور حتى الآن.'}
+              </p>
+              {isMe && (
+                <button
+                  type="button"
+                  onClick={() => { setActiveTab?.('home'); addToast('يمكنك كتابة مقال أو مشاركة صورة من صندوق النشر ✍️'); }}
+                  className="mt-2 px-6 py-2.5 rounded-full bg-gradient-to-l from-[#0a66c2] to-[#004182] text-white text-xs font-black shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                >
+                  كتابة أول مقال أو منشور ✍️
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {profilePosts.map((post, idx) => (
+                <PostNewsCard
+                  key={post.id || idx}
+                  post={post}
+                  allUsers={contextUsers || []}
+                  onClick={() => {}}
+                  onDeletePost={isMe ? handleDeletePostInProfile : undefined}
+                />
+              ))}
+            </div>
+          )}
+        </motion.div>
       )}
 
       {/* ─── Visitor: Message Button ─────────────────────────────────────────────── */}

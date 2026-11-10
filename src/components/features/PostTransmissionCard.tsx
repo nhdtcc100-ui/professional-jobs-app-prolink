@@ -266,7 +266,9 @@ export function PostTransmissionCard({
             <p className="text-[10px] text-slate-400 font-bold leading-none mt-1">{post.authorTitle}</p>
             <div className="flex items-center gap-1.5 mt-1.5">
                <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-               <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">Signal Active</p>
+               <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">
+                 {(post as any).post_type === 'article' || post.content.startsWith('# ') ? 'مقال مهني 📰' : 'Signal Active'}
+               </p>
             </div>
           </div>
         </div>

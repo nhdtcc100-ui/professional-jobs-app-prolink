@@ -44,6 +44,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
   }
 
   const [content, setContent] = useState('');
+  const [articleTitle, setArticleTitle] = useState('');
   const [postError, setPostError] = useState<string | null>(null);
 
   const handleContentChange = (val: string) => {
@@ -141,7 +142,10 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
     if (isPosting) return; 
 
     const tempId = `temp-${Date.now()}`;
-    const postContent = sanitizeInput(content, {
+    const rawContent = (uploadType === 'article' && articleTitle.trim())
+      ? `# ${articleTitle.trim()}\n\n${content}`
+      : content;
+    const postContent = sanitizeInput(rawContent, {
       id: appUser?.id,
       name: appUser?.name,
       email: appUser?.email
@@ -153,6 +157,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
 
     // 1. Reset UI Immediately
     setContent('');
+    setArticleTitle('');
     setAttachment(null);
     setSelectedFile(null);
     setVideoUrl('');
@@ -167,7 +172,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
       authorAvatar: appUser.avatar || 'https://ui-avatars.com/api/?background=random',
       authorTitle: appUser.role === 'employer' ? (appUser.companyName || 'صاحب عمل') : 'باحث عن عمل',
       content: postContent,
-      imageUrl: postType === 'photo' ? postAttachment : null,
+      imageUrl: (postType === 'photo' || postType === 'article') ? postAttachment : null,
       videoUrl: postType === 'video' ? postAttachment : postVideoUrl || null,
       likesCount: 0,
       timestamp: { toDate: () => new Date() }
@@ -179,7 +184,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
       let finalVideoUrl: string | null = null;
 
       // Handle Image Upload
-      if (postType === 'photo' && postAttachment && postAttachment.startsWith('data:')) {
+      if ((postType === 'photo' || postType === 'article') && postAttachment && postAttachment.startsWith('data:')) {
         const res = await fetch(postAttachment);
         const blob = await res.blob();
         const file = new File([blob], 'post-image.jpg', { type: 'image/jpeg' });
@@ -199,7 +204,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
                          ? (appUser.companyName || 'صاحب عمل')
                          : 'باحث عن عمل',
         content:       postContent,
-        image_url:     postType === 'photo'
+        image_url:     (postType === 'photo' || postType === 'article')
                          ? (finalImageUrl || postAttachment)
                          : null,
         video_url:     postType === 'video'
@@ -261,6 +266,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
       <div className="flex justify-around items-center mt-5 gap-2">
         <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileChange} />
         <ActionBtn onClick={triggerUpload} icon={<div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl shadow-sm"><ImageIcon className="text-blue-600" size={18} /></div>} label="صورة" />
+        <ActionBtn onClick={() => setUploadType('article')} icon={<div className="p-2 bg-purple-50 dark:bg-purple-900/30 rounded-xl shadow-sm"><FileText className="text-purple-600" size={18} /></div>} label="مقال" />
         {isAdmin && <ActionBtn onClick={triggerUpload} icon={<div className="p-2 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl shadow-sm"><Video className="text-emerald-600" size={18} /></div>} label="فيديو" />}
         {/* نشر وظيفة: يظهر فقط لصاحب العمل والأدمن — مخفي تماماً عن الباحث عن عمل */}
         {isEmployer && (
@@ -317,11 +323,41 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
               </div>
             )}
 
+            {uploadType === 'article' && (
+              <div className="mb-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-black text-purple-600 dark:text-purple-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <FileText size={13} />
+                    عنوان المقال المهني
+                  </label>
+                  {!attachment && (
+                    <button
+                      type="button"
+                      onClick={triggerUpload}
+                      className="text-[10px] font-black text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <ImageIcon size={12} />
+                      + غلاف المقال (اختياري)
+                    </button>
+                  )}
+                </div>
+                <input
+                  id="post-article-title"
+                  name="articleTitle"
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-purple-200 dark:border-purple-800 rounded-2xl px-5 py-3 text-sm font-black text-slate-800 dark:text-white outline-none focus:ring-4 focus:ring-purple-500/20 transition-all shadow-inner"
+                  placeholder="اكتب عنوان المقال هنا..."
+                  value={articleTitle}
+                  onChange={e => setArticleTitle(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+            )}
+
             <textarea
               id="post-content"
               name="content"
               className={`w-full bg-slate-50 dark:bg-slate-900 rounded-[1.5rem] p-5 text-sm text-slate-700 dark:text-white h-32 focus:outline-none focus:ring-8 transition-all font-sans font-medium shadow-inner resize-none leading-relaxed border ${postError ? 'border-red-400 focus:ring-red-100' : 'border-transparent focus:ring-blue-50/50 dark:focus:ring-blue-900/10'}`}
-              placeholder={uploadType === 'job' ? "أدخل تفاصيل الوظيفة..." : "بماذا تفكر الآن؟ شارك إشارتك المهنية..."}
+              placeholder={uploadType === 'article' ? "اكتب محتوى وتفاصيل المقال هنا..." : uploadType === 'job' ? "أدخل تفاصيل الوظيفة..." : "بماذا تفكر الآن؟ شارك إشارتك المهنية..."}
               value={content}
               onChange={e => handleContentChange(e.target.value)}
             />
@@ -334,7 +370,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
             
             <div className="flex justify-end gap-3 mt-5">
               <button 
-                onClick={() => { setContent(''); setAttachment(null); setUploadType(null); setIsPublishingArticle(false); }} 
+                onClick={() => { setContent(''); setArticleTitle(''); setAttachment(null); setUploadType(null); setIsPublishingArticle(false); }} 
                 className="px-6 py-3 text-xs font-black text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest"
               >
                 تراجع

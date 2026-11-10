@@ -63,10 +63,10 @@ export const GlobalPostModal: React.FC<GlobalPostModalProps> = ({
                      <div className="p-3 bg-slate-600 text-white rounded-xl"><Zap size={24} /></div>
                      <div>
                         <p className="font-black text-slate-800 dark:text-white text-sm">أنت مسجل كـ (باحث عن عمل)</p>
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">نشر المنشورات والتوجيهات مخصص لحسابات أصحاب العمل والشركات.</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-bold">يمكنك نشر مقالات مهنية ومشاركة الصور لتعزيز حضورك وشبكتك المهنية.</p>
                      </div>
                   </div>
-                  <GlassButton className="w-full py-4" onClick={() => { setActiveTab('jobs'); setShowPostFormGlobal(false); addToast('استكشف وقدم على الفرص الوظيفية 💼'); }}>تصفح الوظائف المتاحة</GlassButton>
+                  <GlassButton className="w-full py-4" onClick={() => { setActiveTab('home'); setShowPostFormGlobal(false); addToast('يمكنك كتابة مقال أو مشاركة صورة من الصفحة الرئيسية ✍️'); }}>نشر مقال أو صورة الآن 🚀</GlassButton>
                 </div>
               )}
             </div>
