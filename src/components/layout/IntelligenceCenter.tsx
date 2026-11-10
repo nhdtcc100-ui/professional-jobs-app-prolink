@@ -32,8 +32,10 @@ export const IntelligenceCenter: React.FC<IntelligenceCenterProps> = ({
     c.status === 'accepted' && (c.requesterId === appUser?.id || c.recipientId === appUser?.id)
   ).length;
 
+  const isFreelancer = appUser?.role === 'freelancer';
+
   // Role label
-  const roleLabel = isEmployer ? 'صاحب عمل' : 'باحث عن عمل';
+  const roleLabel = isEmployer ? 'صاحب عمل' : isFreelancer ? 'عمل حر ⚡' : 'باحث عن عمل';
 
   return (
     <div className="lg:col-span-3 space-y-4 mb-10 md:mb-0 hidden md:block">
@@ -56,7 +58,9 @@ export const IntelligenceCenter: React.FC<IntelligenceCenterProps> = ({
                 <span className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
                   isEmployer 
                     ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' 
-                    : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400'
+                    : isFreelancer
+                      ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400'
+                      : 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400'
                 }`}>
                   {roleLabel}
                 </span>

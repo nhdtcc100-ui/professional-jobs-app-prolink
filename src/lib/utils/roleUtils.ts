@@ -102,15 +102,14 @@ export const isFreelancer = (user: any): boolean => {
 };
 
 /**
- * 📝 Checks if a user can post articles, posts, and interact (like/dislike/comment/echo).
- * Seekers are read-only for posts and cannot publish or interact.
- * Employers and Admins have full access to post and interact.
+ * 📝 Checks if a user can post articles, image posts, and interact (like/dislike/comment/echo).
+ * Seekers, Freelancers, Employers, and Admins can all publish articles, upload photos, and interact.
+ * Corporate job publishing remains strictly restricted to employers via `isJobPoster(user)`.
  */
 export const canUserPostAndInteract = (user: any): boolean => {
   if (!user) return false;
-  if (isUserAdmin(user)) return true;
-  if (isJobSeeker(user)) return false;
-  return isJobPoster(user);
+  if (user.isActive === false || user.is_active === false) return false;
+  return true;
 };
 
 

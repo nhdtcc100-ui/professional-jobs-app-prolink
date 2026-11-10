@@ -762,7 +762,8 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
         </div>
       </GlassCard>
 
-      {/* ─── Section 6: Document Management (CV Upload) ────────────────── */}
+      {/* ─── Section 6: Document Management (CV Upload) — مخفية عن أصحاب العمل ────────────────── */}
+      {currentRole !== 'employer' && (
       <GlassCard className="p-8 rounded-[2.5rem] space-y-5 border border-slate-100 shadow-xl bg-white/50 relative overflow-hidden">
         <div className="flex items-center gap-4 mb-2">
           <div className="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-lg shadow-amber-200">
@@ -851,6 +852,7 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
           </div>
         )}
       </GlassCard>
+      )}
 
       {/* ─── Bottom Actions: Save & Back to Top ────────────────── */}
       <div className="pt-6 flex flex-col sm:flex-row items-center justify-center gap-4">

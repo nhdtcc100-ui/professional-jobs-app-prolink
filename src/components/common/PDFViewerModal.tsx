@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, ZoomIn, ZoomOut, RotateCcw, ChevronRight, ChevronLeft,
@@ -6,6 +7,7 @@ import {
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
+import { supabase } from '../../lib/supabase';
 
 // Initialize PDF.js worker with Vite asset URL
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -17,6 +19,34 @@ interface PDFViewerModalProps {
   title?: string;
   userName?: string;
   userAvatar?: string;
+}
+
+// ─── Helper to resolve signed storage URLs without blocking the main thread ────
+async function resolveStoragePdfUrl(source: string): Promise<string> {
+  if (source.startsWith('blob:') || source.startsWith('data:')) return source;
+  let bucket = '';
+  let path = '';
+  if (source.includes('/storage/v1/object/public/resumes/')) {
+    bucket = 'resumes';
+    path = decodeURIComponent(source.split('/storage/v1/object/public/resumes/')[1]?.split('?')[0] || '');
+  } else if (source.includes('/storage/v1/object/public/applications/')) {
+    bucket = 'applications';
+    path = decodeURIComponent(source.split('/storage/v1/object/public/applications/')[1]?.split('?')[0] || '');
+  } else if (source.includes('/resumes/')) {
+    bucket = 'resumes';
+    path = decodeURIComponent(source.split('/resumes/')[1]?.split('?')[0] || '');
+  } else if (source.includes('/applications/')) {
+    bucket = 'applications';
+    path = decodeURIComponent(source.split('/applications/')[1]?.split('?')[0] || '');
+  }
+
+  if (bucket && path) {
+    try {
+      const { data, error } = await supabase.storage.from(bucket).createSignedUrl(path, 600);
+      if (!error && data?.signedUrl) return data.signedUrl;
+    } catch (_) {}
+  }
+  return source;
 }
 
 export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
@@ -38,6 +68,17 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
   const renderTaskRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
+  // ─── Lock body scroll while open ──────────────────────────────────────────────
+  useEffect(() => {
+    if (isOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [isOpen]);
+
   // ─── 1. Load Document ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen || !pdfSource) {
@@ -57,11 +98,28 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
         if (typeof pdfSource === 'string') {
           // If it's a Word document
           if (pdfSource.toLowerCase().includes('.doc')) {
-            throw new Error('ملفات Word (.doc/.docx) لا يمكن معاينتها مباشرة كـ PDF. يرجى رفع ملف بصيغة PDF.');
+            throw new Error('ملفات Word (.doc/.docx) لا يمكن معاينتها مباشرة كـ PDF. يرجى تنزيل الملف أو رفعه بصيغة PDF.');
           }
 
-          // Fetch bytes first to bypass CORS/iframe restrictions safely
-          const res = await fetch(pdfSource);
+          // Resolve signed URL if needed
+          const resolvedUrl = await resolveStoragePdfUrl(pdfSource);
+          if (!isMounted) return;
+
+          // Fetch with AbortController timeout (12s) to prevent hanging
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 12_000);
+          let res: Response;
+          try {
+            res = await fetch(resolvedUrl, { signal: ctrl.signal });
+          } catch (e: any) {
+            if (e?.name === 'AbortError') {
+              throw new Error('استغرق جلب ملف السيرة وقتاً أطول من المتوقع. تحقق من اتصال الإنترنت.');
+            }
+            throw e;
+          } finally {
+            clearTimeout(timer);
+          }
+
           if (!res.ok) {
             if (res.status === 403) throw new Error('غير مصرح بالوصول إلى الملف (403).');
             if (res.status === 404) throw new Error('الملف غير موجود في التخزين (404).');
@@ -69,11 +127,19 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
           }
           const buf = await res.arrayBuffer();
           if (buf.byteLength === 0) throw new Error('الملف فارغ أو تالف (0 بايت).');
-          loadingTask = pdfjsLib.getDocument({ data: buf });
+          if (!isMounted) return;
+
+          loadingTask = pdfjsLib.getDocument({
+            data: buf,
+            isEvalSupported: false,
+          });
         } else {
           // ArrayBuffer directly
           if (pdfSource.byteLength === 0) throw new Error('الملف فارغ أو تالف.');
-          loadingTask = pdfjsLib.getDocument({ data: pdfSource });
+          loadingTask = pdfjsLib.getDocument({
+            data: pdfSource,
+            isEvalSupported: false,
+          });
         }
 
         const pdf = await loadingTask.promise;
@@ -127,8 +193,8 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
           renderTaskRef.current = null;
         }
 
-        // Adjust scale for High-DPI (Retina) screens for crystal-clear text
-        const pixelRatio = window.devicePixelRatio || 1;
+        // Cap pixel ratio to max 1.8 to prevent memory explosion & main thread freeze on mobile
+        const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.8);
         const viewport = page.getViewport({ scale });
 
         canvas.width = Math.floor(viewport.width * pixelRatio);
@@ -165,18 +231,18 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
   }, [isOpen, currentPage, scale, loading, error]);
 
   // ─── Controls ────────────────────────────────────────────────────────────────
-  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.25, 2.8));
+  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.25, 2.5));
   const handleZoomOut = () => setScale(prev => Math.max(prev - 0.25, 0.4));
   const handleResetZoom = () => setScale(0.5);
   const handleNextPage = () => setCurrentPage(prev => Math.min(prev + 1, numPages));
   const handlePrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
-  return (
+  const modalNode = (
     <AnimatePresence>
       <motion.div
-        className="fixed inset-x-0 top-16 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-black/75 backdrop-blur-md"
+        className="fixed inset-x-0 top-16 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md"
         style={{ bottom: 'calc(4.35rem + env(safe-area-inset-bottom, 0px))' }}
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -258,25 +324,25 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
                 <button
                   onClick={handleZoomOut}
                   disabled={scale <= 0.4}
-                  className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors shadow-2xs"
-                  title="تصغير"
+                  className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
+                  title="تصغير (-)"
                 >
-                  <ZoomOut size={15} />
+                  <ZoomOut size={16} />
                 </button>
-                <span className="px-2 py-1 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px] font-black min-w-[48px] text-center">
+                <span className="px-2 py-1 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px] font-black min-w-[50px] text-center font-mono">
                   {Math.round(scale * 100)}%
                 </span>
                 <button
                   onClick={handleZoomIn}
-                  disabled={scale >= 2.8}
-                  className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors shadow-2xs"
-                  title="تكبير"
+                  disabled={scale >= 2.5}
+                  className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
+                  title="تكبير (+)"
                 >
-                  <ZoomIn size={15} />
+                  <ZoomIn size={16} />
                 </button>
                 <button
                   onClick={handleResetZoom}
-                  className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors shadow-2xs"
+                  className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
                   title="إعادة ضبط الحجم"
                 >
                   <RotateCcw size={14} />
@@ -358,5 +424,6 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
       </motion.div>
     </AnimatePresence>
   );
-};
 
+  return createPortal(modalNode, document.body);
+};

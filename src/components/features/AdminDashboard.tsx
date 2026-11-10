@@ -1553,8 +1553,27 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                           <div className="pt-4 mt-2 border-t border-slate-700/50 flex gap-3 items-end">
                             <textarea
                               value={supportReplyText}
-                              onChange={(e) => setSupportReplyText(sanitizeInput(e.target.value))}
-                              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendAdminSupportReply(); } }}
+                              onChange={(e) => {
+                                let val = e.target.value;
+                                // ✅ إضافة المسافة تلقائياً عند كتابة الفاصلة العربية أو الإنجليزية في شات الأدمن
+                                if (val.length > supportReplyText.length) {
+                                  const lastChar = val.slice(-1);
+                                  if (lastChar === '،' || lastChar === ',') {
+                                    val = val + ' ';
+                                  }
+                                }
+                                setSupportReplyText(val);
+                              }}
+                              onKeyDown={(e) => {
+                                // دعم إضافة مسافة عند الضغط على الفاصلة
+                                if (e.key === '،' || e.key === ',') {
+                                  // يتم التعامل معها في onChange
+                                }
+                                if (e.key === 'Enter' && !e.shiftKey) { 
+                                  e.preventDefault(); 
+                                  handleSendAdminSupportReply(); 
+                                } 
+                              }}
                               placeholder="اكتب رد الدعم الفني هنا... (Enter للإرسال)"
                               rows={2}
                               className="flex-1 bg-slate-900/80 border border-slate-700 rounded-2xl px-4 py-3 text-xs font-medium text-white outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all placeholder:text-slate-500 resize-none"

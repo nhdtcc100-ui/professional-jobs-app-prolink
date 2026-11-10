@@ -345,25 +345,15 @@ function ApplicationsListViewContent({
     }
   }, [selectedAppIndex, filteredApps, appUser?.id]);
 
-  const handleDetailScroll = () => {
-    if (!detailContainerRef.current) return;
-    const container = detailContainerRef.current;
-    const itemHeight = container.clientHeight;
-    if (itemHeight <= 0) return;
-    const newIndex = Math.round(container.scrollTop / itemHeight);
-    if (newIndex >= 0 && newIndex < filteredApps.length && newIndex !== selectedAppIndex) {
-      setSelectedAppIndex(newIndex);
-    }
-  };
-
   const scrollToApp = (index: number) => {
-    if (index < 0 || index >= filteredApps.length || !detailContainerRef.current) return;
-    const container = detailContainerRef.current;
-    container.scrollTo({
-      top: index * container.clientHeight,
-      behavior: 'smooth'
-    });
+    if (index < 0 || index >= filteredApps.length) return;
     setSelectedAppIndex(index);
+    if (detailContainerRef.current) {
+      detailContainerRef.current.scrollTo({
+        top: 0,
+        behavior: 'instant'
+      });
+    }
   };
 
   const handleScheduleInterview = async () => {
@@ -863,14 +853,21 @@ function ApplicationsListViewContent({
               </button>
             </div>
 
-            {/* ── Scrollable Feed (Smooth Scrolling) ── */}
+            {/* ── Single Isolated Scroll Container for Applicant Details ── */}
             <div
               ref={detailContainerRef}
-              onScroll={handleDetailScroll}
-              className="flex-1 overflow-y-auto no-scrollbar bg-slate-100 dark:bg-slate-950"
-              style={{ scrollBehavior: 'smooth' }}
+              className="flex-1 overflow-y-auto no-scrollbar overscroll-contain bg-slate-100 dark:bg-slate-950 flex flex-col"
+              style={{
+                scrollBehavior: 'smooth',
+                overscrollBehaviorY: 'contain',
+                WebkitOverflowScrolling: 'touch' as any,
+              }}
             >
-              {filteredApps.map((app, index) => {
+              {(() => {
+                if (selectedAppIndex === null) return null;
+                const app = filteredApps[selectedAppIndex];
+                if (!app) return null;
+                const index = selectedAppIndex;
                 const resolved = resolveApplicant(app);
                 const statusBadge = app.status === 'approved' 
                   ? { label: 'مقبول', cls: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' }
@@ -879,14 +876,27 @@ function ApplicationsListViewContent({
                   : { label: 'قيد المراجعة', cls: 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400' };
 
                 return (
-                  <div
+                  <motion.div
                     key={app.id || index}
-                    id={`app-detail-item-${index}`}
-                    className="w-full h-full min-h-full flex flex-col justify-between overflow-hidden relative"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.15 }}
+                    drag="x"
+                    dragConstraints={{ left: 0, right: 0 }}
+                    dragElastic={0.2}
+                    onDragEnd={(_, info) => {
+                      if (info.offset.x < -60 && selectedAppIndex < filteredApps.length - 1) {
+                        scrollToApp(selectedAppIndex + 1);
+                      } else if (info.offset.x > 60 && selectedAppIndex > 0) {
+                        scrollToApp(selectedAppIndex - 1);
+                      }
+                    }}
+                    className="w-full flex-1 flex flex-col justify-between"
                   >
                     {/* Inner Scrollable Content with comfortable bottom padding */}
                     <div
-                      className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 no-scrollbar max-w-4xl w-full mx-auto"
+                      className="p-4 md:p-8 space-y-6 max-w-4xl w-full mx-auto"
                       style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 140px), 160px)' }}
                     >
 
@@ -1242,9 +1252,9 @@ function ApplicationsListViewContent({
                         )}
                       </section>
                     </div>
-                  </div>
+                  </motion.div>
                 );
-              })}
+              })()}
             </div>
           </motion.div>
         )}

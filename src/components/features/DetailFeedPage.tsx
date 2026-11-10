@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { 
-  ArrowRight, ChevronUp, ChevronDown, Briefcase, MapPin, DollarSign, 
+  ArrowRight, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Briefcase, MapPin, DollarSign, 
   Tag, Clock, Send, Calendar, ExternalLink, Sparkles,
   FileText, Home, Newspaper, Phone, MessageCircle
 } from 'lucide-react';
@@ -136,45 +136,30 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
     Math.max(0, Math.min(initialIndex, items.length - 1))
   );
   const containerRef = useRef<HTMLDivElement>(null);
-  const itemsRef = useRef<(HTMLDivElement | null)[]>([]);
 
-  // Use IntersectionObserver for accurate index tracking on mobile
+  // Scroll to top immediately whenever the viewed job/item changes
   useEffect(() => {
-    if (!containerRef.current || items.length === 0) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach(entry => {
-          if (entry.isIntersecting) {
-            const idx = Number((entry.target as HTMLElement).dataset.index);
-            if (!isNaN(idx)) setCurrentIndex(idx);
-          }
-        });
-      },
-      { root: containerRef.current, threshold: 0.55 }
-    );
-    itemsRef.current.forEach(el => { if (el) observer.observe(el); });
-    return () => observer.disconnect();
-  }, [items]);
-
-  useEffect(() => {
-    const el = itemsRef.current[initialIndex];
-    if (el) {
-      setTimeout(() => {
-        if (containerRef.current) {
-          containerRef.current.scrollTop = initialIndex * containerRef.current.clientHeight;
-        }
-      }, 50);
+    if (containerRef.current) {
+      containerRef.current.scrollTo({ top: 0, behavior: 'instant' });
     }
-  }, [initialIndex]);
+  }, [currentIndex]);
+
+  const goToNext = () => {
+    if (currentIndex < items.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+    }
+  };
+
+  const goToPrev = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(prev => prev - 1);
+    }
+  };
 
   const scrollToItem = (index: number) => {
-    if (index < 0 || index >= items.length || !containerRef.current) return;
-    const container = containerRef.current;
-    container.scrollTo({
-      top: index * container.clientHeight,
-      behavior: 'smooth'
-    });
-    setCurrentIndex(index);
+    if (index >= 0 && index < items.length) {
+      setCurrentIndex(index);
+    }
   };
 
   const timeAgo = (dateStr: any) => safeTimeAgo(dateStr);
@@ -299,33 +284,42 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
         </div>
       </div>
 
-      {/* ── Vertical Smooth Navigation Container ── */}
+      {/* ── Single Smooth Vertical Scroll Container (No Dual-Scroll Interference) ── */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-scroll no-scrollbar"
+        className="flex-1 overflow-y-auto no-scrollbar overscroll-contain bg-white dark:bg-slate-950 flex flex-col"
         style={{
           scrollBehavior: 'smooth',
-          overscrollBehavior: 'contain',
+          overscrollBehaviorY: 'contain',
           WebkitOverflowScrolling: 'touch' as any,
-          touchAction: 'pan-y',
         }}
       >
-        {items.map((item, index) => {
+        {(() => {
+          const item = items[currentIndex];
+          if (!item) return null;
+          const index = currentIndex;
           const isItemJob = item.feedType === 'job' || item.company !== undefined || (type === 'job' && !item.content);
           const isItemNews = type === 'news' || item.feedType === 'news';
           const isActive = isItemJob ? item.is_active !== false : true;
           const isLast = index === items.length - 1;
 
           return (
-            <div
+            <motion.div
               key={item.id || index}
-              id={`detail-item-${index}`}
-              data-index={index}
-              ref={el => { itemsRef.current[index] = el; }}
-              className="w-full overflow-y-auto bg-white dark:bg-slate-950 relative transition-transform duration-200"
-              style={{
-                height: '100%',
-                minHeight: '100%',
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.15 }}
+              className="w-full flex-1 flex flex-col"
+              drag="x"
+              dragConstraints={{ left: 0, right: 0 }}
+              dragElastic={0.2}
+              onDragEnd={(_, info) => {
+                if (info.offset.x < -60) {
+                  goToNext();
+                } else if (info.offset.x > 60) {
+                  goToPrev();
+                }
               }}
             >
               {isItemJob ? (
@@ -635,18 +629,42 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     </div>
                   </div>
 
-                  {/* Scroll hint */}
-                  {!isLast && (
-                    <div className="flex flex-col items-center gap-1 pt-5 pb-4 opacity-40">
-                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500">اسحب للأسفل للخبر التالي</p>
-                      <ChevronDown size={18} className="text-slate-400 dark:text-slate-500 animate-bounce" />
-                    </div>
-                  )}
                 </div>
               )}
-            </div>
+            </motion.div>
           );
-        })}
+        })()}
+
+        {/* ── Fixed Floating Bottom Navigation Bar ── */}
+        <div 
+          className="sticky bottom-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 px-4 py-3 flex items-center justify-between gap-3 shadow-xl shrink-0"
+          style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 10px), 14px)' }}
+        >
+          <button
+            onClick={goToPrev}
+            disabled={currentIndex === 0}
+            className="flex-1 py-3 px-4 bg-slate-100 dark:bg-slate-800 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer shadow-xs"
+          >
+            <ChevronRight size={16} />
+            <span>{type === 'job' ? 'الوظيفة السابقة' : type === 'news' ? 'الخبر السابق' : 'السابق'}</span>
+          </button>
+          
+          <div className="flex flex-col items-center justify-center px-3">
+            <span className="text-[11px] font-black text-blue-600 dark:text-blue-400 font-mono">
+              {currentIndex + 1} / {items.length}
+            </span>
+            <span className="text-[9px] text-slate-400 font-bold hidden sm:inline">اسحب يميناً/يساراً</span>
+          </div>
+
+          <button
+            onClick={goToNext}
+            disabled={currentIndex === items.length - 1}
+            className="flex-1 py-3 px-4 bg-blue-600 disabled:opacity-30 hover:bg-blue-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer"
+          >
+            <span>{type === 'job' ? 'الوظيفة التالية' : type === 'news' ? 'الخبر التالي' : 'التالي'}</span>
+            <ChevronLeft size={16} />
+          </button>
+        </div>
       </div>
     </motion.div>
   );

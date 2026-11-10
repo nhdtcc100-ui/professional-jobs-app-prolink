@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ShieldCheck,
@@ -401,7 +401,16 @@ const suppRows = adminIDs.map((aid: string) => ({
                     <>
                       <textarea
                         value={chatMsg}
-                        onChange={(e) => setChatMsg(sanitizeInput(e.target.value))}
+                        onChange={(e) => {
+                          let val = e.target.value;
+                          if (val.length > chatMsg.length) {
+                            const lastChar = val.slice(-1);
+                            if (lastChar === '،' || lastChar === ',') {
+                              val = val + ' ';
+                            }
+                          }
+                          setChatMsg(val);
+                        }}
                         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                         placeholder="اكتب رسالتك هنا... (Enter للإرسال)"
                         rows={2}

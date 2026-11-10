@@ -310,22 +310,24 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 >
                   تعزيز الملف
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onViewCV) {
-                      onViewCV();
-                    } else if (formData.cv_url) {
-                      const sep = formData.cv_url.includes('?') ? '&' : '?';
-                      window.open(formData.cv_url + sep + 't=' + Date.now(), '_blank');
-                    } else {
-                      handleDownloadCV();
-                    }
-                  }}
-                  className="px-5 py-2.5 border-2 border-[#0a66c2] text-[#0a66c2] rounded-xl font-black text-[10px] hover:bg-blue-50 transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
-                >
-                  {formData.cv_url ? '📄 عرض السيرة الذاتية' : 'تحميل CV'}
-                </button>
+                {!isEmployer && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onViewCV) {
+                        onViewCV();
+                      } else if (formData.cv_url) {
+                        const sep = formData.cv_url.includes('?') ? '&' : '?';
+                        window.open(formData.cv_url + sep + 't=' + Date.now(), '_blank');
+                      } else {
+                        handleDownloadCV();
+                      }
+                    }}
+                    className="px-5 py-2.5 border-2 border-[#0a66c2] text-[#0a66c2] rounded-xl font-black text-[10px] hover:bg-blue-50 transition-all active:scale-95 flex items-center gap-2 cursor-pointer"
+                  >
+                    {formData.cv_url ? '📄 عرض السيرة الذاتية' : 'تحميل CV'}
+                  </button>
+                )}
               </>
             ) : (
               <div className="flex gap-2 flex-wrap">
@@ -341,8 +343,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                   <Phone size={16} />
                 </button>
                 )}
-                {/* ✅ زر عرض CV للزوار */}
-                {(profile.cvUrl || (profile as any).cv_url) && (
+                {/* ✅ زر عرض CV للزوار (مخفي عن أصحاب العمل) */}
+                {!isEmployer && (profile.cvUrl || (profile as any).cv_url) && (
                   <button
                     type="button"
                     onClick={() => {

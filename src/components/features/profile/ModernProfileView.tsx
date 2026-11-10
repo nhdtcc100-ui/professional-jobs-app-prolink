@@ -196,68 +196,10 @@ export function ModernProfileView({
         return;
       }
 
-      // 2. استخراج مسار التخزين وإزالة أي ?v=...
-      let storagePath = '';
-      let bucket = 'resumes';
-      const markers = [
-        { marker: '/storage/v1/object/public/resumes/', bkt: 'resumes' },
-        { marker: '/storage/v1/object/sign/resumes/', bkt: 'resumes' },
-        { marker: '/storage/v1/object/public/applications/', bkt: 'applications' },
-        { marker: '/storage/v1/object/sign/applications/', bkt: 'applications' },
-        { marker: '/resumes/', bkt: 'resumes' },
-        { marker: '/applications/', bkt: 'applications' },
-      ];
-
-      for (const { marker, bkt } of markers) {
-        if (targetCvUrl.includes(marker)) {
-          storagePath = decodeURIComponent(targetCvUrl.split(marker)[1]?.split('?')[0] || '');
-          bucket = bkt;
-          break;
-        }
-      }
-
-      let fetchUrl = targetCvUrl;
-      if (storagePath) {
-        const { data: sd, error: se } = await supabase.storage
-          .from(bucket)
-          .createSignedUrl(storagePath, 300);
-        if (!se && sd?.signedUrl) {
-          fetchUrl = sd.signedUrl;
-        }
-      }
-
-      // 3. جلب بايتات الملف مع timeout
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 20_000);
-      let res: Response;
-      try {
-        res = await fetch(fetchUrl, { signal: ctrl.signal });
-      } finally {
-        clearTimeout(timer);
-      }
-
-      if (res.ok) {
-        const buf = await res.arrayBuffer();
-        setCvPdfBytes(buf);
-      } else {
-        // Fallback بـ Anon key headers
-        const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
-        const resAnon = await fetch(targetCvUrl, {
-          headers: {
-            apikey: supabaseAnonKey,
-            Authorization: `Bearer ${supabaseAnonKey}`,
-          },
-        });
-        if (resAnon.ok) {
-          const buf = await resAnon.arrayBuffer();
-          setCvPdfBytes(buf);
-        } else {
-          // Pass URL as fallback to modal
-          setCvPdfBytes(fetchUrl);
-        }
-      }
+      // تمرير الرابط مباشرة لمودال المعاينة ليقوم بتحميله بسلاسة عبر الـ Web Worker دون تجميد الواجهة
+      setCvPdfBytes(targetCvUrl);
     } catch (err: any) {
-      console.warn('[openCVModal] Direct buffer fetch failed, passing url:', err);
+      console.warn('[openCVModal] Direct pass failed:', err);
       setCvPdfBytes(targetCvUrl);
     }
   };
@@ -1300,8 +1242,9 @@ export function ModernProfileView({
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════════
-          CARD 4 — السيرة الذاتية (CV / Resume)
+          CARD 4 — السيرة الذاتية (CV / Resume) — مخفية تماماً عن أصحاب العمل
           ══════════════════════════════════════════════════════════════════════════ */}
+      {role !== 'employer' && (
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1426,6 +1369,7 @@ export function ModernProfileView({
           </button>
         )}
       </motion.div>
+      )}
 
       {/* ─── Visitor: Message Button ─────────────────────────────────────────────── */}
       {!isMe && (
