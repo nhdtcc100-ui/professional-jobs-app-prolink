@@ -103,10 +103,22 @@ class IdempotencyEngine {
       } catch {}
     }
 
-    // 3. Deduplicate in-flight execution: If already running, wait for it
+    // 3. Deduplicate in-flight execution: If already running, wait for it with timeout
     if (this.inFlightMap.has(key)) {
-      console.log(`[Idempotency] In-flight request detected for key: ${key}. Awaiting active operation...`);
-      return this.inFlightMap.get(key) as Promise<T>;
+      console.log(`[Idempotency] In-flight request detected for key: ${key}. Awaiting active operation with 12s circuit breaker...`);
+      const inFlightPromise = this.inFlightMap.get(key) as Promise<T>;
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => {
+          this.inFlightMap.delete(key);
+          reject(new Error(`[Idempotency] In-flight timeout for key: ${key}`));
+        }, 12_000)
+      );
+      try {
+        return await Promise.race([inFlightPromise, timeoutPromise]);
+      } catch (err) {
+        this.inFlightMap.delete(key);
+        // Fall through to re-attempt rather than hanging
+      }
     }
 
     // 4. Start execution and register in inFlightMap
@@ -114,22 +126,30 @@ class IdempotencyEngine {
       try {
         const result = await operation();
 
-        // Cache successful or defined response
-        const record: CachedRecord<T> = {
-          response: result,
-          timestamp: Date.now(),
-          expiresAt: Date.now() + ttlMs,
-        };
+        // ✅ Only cache successful results — NEVER cache errors or failed queries!
+        if (result && !(result as any)?.error) {
+          const record: CachedRecord<T> = {
+            response: result,
+            timestamp: Date.now(),
+            expiresAt: Date.now() + ttlMs,
+          };
 
-        this.memoryCache.set(key, record);
+          this.memoryCache.set(key, record);
 
-        if (options.persistInSession && typeof sessionStorage !== 'undefined') {
-          try {
-            sessionStorage.setItem(SESSION_PREFIX + key, JSON.stringify(record));
-          } catch {}
+          if (options.persistInSession && typeof sessionStorage !== 'undefined') {
+            try {
+              sessionStorage.setItem(SESSION_PREFIX + key, JSON.stringify(record));
+            } catch {}
+          }
+        } else {
+          // Immediately purge key so immediate retries succeed
+          this.memoryCache.delete(key);
         }
 
         return result;
+      } catch (opErr) {
+        this.memoryCache.delete(key);
+        throw opErr;
       } finally {
         this.inFlightMap.delete(key);
       }

@@ -271,8 +271,8 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
           ) : null}
         </div>
 
-        {/* خيارات نوع الحساب */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* خيارات نوع الحساب (باحث عن عمل وصاحب عمل فقط) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {/* باحث عن عمل */}
           <div
             onClick={() => handleRoleCardClick('seeker')}
@@ -338,42 +338,7 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
             <div>
               <h4 className="font-black text-sm text-slate-800 dark:text-white mb-1">🏢 صاحب عمل / شركة</h4>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold leading-relaxed">
-                نشر الوظائف الشاغرة واستقطاب وإدارة المتقدمين.
-              </p>
-            </div>
-          </div>
-
-          {/* عمل حر / كشفي */}
-          <div
-            onClick={() => handleRoleCardClick('freelancer')}
-            className={`p-5 rounded-2xl border-2 transition-all relative overflow-hidden flex flex-col justify-between cursor-pointer ${
-              currentRole === 'freelancer'
-                ? 'border-amber-600 bg-amber-50/80 dark:bg-amber-950/50 shadow-md ring-2 ring-amber-500/20'
-                : 'border-slate-200 dark:border-slate-700/80 bg-white/80 dark:bg-slate-800/80 hover:border-amber-300 dark:hover:border-amber-700'
-            }`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-md ${
-                currentRole === 'freelancer'
-                  ? 'bg-amber-600 text-white shadow-amber-500/30'
-                  : 'bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400'
-              }`}>
-                <Wrench size={22} />
-              </div>
-              {currentRole === 'freelancer' ? (
-                <span className="px-3 py-1 bg-amber-600 text-white text-[10px] font-black rounded-full shadow-sm flex items-center gap-1">
-                  <CheckCircle2 size={12} /> حسابك الحالي
-                </span>
-              ) : (
-                <span className="px-3 py-1 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-black rounded-full flex items-center gap-1">
-                  <ArrowLeftRight size={11} /> اضغط للطلب
-                </span>
-              )}
-            </div>
-            <div>
-              <h4 className="font-black text-sm text-slate-800 dark:text-white mb-1">⚡ عمل حر / كشفي</h4>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-bold leading-relaxed">
-                خدمات ميدانية سريعة وتواصل فوري بالرقم والموقع.
+                نشر الوظائف الشاغرة واستقطاب وإدارة المتقدمين (يتطلب موافقة الإدارة).
               </p>
             </div>
           </div>

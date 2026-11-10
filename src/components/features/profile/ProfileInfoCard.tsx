@@ -21,8 +21,8 @@ export const ProfileInfoCard: React.FC<ProfileInfoCardProps> = ({
   showCallButton = false,
   onGoToSettings,
 }) => {
-  const currentRole = profile?.role || 'seeker';
-  const isEmployer   = currentRole === 'employer';
+  const currentRole = profile?.role || (profile as any)?.account_type || 'seeker';
+  const isEmployer   = currentRole === 'employer' || (profile as any)?.account_type === 'employer' || !!(profile as any)?.company;
   const isFreelancer = currentRole === 'freelancer';
   const isPro        = profile?.is_pro || profile?.isPro;
 
@@ -132,33 +132,36 @@ export const ProfileInfoCard: React.FC<ProfileInfoCardProps> = ({
               </div>
             </div>
 
-            {cvUrl ? (
-              <a
-                href={cvUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-3 p-3.5 bg-blue-50/80 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-2xl hover:bg-blue-100/80 dark:hover:bg-blue-900/40 transition-all group"
-              >
-                <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/30">
-                  <FileText size={18} />
+            {/* CV Section — Hidden completely for employers */}
+            {!isEmployer && (
+              cvUrl ? (
+                <a
+                  href={cvUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 p-3.5 bg-blue-50/80 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-2xl hover:bg-blue-100/80 dark:hover:bg-blue-900/40 transition-all group"
+                >
+                  <div className="w-10 h-10 bg-blue-600 text-white rounded-xl flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/30">
+                    <FileText size={18} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">ملف السيرة الذاتية (CV)</p>
+                    <p className="text-sm font-black text-blue-700 dark:text-blue-300 group-hover:underline">
+                      📄 عرض / تحميل ملف السيرة الذاتية ↗
+                    </p>
+                  </div>
+                </a>
+              ) : (
+                <div className="flex items-center gap-3 p-3.5 bg-slate-50/50 dark:bg-slate-800/40 rounded-2xl border border-slate-100 dark:border-slate-800">
+                  <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center shrink-0">
+                    <FileText size={18} className="text-slate-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ملف السيرة الذاتية (CV)</p>
+                    <p className="text-xs font-bold text-slate-400">لا يوجد ملف سيرة ذاتية مرفوع</p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">ملف السيرة الذاتية (CV)</p>
-                  <p className="text-sm font-black text-blue-700 dark:text-blue-300 group-hover:underline">
-                    📄 عرض / تحميل ملف السيرة الذاتية ↗
-                  </p>
-                </div>
-              </a>
-            ) : (
-              <div className="flex items-center gap-3 p-3.5 bg-slate-50/50 dark:bg-slate-800/40 rounded-2xl border border-slate-100 dark:border-slate-800">
-                <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center shrink-0">
-                  <FileText size={18} className="text-slate-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">ملف السيرة الذاتية (CV)</p>
-                  <p className="text-xs font-bold text-slate-400">لا يوجد ملف سيرة ذاتية مرفوع</p>
-                </div>
-              </div>
+              )
             )}
           </div>
 

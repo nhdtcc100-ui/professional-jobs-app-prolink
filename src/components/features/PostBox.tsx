@@ -1,5 +1,5 @@
 import { sanitizeInput, validateField } from '../../lib/security/inputValidator';
-import { isJobPoster, isUserAdmin, canUserPostAndInteract } from '../../lib/utils/roleUtils';
+import { isJobPoster, isUserAdmin, canUserPostAndInteract, isJobSeeker } from '../../lib/utils/roleUtils';
 import { 
   Image as ImageIcon, 
   Video, 
@@ -79,6 +79,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
   const isAdmin = isUserAdmin(currentUser);
   // ✅ Centralized role check — seekers are ALWAYS excluded regardless of hasCompanyProfile, Admin always allowed
   const isEmployer = isJobPoster(currentUser);
+  const isSeeker = isJobSeeker(currentUser);
 
   const triggerUpload = () => {
     fileInputRef.current?.click();
@@ -108,7 +109,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
         salary: jobFormData.salary,
         jobType: jobFormData.jobType,
         working_hours: jobFormData.working_hours,
-        imageUrl: appUser.avatar || '',
+        imageUrl: appUser.coverUrl || (appUser as any)?.cover_url || null,
         employer_id: appUser.id,
         is_active: true,
       };
@@ -232,6 +233,10 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    if (file && isSeeker && !file.type.startsWith('image/')) {
+      addToast("كباحث عن عمل، يمكنك مشاركة الصور والمقالات فقط", "warning");
+      return;
+    }
     if (file) {
       setSelectedFile(file);
       const reader = new FileReader();
@@ -264,7 +269,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
       </div>
       
       <div className="flex justify-around items-center mt-5 gap-2">
-        <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileChange} />
+        <input type="file" ref={fileInputRef} className="hidden" accept={isSeeker ? "image/*" : "image/*,video/*"} onChange={handleFileChange} />
         <ActionBtn onClick={triggerUpload} icon={<div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl shadow-sm"><ImageIcon className="text-blue-600" size={18} /></div>} label="صورة" />
         <ActionBtn onClick={() => setUploadType('article')} icon={<div className="p-2 bg-purple-50 dark:bg-purple-900/30 rounded-xl shadow-sm"><FileText className="text-purple-600" size={18} /></div>} label="مقال" />
         {isAdmin && <ActionBtn onClick={triggerUpload} icon={<div className="p-2 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl shadow-sm"><Video className="text-emerald-600" size={18} /></div>} label="فيديو" />}

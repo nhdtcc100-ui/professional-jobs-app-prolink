@@ -317,12 +317,11 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
         </div>
       </div>
 
-      {/* ── Single Smooth Vertical Scroll Container with Proximity Snap (No Dual-Scroll Interference) ── */}
+      {/* ── Single Continuous Smooth Vertical Feed (No Snapping, Free Browsing) ── */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-auto no-scrollbar overscroll-contain bg-white dark:bg-slate-950"
+        className="flex-1 overflow-y-auto no-scrollbar overscroll-contain bg-slate-50/50 dark:bg-slate-950 scroll-smooth"
         style={{
-          scrollSnapType: 'y proximity',
           overscrollBehaviorY: 'contain',
           WebkitOverflowScrolling: 'touch' as any,
         }}
@@ -340,12 +339,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
               id={`detail-item-${index}`}
               data-index={index}
               ref={(el) => { sectionRefs.current[index] = el; }}
-              className="min-h-full border-b-2 border-slate-100 dark:border-slate-800/80 last:border-b-0 w-full flex flex-col"
-              style={{
-                scrollSnapAlign: 'start',
-                contentVisibility: 'auto',
-                containIntrinsicSize: 'auto 700px',
-              }}
+              className="border-b-4 border-slate-200/60 dark:border-slate-800/80 last:border-b-0 w-full flex flex-col bg-white dark:bg-slate-950 py-2 sm:py-4 transition-colors"
             >
               {isItemJob ? (
                 /* ── Job Item Full Page ── */
@@ -355,8 +349,12 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   {(() => {
                     const pubUser = allUsers.find(u => u.id === (item.employer_id || item.employerId || item.author_id || item.authorId)) ||
                       (appUser && (appUser.id === item.employerId || appUser.id === item.authorId) ? appUser : null);
-                    const heroCover = item.image_url || item.imageUrl || pubUser?.coverUrl || (pubUser as any)?.cover_url;
                     const pubAvatar = pubUser?.avatar || item.employer_avatar || item.employerAvatar || item.authorAvatar;
+                    // Ensure cover is distinct from personal avatar photo
+                    let heroCover = item.image_url || item.imageUrl || pubUser?.coverUrl || (pubUser as any)?.cover_url;
+                    if (heroCover && pubAvatar && heroCover === pubAvatar) {
+                      heroCover = pubUser?.coverUrl || (pubUser as any)?.cover_url || null;
+                    }
 
                     return (
                       <div className={`relative overflow-hidden ${heroCover ? 'h-52 md:h-64' : 'h-44 md:h-52'} shrink-0`}>

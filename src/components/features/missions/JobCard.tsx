@@ -26,8 +26,14 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
   const { allUsers, appUser, addToast, refreshData } = useAppContext();
   
   const employer = React.useMemo(() => allUsers.find(u => u.id === job.employer_id), [allUsers, job.employer_id]);
-  const avatarUrl = employer?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(job.company)}&background=0a66c2&color=fff`;
-  const coverUrl = job.image_url || employer?.coverUrl || 'https://images.unsplash.com/photo-1557683316-973673baf926?w=800&q=80';
+  const avatarUrl = (job as any).employer_avatar || (job as any).employerAvatar || employer?.avatar || (employer as any)?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(job.company)}&background=0a66c2&color=fff`;
+  
+  // Ensure cover and avatar are NEVER the same image (prevent duplicate avatar on cover)
+  let rawCover = (job as any).employer_cover || (job as any).employerCover || job.image_url || employer?.coverUrl || (employer as any)?.cover_url;
+  if (rawCover && (rawCover === avatarUrl || rawCover === employer?.avatar)) {
+    rawCover = (job as any).employer_cover || (job as any).employerCover || employer?.coverUrl || (employer as any)?.cover_url || null;
+  }
+  const coverUrl = rawCover || 'https://images.unsplash.com/photo-1557683316-973673baf926?w=800&q=80';
   const isActive = job.is_active !== false;
 
   // ── Bookmark state (localStorage) ──────────────────────────────

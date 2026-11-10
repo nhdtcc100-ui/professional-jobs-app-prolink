@@ -124,16 +124,26 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
     const safetyTimer = setTimeout(() => setAppsLoading(false), 5000);
 
     try {
-      const { data: incoming } = await (supabase as any)
+      let incomingRes = await (supabase as any)
         .from('job_applications')
-        .select('*, jobs(title, company, description, requirements)')
+        .select('*, jobs(title, company, description, requirements), applicant:profiles!applicant_id(id, name, avatar_url, phone, email, location, title, bio, cv_url)')
         .eq('employer_id', appUser.id)
         .order('created_at', { ascending: false });
+
+      if (incomingRes.error) {
+        incomingRes = await (supabase as any)
+          .from('job_applications')
+          .select('*, jobs(title, company, description, requirements)')
+          .eq('employer_id', appUser.id)
+          .order('created_at', { ascending: false });
+      }
+
+      const incoming = incomingRes.data;
 
       if (incoming) {
         setIncomingApplications((incoming as any[]).map((app: any) => {
           const job = app.jobs || jobs.find((j: any) => j.id === app.job_id);
-          const userProfile = allUsers.find((u: any) => u.id === app.applicant_id);
+          const userProfile = app.applicant || allUsers.find((u: any) => u.id === app.applicant_id);
           const applicantData = {
             ...(userProfile || {}),
             ...(app.applicant_data || {}),
@@ -254,6 +264,7 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
         category: formData.category,
         working_hours: formData.working_hours,
         employer_id: appUser.id,
+        imageUrl: formData.imageUrl || appUser.coverUrl || (appUser as any)?.cover_url || null,
         is_active: formData.is_active,
       };
 
@@ -513,7 +524,10 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
 
               return (
                 <div className="relative group">
-                  <div className="flex gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-xl dark:shadow-none overflow-x-auto no-scrollbar scroll-smooth">
+                  <div 
+                    className="flex gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-xl dark:shadow-none overflow-x-auto no-scrollbar scroll-smooth"
+                    style={{ touchAction: 'pan-x pan-y' }}
+                  >
                     {availableSubTabs.map((tab) => (
                       <button
                         key={tab.id}

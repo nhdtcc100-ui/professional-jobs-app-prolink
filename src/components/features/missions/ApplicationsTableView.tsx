@@ -236,7 +236,7 @@ function ApplicationsListViewContent({
 
   // Helper to reliably retrieve complete applicant profile
   const resolveApplicant = (app: JobApplication) => {
-    const profile = allUsers.find(u => u.id === app.applicant_id);
+    const profile = (app as any).applicant || allUsers.find(u => u.id === app.applicant_id);
     const data = app.applicant_data || {};
     return {
       ...(profile || {}),
@@ -882,16 +882,6 @@ function ApplicationsListViewContent({
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                     transition={{ duration: 0.15 }}
-                    drag="x"
-                    dragConstraints={{ left: 0, right: 0 }}
-                    dragElastic={0.2}
-                    onDragEnd={(_, info) => {
-                      if (info.offset.x < -60 && selectedAppIndex < filteredApps.length - 1) {
-                        scrollToApp(selectedAppIndex + 1);
-                      } else if (info.offset.x > 60 && selectedAppIndex > 0) {
-                        scrollToApp(selectedAppIndex - 1);
-                      }
-                    }}
                     className="w-full flex-1 flex flex-col justify-between"
                   >
                     {/* Inner Scrollable Content with comfortable bottom padding */}

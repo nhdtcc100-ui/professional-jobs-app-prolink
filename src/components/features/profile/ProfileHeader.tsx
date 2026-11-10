@@ -88,10 +88,10 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
     coverInputRef.current?.click();
   };
 
-  const currentRole = formData?.role || profile?.role || 'seeker';
-  const isEmployer = currentRole === 'employer';
-  const isFreelancer = currentRole === 'freelancer';
-  const isSeeker = currentRole === 'seeker';
+  const currentRole = formData?.role || profile?.role || (formData as any)?.account_type || (profile as any)?.account_type || 'seeker';
+  const isEmployer = currentRole === 'employer' || (profile as any)?.account_type === 'employer' || (formData as any)?.account_type === 'employer' || !!(profile as any)?.company;
+  const isFreelancer = currentRole === 'freelancer' && !isEmployer;
+  const isSeeker = !isEmployer && !isFreelancer;
 
   const openToStatus = formData.open_to === 'work' || formData.is_available ? 'work' : 'none';
   const activeOption = OPEN_TO_OPTIONS.find(o => o.value === openToStatus);

@@ -126,6 +126,9 @@ export function ModernProfileView({
   );
   const [savingRole, setSavingRole] = useState(false);
 
+  // Strict check: Employer accounts never have CVs
+  const isEmployerAccount = role === 'employer' || (profile as any)?.role === 'employer' || (profile as any)?.account_type === 'employer' || !!(profile as any)?.company || (isMe && ((user as any)?.role === 'employer' || (user as any)?.account_type === 'employer'));
+
   // Keep state in sync with profile prop changes (prevents Mobile State loss)
   React.useEffect(() => {
     const cUrl = (profile as any)?.cover_url || (profile as any)?.coverUrl;
@@ -568,10 +571,35 @@ export function ModernProfileView({
     return { status: resStatus, duration };
   };
 
-  // ─── تغيير نوع الحساب مباشرة (باحث عن عمل / صاحب عمل / عمل حر) ─────────────
-  const handleRoleChange = async (newRole: 'seeker' | 'employer' | 'freelancer') => {
+  // ─── تغيير نوع الحساب (التحويل إلى صاحب عمل يتطلب موافقة الأدمن) ─────────────
+  const handleRoleChange = async (newRole: 'seeker' | 'employer') => {
     if (!isMe || !effectiveUserId || savingRole || newRole === role) return;
     try { navigator.vibrate?.([10]); } catch (_) {}
+
+    // 🔒 إذا كان الحساب باحثاً عن عمل ويريد الترقية إلى صاحب عمل -> إرسال طلب للإدارة
+    if (newRole === 'employer' && role === 'seeker') {
+      const companyPrompt = window.prompt('يرجى كتابة اسم المؤسسة أو سبب طلب الترقية إلى حساب "صاحب عمل":');
+      if (companyPrompt === null) return;
+
+      setSavingRole(true);
+      try {
+        const { error } = await profileService.sendRoleChangeRequest(
+          effectiveUserId,
+          name || profile?.name || 'مستخدم',
+          avatar || profile?.avatar || '',
+          role,
+          'employer',
+          companyPrompt.trim() || 'طلب ترقية إلى صاحب عمل لنشر وإدارة الوظائف'
+        );
+        if (error) throw error;
+        addToast('📨 تم إرسال طلب الترقية إلى صاحب عمل للإدارة بنجاح! سيتم التفعيل فور المراجعة.', 'success');
+      } catch (err: any) {
+        addToast('فشل إرسال الطلب: ' + (err?.message || 'خطأ غير معروف'), 'error');
+      } finally {
+        setSavingRole(false);
+      }
+      return;
+    }
 
     const oldRole = role;
     setRole(newRole);
@@ -585,12 +613,7 @@ export function ModernProfileView({
       if (setAppUser) {
         setAppUser((prev: any) => ({ ...prev, role: newRole }));
       }
-      const roleLabels: Record<string, string> = {
-        seeker: 'باحث عن عمل 🔍',
-        employer: 'صاحب عمل 💼',
-        freelancer: 'عمل حر وخدمات ⚡',
-      };
-      addToast(`✅ تم تحديث نوع الحساب إلى "${roleLabels[newRole]}" بنجاح!`, 'success');
+      addToast('✅ تم تحويل الحساب إلى باحث عن عمل 🔍 بنجاح!', 'success');
     } catch (err: any) {
       console.error('[RoleChange] error:', err);
       setRole(oldRole);
@@ -1039,12 +1062,11 @@ export function ModernProfileView({
               )}
             </div>
 
-            {/* Segmented Control Buttons */}
-            <div className="grid grid-cols-3 gap-2 p-1.5 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60">
+            {/* Segmented Control Buttons (باحث عن عمل وصاحب عمل) */}
+            <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60">
               {[
-                { id: 'seeker', label: 'باحث عن عمل', emoji: '🔍', desc: 'تقديم وتصفح' },
-                { id: 'employer', label: 'صاحب عمل', emoji: '💼', desc: 'نشر وإدارة' },
-                { id: 'freelancer', label: 'عمل حر', emoji: '⚡', desc: 'سوق الخدمات' },
+                { id: 'seeker', label: 'باحث عن عمل', emoji: '🔍', desc: 'تقديم وتصفح الفرص' },
+                { id: 'employer', label: 'صاحب عمل', emoji: '💼', desc: 'نشر وإدارة الوظائف' },
               ].map(opt => {
                 const isSelected = role === opt.id;
                 return (
@@ -1369,7 +1391,7 @@ export function ModernProfileView({
       {/* ══════════════════════════════════════════════════════════════════════════
           CARD 4 — السيرة الذاتية (CV / Resume) — مخفية تماماً عن أصحاب العمل
           ══════════════════════════════════════════════════════════════════════════ */}
-      {role !== 'employer' && (
+      {!isEmployerAccount && (
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}

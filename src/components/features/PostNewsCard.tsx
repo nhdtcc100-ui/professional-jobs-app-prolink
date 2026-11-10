@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
   Clock, 
   Repeat2, 
@@ -67,14 +67,6 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleted, setDeleted] = useState(false);
 
-  // Motion value for smooth gesture tracking
-  const x = useMotionValue(0);
-  // Zero opacity when idle (-15 to 15), smoothly fades in only when user drags
-  const deleteOpacity = useTransform(x, [-120, -30, -10, 0], [1, 0.9, 0, 0]);
-  const deleteScale = useTransform(x, [-120, -30, 0], [1, 0.85, 0.7]);
-  const editOpacity = useTransform(x, [0, 10, 30, 120], [0, 0, 0.9, 1]);
-  const editScale = useTransform(x, [0, 30, 120], [0.7, 0.85, 1]);
-
   const handleSaveEdit = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (!editContent.trim() || editContent === post.content) { setIsEditing(false); return; }
@@ -114,22 +106,6 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
     }
   };
 
-  const handleDragEnd = (_: any, info: any) => {
-    if (!canManage || isEditing || showDeleteConfirm) return;
-    // Swipe left (negative offset) -> Delete
-    if (info.offset.x < -65) {
-      setShowDeleteConfirm(true);
-    }
-    // Swipe right (positive offset) -> Edit (Opens Full Editor Modal)
-    else if (info.offset.x > 65) {
-      if (onEditPost) {
-        onEditPost(post);
-      } else {
-        setIsEditing(true);
-      }
-    }
-  };
-
   // Animate out if deleted
   if (deleted) {
     return (
@@ -149,39 +125,6 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
       transition={{ delay }}
       className="group relative overflow-hidden rounded-[2rem]"
     >
-      {/* ── Swipe Background Indicators — Ultra Clean Floating Icon & Text (NO solid background fill block) ── */}
-      {canManage && !isEditing && (
-        <div className="absolute inset-0 z-0 rounded-[2rem] overflow-hidden select-none pointer-events-none flex items-center justify-between px-6">
-          {/* DELETE reveal (Swipe Left → x < 0) — Clean Floating Badge */}
-          <motion.div
-            style={{ opacity: deleteOpacity }}
-            className="absolute inset-y-0 right-0 flex items-center justify-end pr-6"
-          >
-            <motion.div
-              style={{ scale: deleteScale }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-red-50 dark:bg-red-950/70 border border-red-200 dark:border-red-800/80 text-red-600 dark:text-red-400 shadow-md backdrop-blur-md"
-            >
-              <Trash2 size={18} />
-              <span className="font-black text-xs">حذف المنشور</span>
-            </motion.div>
-          </motion.div>
-
-          {/* EDIT reveal (Swipe Right → x > 0) — Clean Floating Badge */}
-          <motion.div
-            style={{ opacity: editOpacity }}
-            className="absolute inset-y-0 left-0 flex items-center justify-start pl-6"
-          >
-            <motion.div
-              style={{ scale: editScale }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/80 text-blue-600 dark:text-blue-400 shadow-md backdrop-blur-md"
-            >
-              <Edit2 size={18} />
-              <span className="font-black text-xs">تعديل المنشور</span>
-            </motion.div>
-          </motion.div>
-        </div>
-      )}
-
       {/* ── Professional Delete Confirmation Overlay ── */}
       <AnimatePresence>
         {showDeleteConfirm && (
@@ -232,13 +175,8 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
         )}
       </AnimatePresence>
 
-      {/* ── Main Foreground Card (100% Solid Opaque Background in Idle State) ── */}
+      {/* ── Main Foreground Card ── */}
       <motion.div
-        style={{ x }}
-        drag={canManage && !isEditing && !showDeleteConfirm ? "x" : false}
-        dragConstraints={{ left: 0, right: 0 }}
-        dragElastic={0.65}
-        onDragEnd={handleDragEnd}
         onClick={isEditing || showDeleteConfirm ? undefined : onClick}
         whileHover={isEditing || showDeleteConfirm ? {} : { y: -4, scale: 1.003 }}
         animate={showDeleteConfirm ? { scale: 0.985 } : { scale: 1 }}
@@ -246,9 +184,7 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
           isArticle 
             ? 'border-purple-200/80 dark:border-purple-900/40 hover:border-purple-500/70 shadow-[0_4px_20px_rgba(147,51,234,0.06)]' 
             : 'border-slate-100 dark:border-slate-800 hover:border-blue-500/50'
-        } shadow-sm hover:shadow-xl transition-all overflow-hidden ${
-          canManage && !isEditing ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-        }`}
+        } shadow-sm hover:shadow-xl transition-all overflow-hidden cursor-pointer`}
       >
         {/* Visual Indicator (Gradient Bar) */}
         <div className={`absolute top-0 right-0 bottom-0 w-1.5 ${
@@ -316,13 +252,45 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
             <span className="flex items-center gap-1 text-[9px] font-bold text-slate-400 dark:text-slate-500">
               <Clock size={10} /> {safeTimeAgo(post.timestamp || (post as any).created_at)}
             </span>
-            <span className={`text-[8px] font-black px-2 py-0.5 rounded-full border uppercase tracking-widest mr-auto ${
+            <span className={`text-[8px] font-black px-2 py-0.5 rounded-full border uppercase tracking-widest ${
               isArticle 
                 ? 'bg-purple-50 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 border-purple-200 dark:border-purple-800/40' 
                 : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-800/30'
             }`}>
               {isArticle ? 'مقال مهني ✍️' : 'منشور مهني'}
             </span>
+
+            {/* ── Edit / Delete Controls (Same pattern as JobCard, no swipe) ── */}
+            {canManage && !isEditing && (
+              <div className="flex items-center gap-1.5 mr-auto shrink-0" onClick={(e) => e.stopPropagation()}>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onEditPost) {
+                      onEditPost(post);
+                    } else {
+                      setIsEditing(true);
+                    }
+                  }}
+                  className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-xs active:scale-95 border border-blue-200/60 dark:border-blue-800/50 cursor-pointer"
+                  title="تعديل المقال / المنشور"
+                >
+                  <Edit2 size={13} />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowDeleteConfirm(true);
+                  }}
+                  className="p-1.5 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-xs active:scale-95 border border-red-200/60 dark:border-red-800/50 cursor-pointer"
+                  title="حذف المقال / المنشور"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Edit mode */}

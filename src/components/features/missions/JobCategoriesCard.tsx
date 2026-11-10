@@ -125,12 +125,12 @@ export const JobCategoriesCard: React.FC<JobCategoriesCardProps> = ({
           )}
         </div>
 
-        {/* ── Category Icons Row: Clean, Transparent, NO white cards behind icons ── */}
+        {/* ── Category Icons Row: Clean, Transparent, Free Scroll (NO vertical touch hijacking) ── */}
         <div
           ref={scrollRef}
           className="flex items-center gap-2 overflow-x-auto py-2.5 px-1.5 no-scrollbar scroll-smooth"
           style={{
-            scrollSnapType: 'x mandatory',
+            touchAction: 'pan-x pan-y',
             WebkitOverflowScrolling: 'touch',
           }}
         >
@@ -147,13 +147,11 @@ export const JobCategoriesCard: React.FC<JobCategoriesCardProps> = ({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.03, type: 'spring', stiffness: 450, damping: 30 }}
                 whileTap={{ scale: 0.92 }}
-                onPointerDown={() => handleSelect(cat.id)}
-                onClick={(e) => e.preventDefault()}
-                // تم إزالة الكارد الأبيض تماماً من خلف كل أيقونة (شفاف وأنيق وبدون أي كارد مستطيل أبيض)
+                onClick={() => handleSelect(cat.id)}
                 className="group relative shrink-0 flex flex-col items-center justify-center p-2 rounded-2xl cursor-pointer select-none transition-all duration-200 bg-transparent border-0 shadow-none no-global-btn"
                 style={{
                   minWidth: 68,
-                  scrollSnapAlign: 'start',
+                  touchAction: 'pan-x pan-y',
                 }}
                 aria-label={cat.label}
               >

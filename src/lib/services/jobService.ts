@@ -16,17 +16,27 @@ const ALLOWED_STATUSES = ['pending', 'active', 'closed'];
 
 export const jobService = {
   async fetchJobs(limit = 50) {
-    // ✅ Parameterized query via Supabase SDK — safe from SQL injection
-    const res = await supabase
+    // ✅ Parameterized query with fallback join on employer profile
+    let res: any = await supabase
       .from('jobs')
-      .select('id, title, company, location, salary, job_type, working_hours, image_url, description, requirements, created_at, employer_id, is_active')
+      .select('id, title, company, location, salary, job_type, working_hours, image_url, description, requirements, created_at, employer_id, is_active, employer:profiles!employer_id(id, name, avatar_url, cover_url)')
       .order('created_at', { ascending: false })
-      .limit(Math.min(limit, 100)); // ✅ Enforce max limit
+      .limit(Math.min(limit, 100));
+
+    if (res.error) {
+      res = await supabase
+        .from('jobs')
+        .select('id, title, company, location, salary, job_type, working_hours, image_url, description, requirements, created_at, employer_id, is_active')
+        .order('created_at', { ascending: false })
+        .limit(Math.min(limit, 100));
+    }
 
     if (res.data) {
       res.data = (res.data as any[]).map((j: any) => ({
         ...j,
-        category: getJobCategory(j)
+        category: getJobCategory(j),
+        employer_avatar: j.employer?.avatar_url || j.employer_avatar,
+        employer_cover: j.employer?.cover_url || j.employer_cover,
       }));
     }
     return res;
@@ -39,6 +49,7 @@ export const jobService = {
       title: data.title,
       company: data.company,
       employer_id: employerId,
+      slice: Math.floor(Date.now() / 10000), // Auto-rotates every 10s to never lock out re-submissions
     });
 
     return withMutex(mutexKey, () =>
@@ -69,12 +80,16 @@ export const jobService = {
             return { data: null, error: { message: 'وصف الوظيفة مطلوب (10 أحرف على الأقل)' } };
           }
 
-          // 🚫 Strict Server/Service Guard: Only Employers and Admins can post jobs
+          // 🚫 Strict Server/Service Guard: Only Employers and Admins can post jobs (with 3s timeout)
           if (data.employer_id) {
-            const { data: profile } = await supabase.from('profiles').select('id, role, is_admin').eq('id', data.employer_id).single();
-            if (profile && !profile.is_admin && (profile.role === 'seeker' || profile.role === 'باحث' || profile.role !== 'employer')) {
-              return { data: null, error: { message: 'نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 🚫' } };
-            }
+            try {
+              const profileCheck = supabase.from('profiles').select('id, role, is_admin').eq('id', data.employer_id).single();
+              const profileTimeout = new Promise<any>((resolve) => setTimeout(() => resolve({ data: null }), 3000));
+              const { data: profile } = await Promise.race([profileCheck, profileTimeout]);
+              if (profile && !profile.is_admin && (profile.role === 'seeker' || profile.role === 'باحث')) {
+                return { data: null, error: { message: 'نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 🚫' } };
+              }
+            } catch (_) {}
           }
 
           return withCollisionRetry(async (_attempt, freshId) => {
@@ -83,7 +98,7 @@ export const jobService = {
               ? encodeCategoryInDescription(description, data.category)
               : description;
 
-            const { data: res, error } = await (supabase.from('jobs') as any).insert([{
+            const insertPromise = (supabase.from('jobs') as any).insert([{
               id:            data.id || freshId,
               title,
               company,
@@ -96,17 +111,24 @@ export const jobService = {
               image_url:     (data.imageUrl || '').trim() || null,
               employer_id:   data.employer_id,
               is_active:     data.is_active !== undefined ? Boolean(data.is_active) : true,
-            }]).select();
+            }]).select('id');
+
+            const timeoutPromise = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('انتهت مهلة حفظ الوظيفة (10 ثوان). يرجى المحاولة مجدداً.')), 10_000)
+            );
+
+            const { data: res, error } = await Promise.race([insertPromise, timeoutPromise]);
 
             if (error) {
               console.error("[postJob] Supabase Insert Error:", error);
               return { data: null, error };
             }
             return { data: res, error: null };
-          }, { scope: 'postJob' });
+          }, { scope: 'postJob', maxRetries: 2 });
         },
-        { ttlMs: 30000, scope: 'jobs' }
-      )
+        { ttlMs: 10000, scope: 'jobs' }
+      ),
+      8000
     );
   },
 
@@ -193,24 +215,28 @@ export const jobService = {
                 job_id: data.jobId,
                 cover_letter: coverLetterText,
                 cv_url: cvUrlText,
+                applicant_data: data.applicantData || {},
                 status: 'pending'
               };
 
-              const res2 = await (supabase.from('job_applications') as any).insert([standardPayload]).select();
+              const res2 = await (supabase.from('job_applications') as any).insert([standardPayload]).select('id');
               if (!res2.error) return { data: res2.data, error: null };
 
               console.warn("⚠️ [applyToJob] Standard payload insert returned error, attempting minimal fallback:", res2.error);
 
-              // 3. Fallback level 2: Minimal essential columns
+              // 3. Fallback level 2: Minimal essential columns (still keeping applicant_data and cv_url)
               const minPayload = {
                 id: freshId,
                 applicant_id: applicantId,
+                employer_id: employerId,
                 job_id: data.jobId,
                 cover_letter: coverLetterText,
+                cv_url: cvUrlText,
+                applicant_data: data.applicantData || {},
                 status: 'pending'
               };
 
-              const res3 = await (supabase.from('job_applications') as any).insert([minPayload]).select();
+              const res3 = await (supabase.from('job_applications') as any).insert([minPayload]).select('id');
               return { data: res3.data, error: res3.error };
 
             } catch (err: any) {
