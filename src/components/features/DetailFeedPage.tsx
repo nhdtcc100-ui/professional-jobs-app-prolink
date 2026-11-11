@@ -563,13 +563,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     </div>
                   </div>
 
-                  {/* Scroll hint */}
-                  {!isLast && (
-                    <div className="flex flex-col items-center gap-1 pt-3 pb-4 opacity-40">
-                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500">اسحب للأسفل للمنشور التالي</p>
-                      <ChevronDown size={18} className="text-slate-400 dark:text-slate-500 animate-bounce" />
-                    </div>
-                  )}
+
                 </div>
               ) : (
                 /* ── News Item Full Page ── */

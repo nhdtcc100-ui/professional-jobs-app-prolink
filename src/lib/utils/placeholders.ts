@@ -4,7 +4,7 @@ import React from 'react';
  * Official logo/image of "عمل" used as the default image for news & articles
  * when no image is provided.
  */
-export const AMAL_NEWS_IMAGE = `${import.meta.env.BASE_URL}logo.png`;
+export const AMAL_NEWS_IMAGE = `${import.meta.env.BASE_URL}news-placeholder.png`;
 
 /**
  * Default placeholder for news: uses the official "عمل" logo image.
