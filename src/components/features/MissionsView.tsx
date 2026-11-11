@@ -747,36 +747,38 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
         )}
       </AnimatePresence>
 
-      {/* Job Detail Feed Page (Full View with Snap-Scroll Navigation) */}
-      {selectedJobDetails && (
-        <DetailFeedPage
-          type="job"
-          items={filteredJobs.length > 0 ? filteredJobs.map(r => r.job) : jobs}
-          initialIndex={Math.max(0, (filteredJobs.length > 0 ? filteredJobs.map(r => r.job) : jobs).findIndex((j: any) => j.id === selectedJobDetails.id))}
-          onClose={() => setSelectedJobDetails(null)}
-          onApplyJob={(job) => {
-            if (job.is_active === false) { 
-              addToast('هذه الوظيفة مغلقة للتقديم', 'error'); 
-              return; 
-            }
-            setSelectedJobDetails(null);
-            onApplyJob(job);
-          }}
-          onNavigateHome={() => {
-            setSelectedJobDetails(null);
-            if (setActiveTab) {
-              setActiveTab('home');
-            }
-          }}
-          onNavigateTab={(tab) => {
-            setSelectedJobDetails(null);
-            if (setActiveTab) {
-              setActiveTab(tab);
-            }
-          }}
-          appUser={appUser}
-        />
-      )}
+      {/* Job Detail View (Clean single-job view matching news details navigation: No Prev/Next buttons, No swipe-down) */}
+      <AnimatePresence>
+        {selectedJobDetails && (
+          <JobDetailModal
+            job={selectedJobDetails}
+            onClose={() => setSelectedJobDetails(null)}
+            onApply={(job) => {
+              if (job.is_active === false) { 
+                addToast('هذه الوظيفة مغلقة للتقديم', 'error'); 
+                return; 
+              }
+              setSelectedJobDetails(null);
+              onApplyJob(job);
+            }}
+            appUser={appUser}
+            allUsers={allUsers}
+            onNavigateHome={() => {
+              setSelectedJobDetails(null);
+              if (setActiveTab) {
+                setActiveTab('home');
+              }
+            }}
+            onUserClick={(userId) => {
+              const u = allUsers.find(x => x.id === userId);
+              if (u && onPublisherClick) {
+                setSelectedJobDetails(null);
+                onPublisherClick(u);
+              }
+            }}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

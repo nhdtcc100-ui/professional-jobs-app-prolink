@@ -27,6 +27,16 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose, on
   const [applicationText, setApplicationText] = useState('');
   const isActive = job?.is_active !== false;
 
+  // 🛡️ Mobile & Browser Back-Button Handling
+  React.useEffect(() => {
+    if (job) {
+      window.history.pushState({ modal: 'job-detail' }, '');
+      const handlePop = () => onClose();
+      window.addEventListener('popstate', handlePop);
+      return () => window.removeEventListener('popstate', handlePop);
+    }
+  }, [job, onClose]);
+
   // Only block the actual job publisher from applying — admins CAN apply
   const isPublisher = !!(appUser && !appUser.isAdmin && (appUser.id === job?.employer_id || appUser.id === (job as any)?.employerId || appUser.id === (job as any)?.authorId || appUser.id === (job as any)?.author_id));
 

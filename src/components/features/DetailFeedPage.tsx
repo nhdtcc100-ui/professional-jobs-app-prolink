@@ -298,24 +298,26 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
         </div>
 
         {/* Quick Nav arrows */}
-        <div className="flex items-center gap-1 shrink-0">
-          <button
-            onClick={() => scrollToItem(currentIndex - 1)}
-            disabled={currentIndex === 0}
-            className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white transition-all active:scale-90"
-            title="السابق"
-          >
-            <ChevronUp size={16} />
-          </button>
-          <button
-            onClick={() => scrollToItem(currentIndex + 1)}
-            disabled={currentIndex === items.length - 1}
-            className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white transition-all active:scale-90"
-            title="التالي"
-          >
-            <ChevronDown size={16} />
-          </button>
-        </div>
+        {type !== 'job' && (
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              onClick={() => scrollToItem(currentIndex - 1)}
+              disabled={currentIndex === 0}
+              className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white transition-all active:scale-90"
+              title="السابق"
+            >
+              <ChevronUp size={16} />
+            </button>
+            <button
+              onClick={() => scrollToItem(currentIndex + 1)}
+              disabled={currentIndex === items.length - 1}
+              className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white transition-all active:scale-90"
+              title="التالي"
+            >
+              <ChevronDown size={16} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ── Single Continuous Smooth Vertical Feed (No Snapping, Free Browsing) ── */}
@@ -488,14 +490,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                       </button>
                     </div>
                   </div>
-
-                  {/* Scroll hint if not last */}
-                  {!isLast && (
-                    <div className="flex flex-col items-center gap-1 pb-4 opacity-40">
-                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500">اسحب للأسفل للوظيفة التالية</p>
-                      <ChevronDown size={18} className="text-slate-400 dark:text-slate-500 animate-bounce" />
-                    </div>
-                  )}
                 </div>
               ) : !isItemNews ? (
                 /* ── Post Item Full Page with Snap-Scroll ── */
@@ -660,36 +654,38 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
         })}
       </div>
 
-      {/* ── Fixed Floating Bottom Navigation Bar (Rapid Jump & Index Indicator) ── */}
-      <div 
-        className="relative z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between gap-3 shadow-xl shrink-0"
-        style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 8px), 12px)' }}
-      >
-        <button
-          onClick={goToPrev}
-          disabled={currentIndex === 0}
-          className="flex-1 py-2.5 px-4 bg-slate-100 dark:bg-slate-800 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer shadow-xs"
+      {/* ── Fixed Floating Bottom Navigation Bar (Hidden for jobs to match news details navigation) ── */}
+      {type !== 'job' && (
+        <div 
+          className="relative z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between gap-3 shadow-xl shrink-0"
+          style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 8px), 12px)' }}
         >
-          <ChevronUp size={16} />
-          <span>{type === 'job' ? 'الوظيفة السابقة' : type === 'news' ? 'الخبر السابق' : 'السابق'}</span>
-        </button>
-        
-        <div className="flex flex-col items-center justify-center px-3">
-          <span className="text-[11px] font-black text-blue-600 dark:text-blue-400 font-mono">
-            {currentIndex + 1} / {items.length}
-          </span>
-          <span className="text-[9px] text-slate-400 font-bold hidden sm:inline">سحب عمودي سلس</span>
-        </div>
+          <button
+            onClick={goToPrev}
+            disabled={currentIndex === 0}
+            className="flex-1 py-2.5 px-4 bg-slate-100 dark:bg-slate-800 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer shadow-xs"
+          >
+            <ChevronUp size={16} />
+            <span>{type === 'news' ? 'الخبر السابق' : 'السابق'}</span>
+          </button>
+          
+          <div className="flex flex-col items-center justify-center px-3">
+            <span className="text-[11px] font-black text-blue-600 dark:text-blue-400 font-mono">
+              {currentIndex + 1} / {items.length}
+            </span>
+            <span className="text-[9px] text-slate-400 font-bold hidden sm:inline">سحب عمودي سلس</span>
+          </div>
 
-        <button
-          onClick={goToNext}
-          disabled={currentIndex === items.length - 1}
-          className="flex-1 py-2.5 px-4 bg-blue-600 disabled:opacity-30 hover:bg-blue-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer"
-        >
-          <span>{type === 'job' ? 'الوظيفة التالية' : type === 'news' ? 'الخبر التالي' : 'التالي'}</span>
-          <ChevronDown size={16} />
-        </button>
-      </div>
+          <button
+            onClick={goToNext}
+            disabled={currentIndex === items.length - 1}
+            className="flex-1 py-2.5 px-4 bg-blue-600 disabled:opacity-30 hover:bg-blue-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer"
+          >
+            <span>{type === 'news' ? 'الخبر التالي' : 'التالي'}</span>
+            <ChevronDown size={16} />
+          </button>
+        </div>
+      )}
     </motion.div>
   );
 };
