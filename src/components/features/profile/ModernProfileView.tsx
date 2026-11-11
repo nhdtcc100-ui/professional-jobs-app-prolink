@@ -126,9 +126,6 @@ export function ModernProfileView({
   );
   const [savingRole, setSavingRole] = useState(false);
 
-  // Strict check: Employer accounts never have CVs
-  const isEmployerAccount = role === 'employer' || (profile as any)?.role === 'employer' || (profile as any)?.account_type === 'employer' || !!(profile as any)?.company || (isMe && ((user as any)?.role === 'employer' || (user as any)?.account_type === 'employer'));
-
   // Keep state in sync with profile prop changes (prevents Mobile State loss)
   React.useEffect(() => {
     const cUrl = (profile as any)?.cover_url || (profile as any)?.coverUrl;
@@ -1389,9 +1386,8 @@ export function ModernProfileView({
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════════
-          CARD 4 — السيرة الذاتية (CV / Resume) — مخفية تماماً عن أصحاب العمل
+          CARD 4 — السيرة الذاتية (CV / Resume) — متاحة لجميع فئات الحسابات
           ══════════════════════════════════════════════════════════════════════════ */}
-      {!isEmployerAccount && (
       <motion.div
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
@@ -1516,7 +1512,6 @@ export function ModernProfileView({
           </button>
         )}
       </motion.div>
-      )}
         </>
       ) : (
         /* ─── Posts & Articles Tab Content ─── */

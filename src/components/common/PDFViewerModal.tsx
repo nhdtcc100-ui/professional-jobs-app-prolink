@@ -120,29 +120,14 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
   const iframeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const resolveAbortRef = useRef(false);
 
-  // ─── Body scroll lock ──────────────────────────────────────────────────────
-  const didLockRef = useRef(false);
+  // ─── Body scroll safety: never leave body overflow stuck ──────────────────
   useEffect(() => {
-    if (isOpen) {
-      if (document.body.style.overflow !== 'hidden') {
-        document.body.style.overflow = 'hidden';
-        didLockRef.current = true;
-      }
-      return () => {
-        if (didLockRef.current) {
-          document.body.style.overflow = '';
-          didLockRef.current = false;
-        }
-      };
-    } else {
-      if (didLockRef.current) {
+    return () => {
+      try {
         document.body.style.overflow = '';
-        didLockRef.current = false;
-      }
-    }
+      } catch (_) {}
+    };
   }, [isOpen]);
-
-  useEffect(() => () => { if (didLockRef.current) document.body.style.overflow = ''; }, []);
 
   // ─── ESC key ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -371,7 +356,6 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
                 onLoad={handleIframeLoad}
                 onError={() => setIframeError(true)}
                 allow="fullscreen"
-                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
               />
             </>
           )}

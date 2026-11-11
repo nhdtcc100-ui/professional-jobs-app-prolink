@@ -299,9 +299,12 @@ function App() {
 
   const callTimeoutRef = useRef<any>(null);
 
-  // ── Global Scroll to Top on Tab Change ──────────────────────────────────
+  // ── Global Scroll to Top on Tab Change & Overflow Safety ─────────────────
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
+    try {
+      document.body.style.overflow = '';
+    } catch (_) {}
   }, [activeTab]);
 
   // Handle global tab change events (e.g. from Admin Panel)

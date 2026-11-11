@@ -234,6 +234,17 @@ function ApplicationsListViewContent({
     userAvatar?: string;
   } | null>(null);
 
+  // 🛡️ Always ensure body scrolling is restored on unmount or navigation
+  useEffect(() => {
+    return () => {
+      setSelectedAppIndex(null);
+      setPreviewCVData(null);
+      try {
+        document.body.style.overflow = '';
+      } catch (_) {}
+    };
+  }, []);
+
   // Helper to reliably retrieve complete applicant profile
   const resolveApplicant = (app: JobApplication) => {
     const profile = (app as any).applicant || allUsers.find(u => u.id === app.applicant_id);
@@ -1101,36 +1112,67 @@ function ApplicationsListViewContent({
                         </section>
                       )}
 
-                      {/* 📎 CV In-App Modal Preview */}
+                      {/* 📎 CV Options: Direct External Open/Download + In-App Modal Preview */}
                       {(() => {
-                        const cvTargetUrl = app.cv_url || app.applicant_data?.cvUrl || resolved.cvUrl;
+                        const cvTargetUrl = app.cv_url || app.applicant_data?.cvUrl || (app.applicant_data as any)?.cv_url || resolved.cvUrl;
                         if (!cvTargetUrl) return null;
                         return (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setPreviewCVData({
-                                url: cvTargetUrl,
-                                userName: resolved.name,
-                                userAvatar: resolved.avatar,
-                              });
-                            }}
-                            className="w-full flex items-center justify-between p-5 bg-gradient-to-r from-[#0a66c2] to-[#004182] hover:from-[#08529c] hover:to-[#003468] rounded-2xl text-white shadow-xl hover:scale-[1.01] active:scale-[0.99] transition-all group text-right cursor-pointer"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center border border-white/30">
-                                <FileText size={18} />
-                              </div>
-                              <div>
-                                <span className="text-sm font-black block">معاينة السيرة الذاتية (CV) مباشرة</span>
-                                <span className="text-[10px] text-blue-100 font-bold">عرض آمن للملف بداخل التطبيق بدون خروج</span>
-                              </div>
+                          <div className="space-y-2.5">
+                            <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2 px-1">
+                              <FileText size={14} className="text-blue-600 dark:text-blue-400" />
+                              ملف السيرة الذاتية (CV) للمتقدم
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              {/* Option 1: Direct Open in Browser / Native PDF (100% Zero-Freeze) */}
+                              <a
+                                href={cvTargetUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 rounded-2xl text-white shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all group text-right cursor-pointer"
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center border border-white/30 shrink-0">
+                                    <ExternalLink size={18} />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="text-xs font-black block truncate">فتح خارجي / تنزيل</span>
+                                    <span className="text-[9px] text-emerald-100 font-bold block">مباشر عبر المتصفح</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/20 text-white text-[11px] font-black group-hover:bg-white/30 transition-colors shrink-0">
+                                  <Download size={13} />
+                                  <span>فتح</span>
+                                </div>
+                              </a>
+
+                              {/* Option 2: In-App Fast Preview */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPreviewCVData({
+                                    url: cvTargetUrl,
+                                    userName: resolved.name,
+                                    userAvatar: resolved.avatar,
+                                  });
+                                }}
+                                className="flex items-center justify-between p-4 bg-gradient-to-r from-[#0a66c2] to-[#004182] hover:from-[#08529c] hover:to-[#003468] rounded-2xl text-white shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all group text-right cursor-pointer"
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center border border-white/30 shrink-0">
+                                    <FileText size={18} />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="text-xs font-black block truncate">معاينة داخل التطبيق</span>
+                                    <span className="text-[9px] text-blue-100 font-bold block">عرض مدمج فوري</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/20 text-white text-[11px] font-black group-hover:bg-white/30 transition-colors shrink-0">
+                                  <Eye size={13} />
+                                  <span>معاينة</span>
+                                </div>
+                              </button>
                             </div>
-                            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/20 text-white text-xs font-black group-hover:bg-white/30 transition-colors">
-                              <Eye size={15} />
-                              <span>فتح السيرة</span>
-                            </div>
-                          </button>
+                          </div>
                         );
                       })()}
 

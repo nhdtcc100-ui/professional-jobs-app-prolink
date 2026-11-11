@@ -310,7 +310,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                 >
                   تعزيز الملف
                 </button>
-                {!isEmployer && (
+                {(formData.cv_url || isMe) && (
                   <button
                     type="button"
                     onClick={() => {
@@ -343,8 +343,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                   <Phone size={16} />
                 </button>
                 )}
-                {/* ✅ زر عرض CV للزوار (مخفي عن أصحاب العمل) */}
-                {!isEmployer && (profile.cvUrl || (profile as any).cv_url) && (
+                {/* ✅ زر عرض CV للزوار */}
+                {(profile.cvUrl || (profile as any).cv_url) && (
                   <button
                     type="button"
                     onClick={() => {
