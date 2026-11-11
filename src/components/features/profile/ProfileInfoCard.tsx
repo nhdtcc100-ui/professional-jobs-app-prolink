@@ -132,9 +132,8 @@ export const ProfileInfoCard: React.FC<ProfileInfoCardProps> = ({
               </div>
             </div>
 
-            {/* CV Section — Hidden completely for employers */}
-            {!isEmployer && (
-              cvUrl ? (
+            {/* CV Section — Available for all accounts */}
+            {cvUrl ? (
                 <a
                   href={cvUrl}
                   target="_blank"
@@ -162,7 +161,7 @@ export const ProfileInfoCard: React.FC<ProfileInfoCardProps> = ({
                   </div>
                 </div>
               )
-            )}
+            }
           </div>
 
           {/* ── Action buttons: visitor (message/call) or owner (go to settings) ── */}

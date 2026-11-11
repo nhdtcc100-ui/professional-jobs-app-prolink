@@ -13,7 +13,6 @@ import { GlassCard, CloseButton } from '../../ui';
 import { useAppContext } from '../../../contexts/AppContext';
 import { EmployeeOnboardingModal } from '../erp/EmployeeOnboardingModal';
 import { AIEvaluationModal } from './AIEvaluationModal';
-import { PDFViewerModal } from '../../common/PDFViewerModal';
 interface ApplicantData {
   name?: string;
   email?: string;
@@ -228,22 +227,82 @@ function ApplicationsListViewContent({
   const [highlightedAppId, setHighlightedAppId] = useState<string | null>(null);
   const detailContainerRef = React.useRef<HTMLDivElement>(null);
   const [ratingFilter, setRatingFilter] = useState<number>(0); // 0 = all
-  const [previewCVData, setPreviewCVData] = useState<{
-    url: string;
-    userName?: string;
-    userAvatar?: string;
-  } | null>(null);
-
   // 🛡️ Always ensure body scrolling is restored on unmount or navigation
   useEffect(() => {
     return () => {
       setSelectedAppIndex(null);
-      setPreviewCVData(null);
       try {
         document.body.style.overflow = '';
       } catch (_) {}
     };
   }, []);
+
+  // 🛡️ Mobile & Browser Back-Button Handling for Applicant Detail View
+  useEffect(() => {
+    if (selectedAppIndex !== null) {
+      window.history.pushState({ modal: 'applicant-detail' }, '');
+      const handlePop = () => {
+        setSelectedAppIndex(null);
+      };
+      window.addEventListener('popstate', handlePop);
+      return () => {
+        window.removeEventListener('popstate', handlePop);
+      };
+    }
+  }, [selectedAppIndex]);
+
+  // Safe zero-freeze direct CV open & download helpers (100% Native - No iframes, No modals)
+  const handleOpenApplicantCV = async (cvUrl: string, name?: string) => {
+    if (!cvUrl) {
+      addToast('لا يوجد ملف سيرة ذاتية مرفق لهذا الطلب', 'error');
+      return;
+    }
+    try {
+      if (cvUrl.startsWith('blob:') || cvUrl.startsWith('data:')) {
+        window.open(cvUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+      let finalUrl = cvUrl;
+      const markers = [
+        { marker: '/storage/v1/object/public/resumes/', bkt: 'resumes' },
+        { marker: '/storage/v1/object/public/applications/', bkt: 'applications' },
+        { marker: '/storage/v1/object/sign/resumes/', bkt: 'resumes' },
+        { marker: '/storage/v1/object/sign/applications/', bkt: 'applications' },
+        { marker: '/resumes/', bkt: 'resumes' },
+        { marker: '/applications/', bkt: 'applications' },
+      ];
+      for (const { marker, bkt } of markers) {
+        if (cvUrl.includes(marker)) {
+          const path = decodeURIComponent(cvUrl.split(marker)[1]?.split('?')[0] || '');
+          if (path) {
+            try {
+              const { data } = await supabase.storage.from(bkt).createSignedUrl(path, 300);
+              if (data?.signedUrl) finalUrl = data.signedUrl;
+            } catch (_) {}
+          }
+          break;
+        }
+      }
+      window.open(finalUrl, '_blank', 'noopener,noreferrer');
+    } catch (_) {
+      window.open(cvUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const handleDownloadApplicantCV = async (cvUrl: string, name?: string) => {
+    if (!cvUrl) return;
+    try {
+      const a = document.createElement('a');
+      a.href = cvUrl;
+      a.target = '_blank';
+      a.download = `CV_${name || 'applicant'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (_) {
+      window.open(cvUrl, '_blank');
+    }
+  };
 
   // Helper to reliably retrieve complete applicant profile
   const resolveApplicant = (app: JobApplication) => {
@@ -1112,10 +1171,24 @@ function ApplicationsListViewContent({
                         </section>
                       )}
 
-                      {/* 📎 CV Options: Direct External Open/Download + In-App Modal Preview */}
+                      {/* 📎 CV Options: Direct Native Zero-Freeze Viewer & Download (100% No Freezing) */}
                       {(() => {
                         const cvTargetUrl = app.cv_url || app.applicant_data?.cvUrl || (app.applicant_data as any)?.cv_url || resolved.cvUrl;
-                        if (!cvTargetUrl) return null;
+                        if (!cvTargetUrl) {
+                          return (
+                            <div className="p-4 bg-slate-100 dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between text-right">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-750 text-slate-400 flex items-center justify-center shrink-0">
+                                  <FileText size={18} />
+                                </div>
+                                <div>
+                                  <span className="text-xs font-black text-slate-700 dark:text-slate-300 block">ملف السيرة الذاتية (CV)</span>
+                                  <span className="text-[10px] text-slate-400 font-bold block">لم يرفق المتقدم ملف سيرة ذاتية في هذا الطلب</span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
                         return (
                           <div className="space-y-2.5">
                             <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2 px-1">
@@ -1123,52 +1196,45 @@ function ApplicationsListViewContent({
                               ملف السيرة الذاتية (CV) للمتقدم
                             </h4>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                              {/* Option 1: Direct Open in Browser / Native PDF (100% Zero-Freeze) */}
-                              <a
-                                href={cvTargetUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 rounded-2xl text-white shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all group text-right cursor-pointer"
+                              {/* Option 1: Direct Open in Browser Native Viewer (100% Zero-Freeze) */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenApplicantCV(cvTargetUrl, resolved.name)}
+                                className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-600 to-[#0a66c2] hover:from-blue-700 hover:to-[#08529c] rounded-2xl text-white shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all group text-right cursor-pointer"
                               >
                                 <div className="flex items-center gap-3 min-w-0">
                                   <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center border border-white/30 shrink-0">
                                     <ExternalLink size={18} />
                                   </div>
                                   <div className="min-w-0">
-                                    <span className="text-xs font-black block truncate">فتح خارجي / تنزيل</span>
-                                    <span className="text-[9px] text-emerald-100 font-bold block">مباشر عبر المتصفح</span>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/20 text-white text-[11px] font-black group-hover:bg-white/30 transition-colors shrink-0">
-                                  <Download size={13} />
-                                  <span>فتح</span>
-                                </div>
-                              </a>
-
-                              {/* Option 2: In-App Fast Preview */}
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setPreviewCVData({
-                                    url: cvTargetUrl,
-                                    userName: resolved.name,
-                                    userAvatar: resolved.avatar,
-                                  });
-                                }}
-                                className="flex items-center justify-between p-4 bg-gradient-to-r from-[#0a66c2] to-[#004182] hover:from-[#08529c] hover:to-[#003468] rounded-2xl text-white shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all group text-right cursor-pointer"
-                              >
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center border border-white/30 shrink-0">
-                                    <FileText size={18} />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <span className="text-xs font-black block truncate">معاينة داخل التطبيق</span>
-                                    <span className="text-[9px] text-blue-100 font-bold block">عرض مدمج فوري</span>
+                                    <span className="text-xs font-black block truncate">معاينة السيرة الذاتية</span>
+                                    <span className="text-[9px] text-blue-100 font-bold block">عرض فوري في نافذة جديدة ↗</span>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/20 text-white text-[11px] font-black group-hover:bg-white/30 transition-colors shrink-0">
                                   <Eye size={13} />
-                                  <span>معاينة</span>
+                                  <span>فتح</span>
+                                </div>
+                              </button>
+
+                              {/* Option 2: Direct Download */}
+                              <button
+                                type="button"
+                                onClick={() => handleDownloadApplicantCV(cvTargetUrl, resolved.name)}
+                                className="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 rounded-2xl text-white shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all group text-right cursor-pointer"
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center border border-white/30 shrink-0">
+                                    <Download size={18} />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <span className="text-xs font-black block truncate">تنزيل السيرة الذاتية</span>
+                                    <span className="text-[9px] text-emerald-100 font-bold block">تحميل مباشر للملف ⬇</span>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/20 text-white text-[11px] font-black group-hover:bg-white/30 transition-colors shrink-0">
+                                  <Download size={13} />
+                                  <span>تنزيل</span>
                                 </div>
                               </button>
                             </div>
@@ -1309,19 +1375,6 @@ function ApplicationsListViewContent({
         )}
       </AnimatePresence>
 
-      {/* ── In-App Secure PDF CV Viewer Modal ── */}
-      <PDFViewerModal
-        isOpen={!!previewCVData}
-        onClose={() => {
-          setPreviewCVData(null);
-          try {
-            document.body.style.overflow = '';
-          } catch (_) {}
-        }}
-        pdfSource={previewCVData?.url || null}
-        userName={previewCVData?.userName}
-        userAvatar={previewCVData?.userAvatar}
-      />
     </div>
   );
 }

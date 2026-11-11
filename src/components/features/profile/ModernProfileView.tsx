@@ -14,7 +14,6 @@ import { mobileUploadService } from '../../../lib/services/mobileUploadService';
 import { AppUser, Post } from '../../../types';
 import { useAppContext } from '../../../contexts/AppContext';
 import { PostNewsCard } from '../PostNewsCard';
-import { PDFViewerModal } from '../../common/PDFViewerModal';
 
 interface ModernProfileViewProps {
   profile: AppUser;
@@ -154,11 +153,9 @@ export function ModernProfileView({
   const [isUploadingCover, setIsUploadingCover] = useState(false);
 
   // ─── CV State ────────────────────────────────────────────────────────────────
-  const [previewingCV, setPreviewingCV] = useState(false);
   const [pendingCVFile, setPendingCVFile] = useState<File | null>(null);
   const [pendingCVName, setPendingCVName] = useState<string | null>(null);
   const [cvUploadProgress, setCvUploadProgress] = useState(0);
-  const [cvPdfBytes, setCvPdfBytes] = useState<ArrayBuffer | string | null>(null);
   const [cvDownloading, setCvDownloading] = useState(false);
 
   // ─── Refs ────────────────────────────────────────────────────────────────────
@@ -230,46 +227,49 @@ export function ModernProfileView({
   };
 
   // ─── فتح نافذة CV (معاينة حقيقية عبر Canvas بدون iframe أو جوجل دوكس) ────────
+  // ─── فتح ومعاينة السيرة الذاتية (معاينة مباشرة 100% Zero-Freeze بدون iframes) ────────
   const openCVModal = async () => {
     const targetCvUrl = cvUrl || profile?.cvUrl || (profile as any)?.cv_url || '';
-    if (!targetCvUrl && !pendingCVFile) return;
-
-    setPreviewingCV(true);
-
-    try {
-      // 1. إذا كان المستخدم قد اختار ملفاً للتو في RAM ولم يُحفظ بعد
-      if (pendingCVFile) {
-        if (pendingCVFile.name.toLowerCase().endsWith('.doc') || pendingCVFile.name.toLowerCase().endsWith('.docx')) {
-          setCvPdfBytes(null);
-          return;
-        }
-        let ab: ArrayBuffer;
-        if ((pendingCVFile as any)._ab) {
-          ab = (pendingCVFile as any)._ab;
-        } else {
-          ab = await pendingCVFile.arrayBuffer();
-        }
-        setCvPdfBytes(ab);
-        return;
-      }
-
-      // إذا كان الملف Word
-      if (targetCvUrl.toLowerCase().includes('.doc')) {
-        setCvPdfBytes(null);
-        return;
-      }
-
-      // تمرير الرابط مباشرة لمودال المعاينة ليقوم بتحميله بسلاسة عبر الـ Web Worker دون تجميد الواجهة
-      setCvPdfBytes(targetCvUrl);
-    } catch (err: any) {
-      console.warn('[openCVModal] Direct pass failed:', err);
-      setCvPdfBytes(targetCvUrl);
+    if (!targetCvUrl && !pendingCVFile) {
+      addToast('لا توجد سيرة ذاتية مرفوعة للمعاينة', 'error');
+      return;
     }
-  };
 
-  const closeCVModal = () => {
-    setPreviewingCV(false);
-    setCvPdfBytes(null);
+    // 1. إذا كان المستخدم قد اختار ملفاً للتو في RAM ولم يُحفظ بعد
+    if (pendingCVFile) {
+      const u = URL.createObjectURL(pendingCVFile);
+      window.open(u, '_blank');
+      setTimeout(() => URL.revokeObjectURL(u), 60000);
+      return;
+    }
+
+    // 2. فك الرابط الموقع إذا كان الملف في مجلد سوبابيز التخزيني
+    let finalUrl = targetCvUrl;
+    try {
+      const markers = [
+        { marker: '/storage/v1/object/public/resumes/', bkt: 'resumes' },
+        { marker: '/storage/v1/object/public/applications/', bkt: 'applications' },
+        { marker: '/storage/v1/object/sign/resumes/', bkt: 'resumes' },
+        { marker: '/storage/v1/object/sign/applications/', bkt: 'applications' },
+        { marker: '/resumes/', bkt: 'resumes' },
+        { marker: '/applications/', bkt: 'applications' },
+      ];
+      for (const { marker, bkt } of markers) {
+        if (targetCvUrl.includes(marker)) {
+          const path = decodeURIComponent(targetCvUrl.split(marker)[1]?.split('?')[0] || '');
+          if (path) {
+            try {
+              const { data } = await supabase.storage.from(bkt).createSignedUrl(path, 300);
+              if (data?.signedUrl) finalUrl = data.signedUrl;
+            } catch (_) {}
+          }
+          break;
+        }
+      }
+    } catch (_) {}
+
+    // 3. فتح فوري أصيل في المتصفح دون حجز الخيط الرئيسي
+    window.open(finalUrl, '_blank', 'noopener,noreferrer');
   };
 
   // ─── تحميل السيرة الذاتية بأمان وتنزيلها كملف بدون فضح روابط قواعد البيانات ────
@@ -1159,6 +1159,131 @@ export function ModernProfileView({
             )}
           </div>
 
+          {/* ══════════════════════════════════════════════════════════════════════════
+              قسم السيرة الذاتية داخل البطاقة الرئيسية — متاح لجميع الحسابات (باحث أو صاحب عمل)
+              ══════════════════════════════════════════════════════════════════════════ */}
+          <div className="pt-3 pb-1 border-t border-slate-100 dark:border-slate-800 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className={iconBadge}><FileText size={16} /></div>
+                <div>
+                  <span className="text-sm font-black text-slate-800 dark:text-white">ملف السيرة الذاتية (CV)</span>
+                  <span className="text-[10px] text-slate-400 font-bold block">متاح لجميع الحسابات (باحث أو صاحب عمل)</span>
+                </div>
+              </div>
+              {cvUrl && (
+                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-black border border-emerald-500/20 flex items-center gap-1">
+                  <CheckCircle2 size={11} /> معتمد
+                </span>
+              )}
+            </div>
+
+            {/* شريط تقدم الرفع */}
+            {savingCV && (
+              <div className="p-3 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 space-y-1.5">
+                <div className="flex justify-between items-center text-[10px] font-bold text-blue-600">
+                  <span className="flex items-center gap-1.5"><Loader2 size={11} className="animate-spin" /> جاري رفع وحفظ السيرة الذاتية...</span>
+                  <span>{cvUploadProgress}%</span>
+                </div>
+                <div className="w-full h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                  <div className="h-full bg-blue-600 transition-all duration-300" style={{ width: `${cvUploadProgress}%` }} />
+                </div>
+              </div>
+            )}
+
+            {cvUrl || pendingCVFile ? (
+              <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-br from-blue-50/80 to-slate-50 dark:from-[#0a66c2]/10 dark:to-slate-800/40 border border-blue-200/60 dark:border-blue-800/40 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shrink-0 shadow-sm">
+                      <FileText size={18} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-black text-slate-800 dark:text-white truncate">
+                        {pendingCVName ? pendingCVName : (cvUrl.split('/').pop()?.split('?')[0] || 'السيرة الذاتية المعتمدة')}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-bold">
+                        {pendingCVFile ? 'ملف جديد تم اختياره (اضغط حفظ أدناه)' : 'متاح للمعاينة والتحميل المباشر'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-blue-100 dark:border-blue-900/40">
+                  <button
+                    type="button"
+                    onClick={() => openCVModal()}
+                    className="py-2 px-2.5 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-[#0a66c2] dark:text-blue-300 rounded-xl text-[11px] font-black transition-all border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    <ExternalLink size={13} />
+                    <span>معاينة ↗</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleDownloadCV}
+                    disabled={cvDownloading}
+                    className="py-2 px-2.5 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-[11px] font-black transition-all border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50 cursor-pointer"
+                  >
+                    {cvDownloading ? <Loader2 size={13} className="animate-spin text-[#0a66c2]" /> : <Download size={13} />}
+                    <span>تنزيل ⬇</span>
+                  </button>
+
+                  {isMe && (
+                    <label
+                      htmlFor="cv-file-input-card1"
+                      className="col-span-2 sm:col-span-1 py-2 px-2.5 bg-gradient-to-l from-[#0a66c2] to-[#004182] hover:from-[#004182] hover:to-[#0a66c2] text-white rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer text-center"
+                    >
+                      <RefreshCw size={12} />
+                      <span>استبدال 🔄</span>
+                    </label>
+                  )}
+                </div>
+
+                {isMe && pendingCVFile && (
+                  <button
+                    type="button"
+                    onClick={handleSaveCV}
+                    disabled={savingCV}
+                    className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    {savingCV ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                    <span>حفظ السيرة الذاتية الجديدة</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <label
+                htmlFor={isMe ? "cv-file-input-card1" : undefined}
+                className={`p-4 sm:p-5 rounded-2xl border-2 border-dashed border-blue-200 dark:border-blue-800/60 bg-blue-50/20 dark:bg-blue-950/10 flex items-center justify-center text-center gap-3 transition-all ${
+                  isMe ? 'hover:bg-blue-50/40 dark:hover:bg-blue-950/20 cursor-pointer active:scale-[0.99]' : ''
+                }`}
+              >
+                <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-300 flex items-center justify-center shadow-sm shrink-0">
+                  <Upload size={18} />
+                </div>
+                <div className="text-right">
+                  <p className="text-xs sm:text-sm font-black text-slate-800 dark:text-white">
+                    {isMe ? 'انقر لرفع ملف السيرة الذاتية (CV)' : 'لم يتم رفع ملف سيرة ذاتية بعد'}
+                  </p>
+                  <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                    PDF أو Word (الحد الأقصى 25 ميغابايت) — متاح لجميع الحسابات (باحث أو صاحب عمل)
+                  </p>
+                </div>
+              </label>
+            )}
+
+            {isMe && (
+              <input
+                id="cv-file-input-card1"
+                type="file"
+                accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden"
+                onChange={handleCVFileSelect}
+              />
+            )}
+          </div>
+
           {isMe && (
             <button type="button" onClick={handleSavePersonalInfo} disabled={savingInfo} className={saveBtn}>
               <div className="flex items-center gap-1 text-blue-200"><ChevronsLeft size={22} /></div>
@@ -1451,8 +1576,8 @@ export function ModernProfileView({
                 onClick={() => openCVModal()}
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.96 }}
-                className="py-2.5 px-3 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-[#0a66c2] dark:text-blue-300 rounded-xl text-xs font-black transition-all border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 shadow-sm active:scale-95">
-                <Eye size={14} /><span>معاينة السيرة</span>
+                className="py-2.5 px-3 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-[#0a66c2] dark:text-blue-300 rounded-xl text-xs font-black transition-all border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer">
+                <ExternalLink size={14} /><span>معاينة السيرة ↗</span>
               </motion.button>
               <motion.button
                 type="button"
@@ -1591,17 +1716,6 @@ export function ModernProfileView({
           </button>
         </div>
       )}
-
-      {/* ══════════════════════════════════════════════════════════════════════════
-          MODAL — معاينة السيرة الذاتية (Native Canvas عبر PDF.js بدون iframe وبدون Google Docs)
-          ══════════════════════════════════════════════════════════════════════════ */}
-      <PDFViewerModal
-        isOpen={previewingCV}
-        onClose={closeCVModal}
-        pdfSource={cvPdfBytes || cvUrl || profile?.cvUrl || (profile as any)?.cv_url || null}
-        userName={profile?.name}
-        userAvatar={avatar}
-      />
 
     </div>
   );
