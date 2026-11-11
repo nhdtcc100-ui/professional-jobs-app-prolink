@@ -766,10 +766,10 @@ function ApplicationsListViewContent({
       <AnimatePresence>
         {selectedAppIndex !== null && filteredApps.length > 0 && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 260 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
             className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[300] bg-slate-950 text-slate-800 dark:text-white flex flex-col overflow-hidden"
             dir="rtl"
           >
@@ -858,8 +858,8 @@ function ApplicationsListViewContent({
               ref={detailContainerRef}
               className="flex-1 overflow-y-auto no-scrollbar overscroll-contain bg-slate-100 dark:bg-slate-950 flex flex-col"
               style={{
-                scrollBehavior: 'smooth',
                 overscrollBehaviorY: 'contain',
+                touchAction: 'pan-y',
                 WebkitOverflowScrolling: 'touch' as any,
               }}
             >
@@ -1270,7 +1270,12 @@ function ApplicationsListViewContent({
       {/* ── In-App Secure PDF CV Viewer Modal ── */}
       <PDFViewerModal
         isOpen={!!previewCVData}
-        onClose={() => setPreviewCVData(null)}
+        onClose={() => {
+          setPreviewCVData(null);
+          try {
+            document.body.style.overflow = '';
+          } catch (_) {}
+        }}
         pdfSource={previewCVData?.url || null}
         userName={previewCVData?.userName}
         userAvatar={previewCVData?.userAvatar}

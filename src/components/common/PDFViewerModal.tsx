@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, ZoomIn, ZoomOut, RotateCcw, ChevronRight, ChevronLeft,
-  FileText, Loader2, AlertCircle, RefreshCw, CheckCircle2
+  FileText, Loader2, AlertCircle, RefreshCw, CheckCircle2, ExternalLink
 } from 'lucide-react';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { supabase } from '../../lib/supabase';
@@ -58,13 +58,19 @@ async function resolveStoragePdfUrl(source: string): Promise<string> {
     try {
       const { data, error } = await raceTimeout(
         supabase.storage.from(bucket).createSignedUrl(path, 600) as unknown as Promise<any>,
-        6000,
+        3000,
         'signed-url-timeout'
       );
       if (!error && data?.signedUrl) return data.signedUrl;
     } catch (_) {}
   }
   return source;
+}
+
+// Pre-warm pdfjs at module evaluation time (non-blocking, runs in background)
+if (typeof window !== 'undefined') {
+  // Kick off the import asap so the bundle is cached before first open
+  loadPdfjs().catch(() => {});
 }
 
 export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
@@ -81,6 +87,7 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState<number>(0);
+  const [resolvedDownloadUrl, setResolvedDownloadUrl] = useState<string | null>(null);
 
   const pdfDocRef = useRef<any>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -88,21 +95,40 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // ─── Lock body scroll while open & defensive cleanup ──────────────────────────
+  // Track a ref to know whether *we* set the overflow, so we don't accidentally
+  // unlock it when another overlay (e.g. ApplicationsTableView z-[300]) is still open.
+  const didLockBodyRef = useRef(false);
   useEffect(() => {
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
+      // Only lock if body is not already locked (another modal may own it)
+      if (document.body.style.overflow !== 'hidden') {
+        document.body.style.overflow = 'hidden';
+        didLockBodyRef.current = true;
+      } else {
+        didLockBodyRef.current = false;
+      }
       return () => {
-        document.body.style.overflow = '';
+        if (didLockBodyRef.current) {
+          document.body.style.overflow = '';
+          didLockBodyRef.current = false;
+        }
       };
     } else {
-      document.body.style.overflow = '';
+      // On close, restore only if we owned the lock
+      if (didLockBodyRef.current) {
+        document.body.style.overflow = '';
+        didLockBodyRef.current = false;
+      }
     }
   }, [isOpen]);
 
+  // Failsafe cleanup on unmount
   useEffect(() => {
     return () => {
       try {
-        document.body.style.overflow = '';
+        if (didLockBodyRef.current) {
+          document.body.style.overflow = '';
+        }
       } catch (_) {}
     };
   }, []);
@@ -145,38 +171,61 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
             throw new Error('ملفات Word (.doc/.docx) لا يمكن معاينتها مباشرة كـ PDF. يرجى تنزيل الملف أو رفعه بصيغة PDF.');
           }
 
-          // Resolve signed URL if needed
-          const resolvedUrl = await resolveStoragePdfUrl(pdfSource);
-          if (!isMounted) return;
-
-          // Fetch with AbortController timeout (12s) to prevent hanging
-          const ctrl = new AbortController();
-          const timer = setTimeout(() => ctrl.abort(), 12_000);
-          let res: Response;
-          try {
-            res = await fetch(resolvedUrl, { signal: ctrl.signal });
-          } catch (e: any) {
-            if (e?.name === 'AbortError') {
-              throw new Error('استغرق جلب ملف السيرة وقتاً أطول من المتوقع. تحقق من اتصال الإنترنت.');
+          // Case A: Base64 Data URL — instant in-memory decoding (0ms network)
+          if (pdfSource.startsWith('data:')) {
+            setResolvedDownloadUrl(pdfSource);
+            try {
+              const base64Str = pdfSource.includes(',') ? pdfSource.split(',')[1] : pdfSource;
+              const bin = atob(base64Str);
+              const bytes = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) {
+                bytes[i] = bin.charCodeAt(i);
+              }
+              loadingTask = pdfjsLib.getDocument({
+                data: bytes,
+                isEvalSupported: false,
+              });
+            } catch (b64Err: any) {
+              console.warn('[PDFViewerModal] Base64 atob failed, fallback to fetch:', b64Err);
+              const res = await fetch(pdfSource);
+              const buf = await res.arrayBuffer();
+              loadingTask = pdfjsLib.getDocument({ data: buf, isEvalSupported: false });
             }
-            throw e;
-          } finally {
-            clearTimeout(timer);
-          }
+          } else {
+            // Case B: Remote Storage or HTTP URL
+            const resolvedUrl = await resolveStoragePdfUrl(pdfSource);
+            if (!isMounted) return;
+            setResolvedDownloadUrl(resolvedUrl);
 
-          if (!res.ok) {
-            if (res.status === 403) throw new Error('غير مصرح بالوصول إلى الملف (403).');
-            if (res.status === 404) throw new Error('الملف غير موجود في التخزين (404).');
-            throw new Error(`تعذر جلب الملف (رمز الاستجابة: ${res.status}).`);
-          }
-          const buf = await res.arrayBuffer();
-          if (buf.byteLength === 0) throw new Error('الملف فارغ أو تالف (0 بايت).');
-          if (!isMounted) return;
+            // Fetch with AbortController timeout (8s) to prevent hanging
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 8_000);
+            let res: Response;
+            try {
+              res = await fetch(resolvedUrl, { signal: ctrl.signal });
+            } catch (e: any) {
+              if (e?.name === 'AbortError') {
+                throw new Error('استغرق جلب ملف السيرة وقتاً أطول من المتوقع. يمكنك فتحه عبر زر الفتح الخارجي.');
+              }
+              throw e;
+            } finally {
+              clearTimeout(timer);
+            }
 
-          loadingTask = pdfjsLib.getDocument({
-            data: buf,
-            isEvalSupported: false,
-          });
+            if (!res.ok) {
+              if (res.status === 403) throw new Error('غير مصرح بالوصول إلى الملف (403).');
+              if (res.status === 404) throw new Error('الملف غير موجود في التخزين (404).');
+              throw new Error(`تعذر جلب الملف (رمز الاستجابة: ${res.status}).`);
+            }
+            const buf = await res.arrayBuffer();
+            if (buf.byteLength === 0) throw new Error('الملف فارغ أو تالف (0 بايت).');
+            if (!isMounted) return;
+
+            loadingTask = pdfjsLib.getDocument({
+              data: buf,
+              isEvalSupported: false,
+            });
+          }
         } else {
           // ArrayBuffer directly
           if (pdfSource.byteLength === 0) throw new Error('الملف فارغ أو تالف.');
@@ -200,10 +249,12 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
       }
     };
 
-    loadDoc();
+    // Yield to browser paint first so the loading spinner renders before heavy work
+    const rafId = setTimeout(loadDoc, 50);
 
     return () => {
       isMounted = false;
+      clearTimeout(rafId);
       if (renderTaskRef.current) {
         try { renderTaskRef.current.cancel(); } catch (_) {}
       }
@@ -281,205 +332,213 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
   const handleNextPage = () => setCurrentPage(prev => Math.min(prev + 1, numPages));
   const handlePrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
 
-  if (typeof document === 'undefined') return null;
+  if (typeof document === 'undefined' || !isOpen) return null;
 
   return createPortal(
-    <AnimatePresence
-      onExitComplete={() => {
-        try {
-          document.body.style.overflow = '';
-        } catch (_) {}
-      }}
+    <motion.div
+      key="pdf-viewer-backdrop"
+      className="fixed inset-0 z-[999999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      onClick={onClose}
     >
-      {isOpen && (
-        <motion.div
-          key="pdf-viewer-backdrop"
-          className="fixed inset-0 z-[999999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md"
-          style={{
-            top: 'calc(var(--topbar-h, 64px) + env(safe-area-inset-top, 0px))',
-            bottom: 'calc(var(--bottomnav-h, 88px) + env(safe-area-inset-bottom, 0px))',
-          }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.18 }}
-          onClick={onClose}
-        >
-          <motion.div
-            key="pdf-viewer-modal"
-            initial={{ scale: 0.94, opacity: 0, y: 15 }}
-            animate={{ scale: 1, opacity: 1, y: 0 }}
-            exit={{ scale: 0.94, opacity: 0, y: 15 }}
-            transition={{ type: 'spring', stiffness: 340, damping: 28 }}
-          className="w-full h-full max-w-4xl max-h-full bg-white dark:bg-slate-900 rounded-3xl shadow-2xl flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
-          dir="rtl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* ── Top Bar: User Info & Close ── */}
-          <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shrink-0">
-            <div className="flex items-center gap-3">
-              {userAvatar ? (
-                <div className="w-10 h-10 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
-                  <img src={userAvatar} alt={userName || ''} className="w-full h-full object-cover" />
-                </div>
-              ) : (
-                <div className="w-10 h-10 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-300 flex items-center justify-center shadow-sm shrink-0">
-                  <FileText size={20} />
-                </div>
-              )}
-              <div>
-                <h3 className="font-black text-slate-800 dark:text-white text-sm sm:text-base leading-tight">
-                  {userName || title}
-                </h3>
-                <p className="text-[11px] text-[#0a66c2] dark:text-blue-400 font-bold flex items-center gap-1">
-                  <CheckCircle2 size={12} /> معاينة مباشرة وآمنة داخل التطبيق
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <motion.button
-                onClick={onClose}
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="w-10 h-10 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all border border-red-200 dark:border-red-800/60 shadow-sm flex items-center justify-center cursor-pointer"
-                title="إغلاق (X)"
-              >
-                <X size={20} />
-              </motion.button>
-            </div>
-          </div>
-
-          {/* ── Toolbar: Zoom & Page Controls (Only when loaded) ── */}
-          {!loading && !error && numPages > 0 && (
-            <div className="flex items-center justify-between px-3 sm:px-6 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/60 dark:border-slate-800 shrink-0 text-xs font-bold text-slate-700 dark:text-slate-300 select-none">
-              {/* Pagination */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={handlePrevPage}
-                  disabled={currentPage <= 1}
-                  className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors shadow-2xs"
-                  title="الصفحة السابقة"
-                >
-                  <ChevronRight size={16} />
-                </button>
-                <span className="px-2 py-1 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px] font-black">
-                  صفحة {currentPage} من {numPages}
-                </span>
-                <button
-                  onClick={handleNextPage}
-                  disabled={currentPage >= numPages}
-                  className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors shadow-2xs"
-                  title="الصفحة التالية"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-              </div>
-
-              {/* Zoom */}
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={handleZoomOut}
-                  disabled={scale <= 0.4}
-                  className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
-                  title="تصغير (-)"
-                >
-                  <ZoomOut size={16} />
-                </button>
-                <span className="px-2 py-1 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px] font-black min-w-[50px] text-center font-mono">
-                  {Math.round(scale * 100)}%
-                </span>
-                <button
-                  onClick={handleZoomIn}
-                  disabled={scale >= 2.5}
-                  className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
-                  title="تكبير (+)"
-                >
-                  <ZoomIn size={16} />
-                </button>
-                <button
-                  onClick={handleResetZoom}
-                  className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
-                  title="إعادة ضبط الحجم"
-                >
-                  <RotateCcw size={14} />
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ── Content Area: Native Canvas Renderer ── */}
-          <div
-            ref={containerRef}
-            className="flex-1 w-full bg-slate-200/80 dark:bg-slate-950 overflow-auto flex items-center justify-center p-3 sm:p-6"
-          >
-            {loading ? (
-              <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
-                <div className="w-14 h-14 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-400 flex items-center justify-center shadow-md">
-                  <Loader2 size={28} className="animate-spin" />
-                </div>
-                <div>
-                  <h4 className="text-sm sm:text-base font-black text-slate-800 dark:text-white">
-                    جاري إعداد وعرض السيرة الذاتية...
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                    يتم تحويل صفحات المستند بجودة عالية للعرض الفوري
-                  </p>
-                </div>
-                {/* Skeleton placeholders */}
-                <div className="w-56 space-y-2 mt-2">
-                  <div className="h-2 rounded-full bg-slate-300 dark:bg-slate-800 animate-pulse w-full" />
-                  <div className="h-2 rounded-full bg-slate-300 dark:bg-slate-800 animate-pulse w-4/5 mx-auto" />
-                  <div className="h-2 rounded-full bg-slate-300 dark:bg-slate-800 animate-pulse w-2/3 mx-auto" />
-                </div>
-              </div>
-            ) : error ? (
-              <div className="flex flex-col items-center justify-center gap-4 p-8 text-center max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-red-200 dark:border-red-900/50">
-                <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-900/30 text-red-500 flex items-center justify-center shadow-sm">
-                  <AlertCircle size={28} />
-                </div>
-                <div>
-                  <h4 className="text-sm sm:text-base font-black text-slate-800 dark:text-white">
-                    تعذر عرض السيرة الذاتية
-                  </h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                    {error}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 pt-2">
-                  <button
-                    onClick={() => {
-                      pdfDocRef.current = null;
-                      setError(null);
-                      setLoading(true);
-                      setReloadKey((k) => k + 1); // actually re-runs the loader effect
-                    }}
-                    className="px-5 py-2.5 rounded-2xl bg-[#0a66c2] hover:bg-[#004182] text-white text-xs font-black transition-all flex items-center gap-2 shadow-md active:scale-95"
-                  >
-                    <RefreshCw size={14} />
-                    <span>إعادة المحاولة</span>
-                  </button>
-                  <button
-                    onClick={onClose}
-                    className="px-4 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black transition-all hover:bg-slate-200 active:scale-95"
-                  >
-                    إغلاق
-                  </button>
-                </div>
+      <motion.div
+        key="pdf-viewer-modal"
+        initial={{ scale: 0.94, opacity: 0, y: 15 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.94, opacity: 0, y: 15 }}
+        transition={{ type: 'spring', stiffness: 340, damping: 28 }}
+        className="w-full h-full max-w-4xl max-h-full bg-white dark:bg-slate-900 rounded-3xl shadow-2xl flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
+        dir="rtl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* ── Top Bar: User Info & Close ── */}
+        <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shrink-0">
+          <div className="flex items-center gap-3">
+            {userAvatar ? (
+              <div className="w-10 h-10 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
+                <img src={userAvatar} alt={userName || ''} className="w-full h-full object-cover" />
               </div>
             ) : (
-              <div className="flex justify-center items-center py-2 transition-transform duration-200">
-                <canvas
-                  ref={canvasRef}
-                  className="rounded-xl shadow-2xl bg-white border border-slate-300 dark:border-slate-700 max-w-full"
-                />
+              <div className="w-10 h-10 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-300 flex items-center justify-center shadow-sm shrink-0">
+                <FileText size={20} />
               </div>
             )}
+            <div>
+              <h3 className="font-black text-slate-800 dark:text-white text-sm sm:text-base leading-tight">
+                {userName || title}
+              </h3>
+              <p className="text-[11px] text-[#0a66c2] dark:text-blue-400 font-bold flex items-center gap-1">
+                <CheckCircle2 size={12} /> معاينة مباشرة وآمنة داخل التطبيق
+              </p>
+            </div>
           </div>
-        </motion.div>
+
+          <div className="flex items-center gap-2">
+            {resolvedDownloadUrl && (
+              <a
+                href={resolvedDownloadUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-[#0a66c2] dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-all border border-blue-200 dark:border-blue-800/60 shadow-sm flex items-center justify-center cursor-pointer"
+                title="فتح في علامة تبويب جديدة / تطبيق خارجي"
+              >
+                <ExternalLink size={18} />
+              </a>
+            )}
+            <motion.button
+              onClick={onClose}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="w-10 h-10 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all border border-red-200 dark:border-red-800/60 shadow-sm flex items-center justify-center cursor-pointer"
+              title="إغلاق (X)"
+            >
+              <X size={20} />
+            </motion.button>
+          </div>
+        </div>
+
+        {/* ── Toolbar: Zoom & Page Controls (Only when loaded) ── */}
+        {!loading && !error && numPages > 0 && (
+          <div className="flex items-center justify-between px-3 sm:px-6 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/60 dark:border-slate-800 shrink-0 text-xs font-bold text-slate-700 dark:text-slate-300 select-none">
+            {/* Pagination */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handlePrevPage}
+                disabled={currentPage <= 1}
+                className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors shadow-2xs"
+                title="الصفحة السابقة"
+              >
+                <ChevronRight size={16} />
+              </button>
+              <span className="px-2 py-1 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px] font-black">
+                صفحة {currentPage} من {numPages}
+              </span>
+              <button
+                onClick={handleNextPage}
+                disabled={currentPage >= numPages}
+                className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors shadow-2xs"
+                title="الصفحة التالية"
+              >
+                <ChevronLeft size={16} />
+              </button>
+            </div>
+
+            {/* Zoom */}
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleZoomOut}
+                disabled={scale <= 0.4}
+                className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
+                title="تصغير (-)"
+              >
+                <ZoomOut size={16} />
+              </button>
+              <span className="px-2 py-1 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px] font-black min-w-[50px] text-center font-mono">
+                {Math.round(scale * 100)}%
+              </span>
+              <button
+                onClick={handleZoomIn}
+                disabled={scale >= 2.5}
+                className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
+                title="تكبير (+)"
+              >
+                <ZoomIn size={16} />
+              </button>
+              <button
+                onClick={handleResetZoom}
+                className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
+                title="إعادة ضبط الحجم"
+              >
+                <RotateCcw size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Content Area: Native Canvas Renderer ── */}
+        <div
+          ref={containerRef}
+          className="flex-1 w-full bg-slate-200/80 dark:bg-slate-950 overflow-auto flex items-center justify-center p-3 sm:p-6"
+        >
+          {loading ? (
+            <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
+              <div className="w-14 h-14 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-400 flex items-center justify-center shadow-md">
+                <Loader2 size={28} className="animate-spin" />
+              </div>
+              <div>
+                <h4 className="text-sm sm:text-base font-black text-slate-800 dark:text-white">
+                  جاري إعداد وعرض السيرة الذاتية...
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  يتم تحويل صفحات المستند بجودة عالية للعرض الفوري
+                </p>
+              </div>
+              {/* Skeleton placeholders */}
+              <div className="w-56 space-y-2 mt-2">
+                <div className="h-2 rounded-full bg-slate-300 dark:bg-slate-800 animate-pulse w-full" />
+                <div className="h-2 rounded-full bg-slate-300 dark:bg-slate-800 animate-pulse w-4/5 mx-auto" />
+                <div className="h-2 rounded-full bg-slate-300 dark:bg-slate-800 animate-pulse w-2/3 mx-auto" />
+              </div>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center gap-4 p-8 text-center max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-red-200 dark:border-red-900/50">
+              <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-900/30 text-red-500 flex items-center justify-center shadow-sm">
+                <AlertCircle size={28} />
+              </div>
+              <div>
+                <h4 className="text-sm sm:text-base font-black text-slate-800 dark:text-white">
+                  تعذر عرض السيرة الذاتية
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  {error}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 pt-2 flex-wrap justify-center">
+                {resolvedDownloadUrl && (
+                  <a
+                    href={resolvedDownloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all flex items-center gap-2 shadow-md active:scale-95"
+                  >
+                    <ExternalLink size={14} />
+                    <span>فتح خارجي</span>
+                  </a>
+                )}
+                <button
+                  onClick={() => {
+                    pdfDocRef.current = null;
+                    setError(null);
+                    setLoading(true);
+                    setReloadKey((k) => k + 1); // actually re-runs the loader effect
+                  }}
+                  className="px-5 py-2.5 rounded-2xl bg-[#0a66c2] hover:bg-[#004182] text-white text-xs font-black transition-all flex items-center gap-2 shadow-md active:scale-95"
+                >
+                  <RefreshCw size={14} />
+                  <span>إعادة المحاولة</span>
+                </button>
+                <button
+                  onClick={onClose}
+                  className="px-4 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black transition-all hover:bg-slate-200 active:scale-95"
+                >
+                  إغلاق
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex justify-center items-center py-2 transition-transform duration-200">
+              <canvas
+                ref={canvasRef}
+                className="rounded-xl shadow-2xl bg-white border border-slate-300 dark:border-slate-700 max-w-full"
+              />
+            </div>
+          )}
+        </div>
       </motion.div>
-      )}
-    </AnimatePresence>,
+    </motion.div>,
     document.body
   );
 };
