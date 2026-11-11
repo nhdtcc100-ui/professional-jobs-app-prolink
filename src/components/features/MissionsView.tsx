@@ -97,16 +97,23 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
   const markAllIncomingAsSeen = React.useCallback(() => {
     if (!appUser?.id || incomingApplications.length === 0) return;
     const allIds = incomingApplications.map(a => a.id);
-    const updated = new Set([...seenAppIds, ...allIds]);
-    setSeenAppIds(updated);
-    try {
-      localStorage.setItem(`prolink_seen_apps_${appUser.id}`, JSON.stringify(Array.from(updated)));
-      window.dispatchEvent(new Event('prolink_seen_apps_updated'));
-    } catch (_) {}
+    
+    setSeenAppIds(prev => {
+      const hasUnseen = allIds.some(id => !prev.has(id));
+      if (!hasUnseen) return prev; // 🛡️ CRITICAL: Stop infinite re-render loop if all are already seen
+      
+      const updated = new Set([...prev, ...allIds]);
+      try {
+        localStorage.setItem(`prolink_seen_apps_${appUser.id}`, JSON.stringify(Array.from(updated)));
+        window.dispatchEvent(new Event('prolink_seen_apps_updated'));
+      } catch (_) {}
+      return updated;
+    });
+
     if (markJobApplicationNotificationsAsRead) {
       markJobApplicationNotificationsAsRead();
     }
-  }, [appUser?.id, incomingApplications, seenAppIds, markJobApplicationNotificationsAsRead]);
+  }, [appUser?.id, incomingApplications, markJobApplicationNotificationsAsRead]);
 
   // When employer opens requests tab, mark them as seen and clear notifications
   useEffect(() => {
@@ -116,7 +123,7 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
   }, [activeSubTab, incomingApplications.length, markAllIncomingAsSeen]);
 
   // ── Applications ─────────────────────────────────────────────────────────────
-  const fetchApplications = async () => {
+  const fetchApplications = React.useCallback(async () => {
     if (!appUser?.id) { setAppsLoading(false); return; }
     setAppsLoading(true);
 
@@ -190,7 +197,7 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
       clearTimeout(safetyTimer);
       setAppsLoading(false);
     }
-  };
+  }, [appUser?.id, jobs, allUsers]);
 
   useEffect(() => {
     if (!appUser?.id) return;

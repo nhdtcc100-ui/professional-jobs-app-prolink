@@ -220,13 +220,24 @@ function ApplicationsListViewContent({
   addToast,
   appUser,
 }: ApplicationsListViewProps) {
-  const { setActiveTab, setSelectedChat, allUsers = [] } = useAppContext();
+  const { setActiveTab, setSelectedChat, allUsers = [], activeTab } = useAppContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [selectedAppIndex, setSelectedAppIndex] = useState<number | null>(null);
   const [highlightedAppId, setHighlightedAppId] = useState<string | null>(null);
   const detailContainerRef = React.useRef<HTMLDivElement>(null);
   const [ratingFilter, setRatingFilter] = useState<number>(0); // 0 = all
+
+  // 🛡️ Keep-Alive guard: close the fixed z-[300] overlay when user navigates away.
+  // Because MissionsView uses CSS `hidden` (not unmount), this component stays in
+  // DOM and the full-screen overlay keeps blocking touches on every other tab.
+  useEffect(() => {
+    if (activeTab !== 'jobs' && selectedAppIndex !== null) {
+      setSelectedAppIndex(null);
+      try { document.body.style.overflow = ''; } catch (_) {}
+    }
+  }, [activeTab, selectedAppIndex]);
+
   // 🛡️ Always ensure body scrolling is restored on unmount or navigation
   useEffect(() => {
     return () => {

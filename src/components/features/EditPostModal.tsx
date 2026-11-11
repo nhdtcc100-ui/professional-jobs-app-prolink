@@ -142,7 +142,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ post, onClose, onS
           <div className="flex items-center justify-between p-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
             <div className="flex items-center gap-3">
               <img
-                src={post.authorAvatar || appUser?.avatar || '/news-placeholder.png'}
+                src={post.authorAvatar || appUser?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName || 'U')}&background=0a66c2&color=fff`}
                 alt={post.authorName}
                 className="w-12 h-12 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm"
               />

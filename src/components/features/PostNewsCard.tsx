@@ -14,6 +14,7 @@ import {
 import { Post } from '../../types';
 import { safeTimeAgo } from '../../lib/utils/formatDate';
 import { useAppContext } from '../../contexts/AppContext';
+import { DEFAULT_NEWS_PLACEHOLDER, handleImageError } from '../../lib/utils/placeholders';
 import { supabase } from '../../lib/supabase';
 
 interface PostNewsCardProps {
@@ -29,7 +30,7 @@ interface PostNewsCardProps {
 export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers, onDeletePost, onEditPost }: PostNewsCardProps) {
   const { appUser, addToast } = useAppContext();
   const author = allUsers.find(u => u.id === post.authorId);
-  const displayImage = post.imageUrl || author?.coverUrl || author?.avatar || '/news-placeholder.png';
+  const displayImage = post.imageUrl || author?.coverUrl || author?.avatar || DEFAULT_NEWS_PLACEHOLDER;
   const hasVideo = !!post.videoUrl;
   const isArticle = (post as any).post_type === 'article' || (post as any).type === 'article' || post.content.startsWith('# ') || post.content.length > 250;
   
@@ -199,7 +200,7 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
         }`}>
           <img 
             src={displayImage} 
-            onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/news-placeholder.png'; }}
+            onError={handleImageError}
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-90 group-hover:opacity-100" 
             alt=""
           />

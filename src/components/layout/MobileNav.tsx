@@ -359,9 +359,9 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                   if (item.id === 'more') {
                     setShowMobileMenu(true);
                   } else {
-                    startTransition(() => {
-                      setActiveTab(item.id);
-                    });
+                    // ⚡ Urgent update — no startTransition so the tab switches
+                    // immediately even if a lazy chunk or Keep-Alive render is pending
+                    setActiveTab(item.id);
                     setShowMobileMenu(false);
                   }
                 }}
@@ -506,10 +506,9 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                         onMouseEnter={() => preloadTab('profile')}
                         onPointerDown={() => preloadTab('profile')}
                         onClick={() => {
-                          startTransition(() => {
-                            setSelectedProfile(appUser);
-                            setActiveTab('profile');
-                          });
+                          // ⚡ Urgent — navigate to profile immediately
+                          setSelectedProfile(appUser);
+                          setActiveTab('profile');
                           setShowMobileMenu(false);
                         }}
                       >
@@ -603,9 +602,8 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                         onPointerEnter={() => setHoverTab(it.id)}
                         onPointerLeave={() => setHoverTab(null)}
                         onClick={() => {
-                          startTransition(() => {
-                            it.onClick();
-                          });
+                          // ⚡ Urgent — no startTransition so drawer items navigate immediately
+                          it.onClick();
                           setShowMobileMenu(false);
                         }}
                         whileTap={{ scale: 0.96 }}

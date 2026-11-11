@@ -12,6 +12,7 @@ import { BilingualSmartText } from '../../lib/utils/bilingualText';
 import { JobCandidatesPanel } from './missions/JobCandidatesPanel';
 import { useAppContext } from '../../contexts/AppContext';
 import { getJobCategory, cleanJobDescription } from '../../lib/utils/jobCategoryUtils';
+import { DEFAULT_NEWS_PLACEHOLDER, handleImageError } from '../../lib/utils/placeholders';
 
 // ── Smart text renderer: detects phone numbers, URLs, emails, salaries, locations, and working hours ──
 const SmartText: React.FC<{ text: string; className?: string }> = ({ text, className }) => {
@@ -583,10 +584,10 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   {/* News Image / Header */}
                   <div className="relative h-52 md:h-72 shrink-0 overflow-hidden">
                     <img
-                      src={item.thumbnail || item.imageUrl || '/news-placeholder.png'}
+                      src={item.thumbnail || item.imageUrl || DEFAULT_NEWS_PLACEHOLDER}
                       alt={item.title}
                       className="w-full h-full object-cover"
-                      onError={(e) => { (e.currentTarget as HTMLImageElement).src = '/news-placeholder.png'; }}
+                      onError={handleImageError}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-900/30 to-transparent" />
                   </div>

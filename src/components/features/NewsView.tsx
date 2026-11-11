@@ -13,11 +13,12 @@ import { useAppContext } from '../../contexts/AppContext';
 // Use global NewsItem from newsService
 import type { NewsItem } from '../../lib/services/newsService';
 
-// App placeholder image for news items with no thumbnail
-const APP_PLACEHOLDER = '/news-placeholder.png';
-
 import { formatNewsText } from '../../lib/utils/formatNews';
+import { DEFAULT_NEWS_PLACEHOLDER, handleImageError } from '../../lib/utils/placeholders';
 export { formatNewsText };
+
+// App placeholder image for news items with no thumbnail
+const APP_PLACEHOLDER = DEFAULT_NEWS_PLACEHOLDER;
 
 // ── Fallback curated news ────────────────────────────────────────────────────
 const FALLBACK: NewsItem[] = [
@@ -177,7 +178,7 @@ const NewsCard = ({ item, featured = false, onSelect }: { item: NewsItem; featur
       className={`block group bg-white dark:bg-[#0f172a] rounded-[2.5rem] overflow-hidden border border-slate-100 dark:border-slate-800 shadow-xl hover:shadow-2xl transition-all ${hasLink ? 'cursor-pointer' : 'cursor-default'}`}>
       <div className="h-64 overflow-hidden relative">
         <img src={img} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 opacity-90 group-hover:opacity-100"
-          onError={(e) => (e.currentTarget.src = REGION_IMGS[item.region])} alt="" />
+          onError={(e) => handleImageError(e, REGION_IMGS[item.region])} alt="" />
         <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/40 to-transparent" />
         <div className="absolute top-4 right-4 flex gap-2">
           <span className={`${regionBadge.cls} text-white text-[9px] font-black px-2.5 py-1 rounded-full shadow-lg shadow-white/5`}>{regionBadge.label}</span>
@@ -202,7 +203,7 @@ const NewsCard = ({ item, featured = false, onSelect }: { item: NewsItem; featur
       className={`flex flex-col md:flex-row items-stretch gap-4 p-4 bg-white dark:bg-[#0f172a] rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-blue-500/50 shadow-sm hover:shadow-md transition-all group ${hasLink ? 'cursor-pointer' : 'cursor-default'}`}>
       <div className="relative shrink-0 w-full md:w-32 h-40 md:h-24">
         <img src={img} className="w-full h-full rounded-xl object-cover border border-slate-100 dark:border-slate-800 shadow-inner"
-          onError={(e) => (e.currentTarget.src = REGION_IMGS[item.region])} alt="" />
+          onError={(e) => handleImageError(e, REGION_IMGS[item.region])} alt="" />
         {hasLink && <div className="absolute top-2 left-2 p-1.5 bg-blue-600 text-white rounded-lg shadow-lg"><ExternalLink size={12} /></div>}
       </div>
       <div className="flex-1 min-w-0 flex flex-col justify-center py-1">
@@ -339,7 +340,7 @@ export function NewsCarousel({ appUser, onViewAll }: { appUser: any, onViewAll?:
           >
             <img 
               src={currentItem.thumbnail || REGION_IMGS[currentItem.region]} 
-              onError={(e) => { (e.currentTarget as HTMLImageElement).src = APP_PLACEHOLDER; }} 
+              onError={handleImageError} 
               className="w-16 h-16 rounded-2xl object-cover shrink-0 shadow-sm border border-slate-100 dark:border-slate-700 pointer-events-none" 
               alt="" 
             />
