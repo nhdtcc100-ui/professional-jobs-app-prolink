@@ -262,21 +262,43 @@ function ApplicationsListViewContent({
     }
   }, [selectedAppIndex]);
 
-  // Safe zero-freeze direct CV open & download helpers (100% Native - No iframes, No modals)
+  // Safe zero-freeze direct CV open & download helpers (100% Native - No iframes, No modals, Popup-blocker resistant)
   const handleOpenApplicantCV = async (cvUrl: string, name?: string) => {
     if (!cvUrl) {
       addToast('لا يوجد ملف سيرة ذاتية مرفق لهذا الطلب', 'error');
       return;
     }
+
+    if (cvUrl.startsWith('blob:') || cvUrl.startsWith('data:') || cvUrl.includes('/storage/v1/object/public/')) {
+      window.open(cvUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // فتح نافذة متزامنة فوراً لتثبيت إذن المتصفح وتجنب الحظر في المرات المتكررة
+    const newWindow = window.open('', '_blank');
+    if (newWindow) {
+      newWindow.opener = null;
+      try {
+        newWindow.document.write(`
+          <!DOCTYPE html>
+          <html dir="rtl">
+            <head><title>معاينة السيرة الذاتية - ${name || ''}</title><meta charset="utf-8"></head>
+            <body style="background:#0f172a;color:#94a3b8;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+              <div style="text-align:center;">
+                <div style="width:36px;height:36px;border:3px solid #1e293b;border-top-color:#38bdf8;border-radius:50%;animation:spin 1s linear infinite;margin:0 auto 16px;"></div>
+                <p style="font-size:15px;font-weight:bold;color:#f1f5f9;margin:0 0 6px;">جاري فتح السيرة الذاتية لـ ${name || 'المتقدم'}...</p>
+                <p style="font-size:12px;color:#64748b;margin:0;">يرجى الانتظار ثوانٍ معدودة</p>
+              </div>
+              <style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+            </body>
+          </html>
+        `);
+      } catch (_) {}
+    }
+
     try {
-      if (cvUrl.startsWith('blob:') || cvUrl.startsWith('data:')) {
-        window.open(cvUrl, '_blank', 'noopener,noreferrer');
-        return;
-      }
       let finalUrl = cvUrl;
       const markers = [
-        { marker: '/storage/v1/object/public/resumes/', bkt: 'resumes' },
-        { marker: '/storage/v1/object/public/applications/', bkt: 'applications' },
         { marker: '/storage/v1/object/sign/resumes/', bkt: 'resumes' },
         { marker: '/storage/v1/object/sign/applications/', bkt: 'applications' },
         { marker: '/resumes/', bkt: 'resumes' },
@@ -294,9 +316,24 @@ function ApplicationsListViewContent({
           break;
         }
       }
-      window.open(finalUrl, '_blank', 'noopener,noreferrer');
+
+      if (newWindow && !newWindow.closed) {
+        newWindow.location.href = finalUrl;
+      } else {
+        const a = document.createElement('a');
+        a.href = finalUrl;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
     } catch (_) {
-      window.open(cvUrl, '_blank', 'noopener,noreferrer');
+      if (newWindow && !newWindow.closed) {
+        newWindow.location.href = cvUrl;
+      } else {
+        window.open(cvUrl, '_blank', 'noopener,noreferrer');
+      }
     }
   };
 
