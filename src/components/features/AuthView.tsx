@@ -26,10 +26,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, handleGoogleLogin
   // حقول إضافية للمنظومة الجديدة
   const [location, setLocation] = useState("");
   const [companyName, setCompanyName] = useState("");
-  const [freelancerType, setFreelancerType] = useState<"technician" | "client">("technician");
-  const [specialty, setSpecialty] = useState("");
-  const [homeAddress, setHomeAddress] = useState("");
-  const [serviceRequest, setServiceRequest] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -144,12 +140,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, handleGoogleLogin
         displayTitle = finalName;
       } else if (selectedRole === 'employer') {
         finalName = name || companyName;
-      } else if (selectedRole === 'freelancer') {
-        if (freelancerType === 'technician' && specialty.trim()) {
-          displayTitle = `${finalName} (${specialty.trim()})`;
-        } else {
-          displayTitle = finalName;
-        }
+        displayTitle = finalName;
       }
 
       const res: any = await unifiedAuth(identifier, password, finalName, mode, selectedRole);
