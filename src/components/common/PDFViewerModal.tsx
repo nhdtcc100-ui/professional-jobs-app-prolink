@@ -1,78 +1,106 @@
-import React, { useState, useEffect, useRef } from 'react';
+/**
+ * PDFViewerModal — Zero-freeze CV Viewer
+ * ───────────────────────────────────────
+ * Strategy (in order):
+ *  1. Resolve a short-lived signed URL from Supabase storage (non-blocking, 4s timeout).
+ *  2. Render via Google Docs Viewer inside an <iframe>  → 0 pdfjs, 0 canvas, 0 main-thread work.
+ *  3. If Google Viewer fails (network / CORS), fall back to native <object> tag.
+ *  4. Always show a direct "فتح خارجي" link as escape hatch.
+ *
+ * Why this eliminates the freeze:
+ *  • No arrayBuffer() call on the main thread.
+ *  • No pdfjs worker initialisation blocking the event loop.
+ *  • Google renders the PDF on their CDN — the browser just shows an iframe.
+ *  • Signed-URL generation has a strict 4s timeout; on failure we fall back to
+ *    the original URL (may show 403 inside the iframe, which is recoverable with
+ *    the external-link button — still no app freeze).
+ */
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import {
-  X, ZoomIn, ZoomOut, RotateCcw, ChevronRight, ChevronLeft,
-  FileText, Loader2, AlertCircle, RefreshCw, CheckCircle2, ExternalLink
+  X, FileText, Loader2, AlertCircle, RefreshCw,
+  CheckCircle2, ExternalLink, Monitor,
 } from 'lucide-react';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { supabase } from '../../lib/supabase';
 
-// Lazy-load pdf.js only when a CV is actually opened (keeps the main bundle small & fast)
-let pdfjsPromise: Promise<any> | null = null;
-const loadPdfjs = (): Promise<any> => {
-  if (!pdfjsPromise) {
-    pdfjsPromise = import('pdfjs-dist').then((m: any) => {
-      m.GlobalWorkerOptions.workerSrc = pdfWorker;
-      return m;
-    });
-  }
-  return pdfjsPromise;
-};
-
-const raceTimeout = <T,>(p: Promise<T>, ms: number, msg: string): Promise<T> =>
-  new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(msg)), ms);
-    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
-  });
-
-interface PDFViewerModalProps {
+// ─── Types ──────────────────────────────────────────────────────────────────
+export interface PDFViewerModalProps {
   isOpen: boolean;
   onClose: () => void;
-  pdfSource: string | ArrayBuffer | null; // Can be a URL, signed URL, or raw ArrayBuffer
+  /** Storage public URL, signed URL, blob URL, or data URL */
+  pdfSource: string | ArrayBuffer | null;
   title?: string;
   userName?: string;
   userAvatar?: string;
 }
 
-// ─── Helper to resolve signed storage URLs without blocking the main thread ────
-async function resolveStoragePdfUrl(source: string): Promise<string> {
+type ViewerMode = 'resolving' | 'google' | 'object' | 'error';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const SIGNED_URL_TIMEOUT_MS = 4_000;
+const GOOGLE_VIEWER_BASE = 'https://docs.google.com/viewer?embedded=true&url=';
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Extract bucket + path from any Supabase storage URL and return a fresh
+ * short-lived signed URL.  Falls back to the original URL on any error.
+ * This runs async and NEVER blocks the main thread.
+ */
+async function getSignedUrl(source: string): Promise<string> {
+  if (!source) return source;
   if (source.startsWith('blob:') || source.startsWith('data:')) return source;
+
   let bucket = '';
   let path = '';
-  if (source.includes('/storage/v1/object/public/resumes/')) {
-    bucket = 'resumes';
-    path = decodeURIComponent(source.split('/storage/v1/object/public/resumes/')[1]?.split('?')[0] || '');
-  } else if (source.includes('/storage/v1/object/public/applications/')) {
-    bucket = 'applications';
-    path = decodeURIComponent(source.split('/storage/v1/object/public/applications/')[1]?.split('?')[0] || '');
-  } else if (source.includes('/resumes/')) {
-    bucket = 'resumes';
-    path = decodeURIComponent(source.split('/resumes/')[1]?.split('?')[0] || '');
-  } else if (source.includes('/applications/')) {
-    bucket = 'applications';
-    path = decodeURIComponent(source.split('/applications/')[1]?.split('?')[0] || '');
+
+  const MARKERS: Array<{ marker: string; bkt: string }> = [
+    { marker: '/storage/v1/object/public/resumes/', bkt: 'resumes' },
+    { marker: '/storage/v1/object/public/applications/', bkt: 'applications' },
+    { marker: '/storage/v1/object/sign/resumes/', bkt: 'resumes' },
+    { marker: '/storage/v1/object/sign/applications/', bkt: 'applications' },
+    { marker: '/resumes/', bkt: 'resumes' },
+    { marker: '/applications/', bkt: 'applications' },
+  ];
+
+  for (const { marker, bkt } of MARKERS) {
+    if (source.includes(marker)) {
+      bucket = bkt;
+      path = decodeURIComponent(source.split(marker)[1]?.split('?')[0] || '');
+      break;
+    }
   }
 
-  if (bucket && path) {
-    try {
-      const { data, error } = await raceTimeout(
-        supabase.storage.from(bucket).createSignedUrl(path, 600) as unknown as Promise<any>,
-        3000,
-        'signed-url-timeout'
-      );
-      if (!error && data?.signedUrl) return data.signedUrl;
-    } catch (_) {}
+  if (!bucket || !path) return source;
+
+  try {
+    const race = new Promise<string>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('timeout')), SIGNED_URL_TIMEOUT_MS);
+      supabase.storage
+        .from(bucket)
+        .createSignedUrl(path, 600)
+        .then(({ data, error }) => {
+          clearTimeout(t);
+          if (!error && data?.signedUrl) resolve(data.signedUrl);
+          else reject(error || new Error('no-signed-url'));
+        })
+        .catch((e) => { clearTimeout(t); reject(e); });
+    });
+    return await race;
+  } catch (e) {
+    console.warn('[PDFViewerModal] signed-url failed, using original:', e);
+    return source;
   }
-  return source;
 }
 
-// Pre-warm pdfjs at module evaluation time (non-blocking, runs in background)
-if (typeof window !== 'undefined') {
-  // Kick off the import asap so the bundle is cached before first open
-  loadPdfjs().catch(() => {});
+/** Build a Google Docs Viewer URL from a resolved direct URL */
+function buildGoogleViewerUrl(resolvedUrl: string): string {
+  return GOOGLE_VIEWER_BASE + encodeURIComponent(resolvedUrl);
 }
 
+// ─── Component ───────────────────────────────────────────────────────────────
 export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
   isOpen,
   onClose,
@@ -81,262 +109,143 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
   userName,
   userAvatar,
 }) => {
-  const [numPages, setNumPages] = useState<number>(0);
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [scale, setScale] = useState<number>(0.5);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState<number>(0);
-  const [resolvedDownloadUrl, setResolvedDownloadUrl] = useState<string | null>(null);
+  const [mode, setMode] = useState<ViewerMode>('resolving');
+  const [resolvedUrl, setResolvedUrl] = useState<string | null>(null);
+  const [googleViewerUrl, setGoogleViewerUrl] = useState<string | null>(null);
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [iframeError, setIframeError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const pdfDocRef = useRef<any>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const renderTaskRef = useRef<any>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const iframeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resolveAbortRef = useRef(false);
 
-  // ─── Lock body scroll while open & defensive cleanup ──────────────────────────
-  // Track a ref to know whether *we* set the overflow, so we don't accidentally
-  // unlock it when another overlay (e.g. ApplicationsTableView z-[300]) is still open.
-  const didLockBodyRef = useRef(false);
+  // ─── Body scroll lock ──────────────────────────────────────────────────────
+  const didLockRef = useRef(false);
   useEffect(() => {
     if (isOpen) {
-      // Only lock if body is not already locked (another modal may own it)
       if (document.body.style.overflow !== 'hidden') {
         document.body.style.overflow = 'hidden';
-        didLockBodyRef.current = true;
-      } else {
-        didLockBodyRef.current = false;
+        didLockRef.current = true;
       }
       return () => {
-        if (didLockBodyRef.current) {
+        if (didLockRef.current) {
           document.body.style.overflow = '';
-          didLockBodyRef.current = false;
+          didLockRef.current = false;
         }
       };
     } else {
-      // On close, restore only if we owned the lock
-      if (didLockBodyRef.current) {
+      if (didLockRef.current) {
         document.body.style.overflow = '';
-        didLockBodyRef.current = false;
+        didLockRef.current = false;
       }
     }
   }, [isOpen]);
 
-  // Failsafe cleanup on unmount
-  useEffect(() => {
-    return () => {
-      try {
-        if (didLockBodyRef.current) {
-          document.body.style.overflow = '';
-        }
-      } catch (_) {}
-    };
-  }, []);
+  useEffect(() => () => { if (didLockRef.current) document.body.style.overflow = ''; }, []);
 
+  // ─── ESC key ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isOpen) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
   }, [isOpen, onClose]);
 
-  // ─── 1. Load Document ────────────────────────────────────────────────────────
+  // ─── Main: resolve URL & prepare viewers ──────────────────────────────────
+  const resolveAndOpen = useCallback(async () => {
+    if (!pdfSource) {
+      setMode('error');
+      return;
+    }
+    setMode('resolving');
+    setIframeLoaded(false);
+    setIframeError(false);
+    resolveAbortRef.current = false;
+
+    let raw: string;
+    if (typeof pdfSource === 'string') {
+      raw = pdfSource;
+    } else {
+      // ArrayBuffer → blob URL (happens from profile page pending file)
+      const blob = new Blob([pdfSource], { type: 'application/pdf' });
+      raw = URL.createObjectURL(blob);
+    }
+
+    // Check Word document
+    if (raw.toLowerCase().includes('.doc') && !raw.toLowerCase().includes('.pdf')) {
+      setResolvedUrl(raw);
+      setGoogleViewerUrl(buildGoogleViewerUrl(raw));
+      setMode('google'); // Google Docs Viewer supports Word files too
+      return;
+    }
+
+    // Resolve signed URL in background — does NOT block anything
+    const signed = await getSignedUrl(raw);
+    if (resolveAbortRef.current) return; // modal was closed during resolution
+
+    setResolvedUrl(signed);
+
+    if (signed.startsWith('data:') || signed.startsWith('blob:')) {
+      // Data/Blob URLs can't go through Google Viewer — use <object> directly
+      setMode('object');
+    } else {
+      setGoogleViewerUrl(buildGoogleViewerUrl(signed));
+      setMode('google');
+    }
+  }, [pdfSource]);
+
   useEffect(() => {
     if (!isOpen) {
-      setLoading(false);
+      resolveAbortRef.current = true;
+      setMode('resolving');
+      setResolvedUrl(null);
+      setGoogleViewerUrl(null);
+      setIframeLoaded(false);
+      setIframeError(false);
+      if (iframeTimerRef.current) clearTimeout(iframeTimerRef.current);
       return;
     }
-    if (!pdfSource) {
-      setError('لا يوجد ملف سيرة ذاتية مرفوع لهذا الحساب.');
-      setLoading(false);
-      return;
-    }
+    resolveAndOpen();
+  }, [isOpen, reloadKey, resolveAndOpen]);
 
-    let isMounted = true;
-    setLoading(true);
-    setError(null);
-    setCurrentPage(1);
-
-    const loadDoc = async () => {
-      try {
-        let loadingTask: any;
-        const pdfjsLib: any = await raceTimeout(loadPdfjs(), 15_000, 'تعذر تحميل مكتبة عرض PDF. تحقق من الاتصال.');
-        if (!isMounted) return;
-
-        if (typeof pdfSource === 'string') {
-          // If it's a Word document
-          if (pdfSource.toLowerCase().includes('.doc')) {
-            throw new Error('ملفات Word (.doc/.docx) لا يمكن معاينتها مباشرة كـ PDF. يرجى تنزيل الملف أو رفعه بصيغة PDF.');
-          }
-
-          // Case A: Base64 Data URL — instant in-memory decoding (0ms network)
-          if (pdfSource.startsWith('data:')) {
-            setResolvedDownloadUrl(pdfSource);
-            try {
-              const base64Str = pdfSource.includes(',') ? pdfSource.split(',')[1] : pdfSource;
-              const bin = atob(base64Str);
-              const bytes = new Uint8Array(bin.length);
-              for (let i = 0; i < bin.length; i++) {
-                bytes[i] = bin.charCodeAt(i);
-              }
-              loadingTask = pdfjsLib.getDocument({
-                data: bytes,
-                isEvalSupported: false,
-              });
-            } catch (b64Err: any) {
-              console.warn('[PDFViewerModal] Base64 atob failed, fallback to fetch:', b64Err);
-              const res = await fetch(pdfSource);
-              const buf = await res.arrayBuffer();
-              loadingTask = pdfjsLib.getDocument({ data: buf, isEvalSupported: false });
-            }
-          } else {
-            // Case B: Remote Storage or HTTP URL
-            const resolvedUrl = await resolveStoragePdfUrl(pdfSource);
-            if (!isMounted) return;
-            setResolvedDownloadUrl(resolvedUrl);
-
-            // Fetch with AbortController timeout (8s) to prevent hanging
-            const ctrl = new AbortController();
-            const timer = setTimeout(() => ctrl.abort(), 8_000);
-            let res: Response;
-            try {
-              res = await fetch(resolvedUrl, { signal: ctrl.signal });
-            } catch (e: any) {
-              if (e?.name === 'AbortError') {
-                throw new Error('استغرق جلب ملف السيرة وقتاً أطول من المتوقع. يمكنك فتحه عبر زر الفتح الخارجي.');
-              }
-              throw e;
-            } finally {
-              clearTimeout(timer);
-            }
-
-            if (!res.ok) {
-              if (res.status === 403) throw new Error('غير مصرح بالوصول إلى الملف (403).');
-              if (res.status === 404) throw new Error('الملف غير موجود في التخزين (404).');
-              throw new Error(`تعذر جلب الملف (رمز الاستجابة: ${res.status}).`);
-            }
-            const buf = await res.arrayBuffer();
-            if (buf.byteLength === 0) throw new Error('الملف فارغ أو تالف (0 بايت).');
-            if (!isMounted) return;
-
-            loadingTask = pdfjsLib.getDocument({
-              data: buf,
-              isEvalSupported: false,
-            });
-          }
-        } else {
-          // ArrayBuffer directly
-          if (pdfSource.byteLength === 0) throw new Error('الملف فارغ أو تالف.');
-          loadingTask = pdfjsLib.getDocument({
-            data: pdfSource,
-            isEvalSupported: false,
-          });
-        }
-
-        const pdf = await raceTimeout(loadingTask.promise as Promise<any>, 25_000, 'استغرق تحليل الملف وقتاً طويلاً. حاول مجدداً.');
-        if (!isMounted) return;
-
-        pdfDocRef.current = pdf;
-        setNumPages(pdf.numPages);
-        setLoading(false);
-      } catch (err: any) {
-        if (!isMounted) return;
-        console.error('[PDFViewerModal] Load error:', err);
-        setError(err?.message || 'تعذر تحميل أو قراءة ملف السيرة الذاتية.');
-        setLoading(false);
-      }
-    };
-
-    // Yield to browser paint first so the loading spinner renders before heavy work
-    const rafId = setTimeout(loadDoc, 50);
-
-    return () => {
-      isMounted = false;
-      clearTimeout(rafId);
-      if (renderTaskRef.current) {
-        try { renderTaskRef.current.cancel(); } catch (_) {}
-      }
-      if (pdfDocRef.current) {
-        try { pdfDocRef.current.destroy(); } catch (_) {}
-        pdfDocRef.current = null;
-      }
-    };
-  }, [isOpen, pdfSource, reloadKey]);
-
-  // ─── 2. Render Current Page to Canvas ─────────────────────────────────────────
+  // ─── Iframe load / error handling ─────────────────────────────────────────
+  // Google Viewer may load silently with an error page inside the iframe.
+  // We can't detect cross-origin errors, so we give it 20s before showing fallback.
   useEffect(() => {
-    if (!isOpen || !pdfDocRef.current || loading || error) return;
-
-    let isCancelled = false;
-
-    const renderPage = async () => {
-      try {
-        const page = await pdfDocRef.current.getPage(currentPage);
-        if (isCancelled) return;
-
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-
-        const context = canvas.getContext('2d');
-        if (!context) return;
-
-        // Cancel previous ongoing render task if active
-        if (renderTaskRef.current) {
-          try { renderTaskRef.current.cancel(); } catch (_) {}
-          renderTaskRef.current = null;
-        }
-
-        // Cap pixel ratio to max 1.8 to prevent memory explosion & main thread freeze on mobile
-        const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.8);
-        const viewport = page.getViewport({ scale });
-
-        canvas.width = Math.floor(viewport.width * pixelRatio);
-        canvas.height = Math.floor(viewport.height * pixelRatio);
-        canvas.style.width = `${Math.floor(viewport.width)}px`;
-        canvas.style.height = `${Math.floor(viewport.height)}px`;
-
-        context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-
-        const renderContext = {
-          canvasContext: context,
-          viewport: viewport,
-        };
-
-        const renderTask = page.render(renderContext);
-        renderTaskRef.current = renderTask;
-
-        await renderTask.promise;
-      } catch (err: any) {
-        if (err?.name !== 'RenderingCancelledException') {
-          console.error('[PDFViewerModal] Render page error:', err);
-        }
+    if (mode !== 'google') {
+      if (iframeTimerRef.current) clearTimeout(iframeTimerRef.current);
+      return;
+    }
+    setIframeLoaded(false);
+    setIframeError(false);
+    if (iframeTimerRef.current) clearTimeout(iframeTimerRef.current);
+    iframeTimerRef.current = setTimeout(() => {
+      if (!iframeLoaded) {
+        setIframeError(true); // Google viewer timed out → switch to object
       }
-    };
+    }, 20_000);
+    return () => { if (iframeTimerRef.current) clearTimeout(iframeTimerRef.current); };
+  }, [mode, googleViewerUrl]);
 
-    renderPage();
+  const handleIframeLoad = useCallback(() => {
+    setIframeLoaded(true);
+    if (iframeTimerRef.current) clearTimeout(iframeTimerRef.current);
+  }, []);
 
-    return () => {
-      isCancelled = true;
-      if (renderTaskRef.current) {
-        try { renderTaskRef.current.cancel(); } catch (_) {}
-      }
-    };
-  }, [isOpen, currentPage, scale, loading, error]);
-
-  // ─── Controls ────────────────────────────────────────────────────────────────
-  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.25, 2.5));
-  const handleZoomOut = () => setScale(prev => Math.max(prev - 0.25, 0.4));
-  const handleResetZoom = () => setScale(0.5);
-  const handleNextPage = () => setCurrentPage(prev => Math.min(prev + 1, numPages));
-  const handlePrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
+  // Auto-fallback when Google Viewer times out
+  useEffect(() => {
+    if (iframeError && mode === 'google') {
+      setMode('object');
+    }
+  }, [iframeError, mode]);
 
   if (typeof document === 'undefined' || !isOpen) return null;
 
-  return createPortal(
+  // ─── Render ───────────────────────────────────────────────────────────────
+  const modalContent = (
     <motion.div
-      key="pdf-viewer-backdrop"
+      key="cv-backdrop"
       className="fixed inset-0 z-[999999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -345,200 +254,218 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
       onClick={onClose}
     >
       <motion.div
-        key="pdf-viewer-modal"
-        initial={{ scale: 0.94, opacity: 0, y: 15 }}
+        key="cv-modal"
+        initial={{ scale: 0.95, opacity: 0, y: 12 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
-        exit={{ scale: 0.94, opacity: 0, y: 15 }}
-        transition={{ type: 'spring', stiffness: 340, damping: 28 }}
+        exit={{ scale: 0.95, opacity: 0, y: 12 }}
+        transition={{ type: 'spring', stiffness: 360, damping: 30 }}
         className="w-full h-full max-w-4xl max-h-full bg-white dark:bg-slate-900 rounded-3xl shadow-2xl flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
         dir="rtl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* ── Top Bar: User Info & Close ── */}
-        <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shrink-0">
-          <div className="flex items-center gap-3">
+        {/* ── Top Bar ── */}
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
             {userAvatar ? (
-              <div className="w-10 h-10 rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
+              <div className="w-9 h-9 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
                 <img src={userAvatar} alt={userName || ''} className="w-full h-full object-cover" />
               </div>
             ) : (
-              <div className="w-10 h-10 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-300 flex items-center justify-center shadow-sm shrink-0">
-                <FileText size={20} />
+              <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-300 flex items-center justify-center shadow-sm shrink-0">
+                <FileText size={18} />
               </div>
             )}
-            <div>
-              <h3 className="font-black text-slate-800 dark:text-white text-sm sm:text-base leading-tight">
+            <div className="min-w-0">
+              <h3 className="font-black text-slate-800 dark:text-white text-sm sm:text-base leading-tight truncate max-w-[180px] sm:max-w-xs">
                 {userName || title}
               </h3>
-              <p className="text-[11px] text-[#0a66c2] dark:text-blue-400 font-bold flex items-center gap-1">
-                <CheckCircle2 size={12} /> معاينة مباشرة وآمنة داخل التطبيق
+              <p className="text-[10px] text-[#0a66c2] dark:text-blue-400 font-bold flex items-center gap-1 mt-0.5">
+                <CheckCircle2 size={10} />
+                معاينة آمنة داخل التطبيق
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {resolvedDownloadUrl && (
+          <div className="flex items-center gap-2 shrink-0">
+            {/* External open button — always available */}
+            {resolvedUrl && (
               <a
-                href={resolvedDownloadUrl}
+                href={resolvedUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-blue-950/40 text-[#0a66c2] dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-all border border-blue-200 dark:border-blue-800/60 shadow-sm flex items-center justify-center cursor-pointer"
-                title="فتح في علامة تبويب جديدة / تطبيق خارجي"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-all border border-emerald-200 dark:border-emerald-800/60 text-xs font-black shadow-sm"
+                title="فتح في تطبيق خارجي / تنزيل"
+                onClick={(e) => e.stopPropagation()}
               >
-                <ExternalLink size={18} />
+                <ExternalLink size={14} />
+                <span className="hidden sm:inline">فتح خارجي</span>
               </a>
             )}
-            <motion.button
+
+            {/* Fallback: switch viewer */}
+            {mode === 'google' && iframeLoaded && (
+              <button
+                onClick={() => setMode('object')}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700 text-xs font-black shadow-sm"
+                title="تبديل طريقة العرض"
+              >
+                <Monitor size={14} />
+                <span className="hidden sm:inline">تبديل</span>
+              </button>
+            )}
+
+            {/* Close */}
+            <button
               onClick={onClose}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              className="w-10 h-10 rounded-2xl bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all border border-red-200 dark:border-red-800/60 shadow-sm flex items-center justify-center cursor-pointer"
-              title="إغلاق (X)"
+              className="w-9 h-9 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-500 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 transition-all border border-red-200 dark:border-red-800/60 shadow-sm flex items-center justify-center cursor-pointer"
+              title="إغلاق"
             >
-              <X size={20} />
-            </motion.button>
+              <X size={18} />
+            </button>
           </div>
         </div>
 
-        {/* ── Toolbar: Zoom & Page Controls (Only when loaded) ── */}
-        {!loading && !error && numPages > 0 && (
-          <div className="flex items-center justify-between px-3 sm:px-6 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200/60 dark:border-slate-800 shrink-0 text-xs font-bold text-slate-700 dark:text-slate-300 select-none">
-            {/* Pagination */}
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={handlePrevPage}
-                disabled={currentPage <= 1}
-                className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors shadow-2xs"
-                title="الصفحة السابقة"
-              >
-                <ChevronRight size={16} />
-              </button>
-              <span className="px-2 py-1 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px] font-black">
-                صفحة {currentPage} من {numPages}
-              </span>
-              <button
-                onClick={handleNextPage}
-                disabled={currentPage >= numPages}
-                className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors shadow-2xs"
-                title="الصفحة التالية"
-              >
-                <ChevronLeft size={16} />
-              </button>
-            </div>
+        {/* ── Content ── */}
+        <div className="flex-1 relative overflow-hidden bg-slate-100 dark:bg-slate-950">
 
-            {/* Zoom */}
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={handleZoomOut}
-                disabled={scale <= 0.4}
-                className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
-                title="تصغير (-)"
-              >
-                <ZoomOut size={16} />
-              </button>
-              <span className="px-2 py-1 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-[11px] font-black min-w-[50px] text-center font-mono">
-                {Math.round(scale * 100)}%
-              </span>
-              <button
-                onClick={handleZoomIn}
-                disabled={scale >= 2.5}
-                className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 disabled:opacity-40 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
-                title="تكبير (+)"
-              >
-                <ZoomIn size={16} />
-              </button>
-              <button
-                onClick={handleResetZoom}
-                className="p-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
-                title="إعادة ضبط الحجم"
-              >
-                <RotateCcw size={14} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Content Area: Native Canvas Renderer ── */}
-        <div
-          ref={containerRef}
-          className="flex-1 w-full bg-slate-200/80 dark:bg-slate-950 overflow-auto flex items-center justify-center p-3 sm:p-6"
-        >
-          {loading ? (
-            <div className="flex flex-col items-center justify-center gap-4 p-8 text-center">
+          {/* RESOLVING STATE */}
+          {mode === 'resolving' && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-8 text-center">
               <div className="w-14 h-14 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-400 flex items-center justify-center shadow-md">
                 <Loader2 size={28} className="animate-spin" />
               </div>
               <div>
-                <h4 className="text-sm sm:text-base font-black text-slate-800 dark:text-white">
-                  جاري إعداد وعرض السيرة الذاتية...
+                <h4 className="text-sm font-black text-slate-800 dark:text-white">
+                  جاري تحضير السيرة الذاتية...
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  يتم تحويل صفحات المستند بجودة عالية للعرض الفوري
+                  يتم إنشاء رابط آمن للمعاينة
                 </p>
               </div>
-              {/* Skeleton placeholders */}
-              <div className="w-56 space-y-2 mt-2">
-                <div className="h-2 rounded-full bg-slate-300 dark:bg-slate-800 animate-pulse w-full" />
-                <div className="h-2 rounded-full bg-slate-300 dark:bg-slate-800 animate-pulse w-4/5 mx-auto" />
-                <div className="h-2 rounded-full bg-slate-300 dark:bg-slate-800 animate-pulse w-2/3 mx-auto" />
+              <div className="w-48 space-y-2 mt-1">
+                <div className="h-2 rounded-full bg-slate-300 dark:bg-slate-700 animate-pulse w-full" />
+                <div className="h-2 rounded-full bg-slate-300 dark:bg-slate-700 animate-pulse w-3/4 mx-auto" />
+                <div className="h-2 rounded-full bg-slate-300 dark:bg-slate-700 animate-pulse w-1/2 mx-auto" />
               </div>
             </div>
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center gap-4 p-8 text-center max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-red-200 dark:border-red-900/50">
-              <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-900/30 text-red-500 flex items-center justify-center shadow-sm">
-                <AlertCircle size={28} />
+          )}
+
+          {/* GOOGLE DOCS VIEWER (primary) */}
+          {mode === 'google' && googleViewerUrl && (
+            <>
+              {/* Loading overlay until iframe fires onLoad */}
+              {!iframeLoaded && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-100 dark:bg-slate-950 z-10 pointer-events-none">
+                  <Loader2 size={32} className="animate-spin text-[#0a66c2] dark:text-blue-400" />
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-bold">
+                    جاري تحميل الملف...
+                  </p>
+                </div>
+              )}
+              <iframe
+                ref={iframeRef}
+                key={`google-${reloadKey}-${googleViewerUrl}`}
+                src={googleViewerUrl}
+                className="w-full h-full border-0"
+                title={userName || title}
+                onLoad={handleIframeLoad}
+                onError={() => setIframeError(true)}
+                allow="fullscreen"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+              />
+            </>
+          )}
+
+          {/* NATIVE OBJECT TAG (fallback) */}
+          {mode === 'object' && resolvedUrl && (
+            <div className="absolute inset-0 flex flex-col">
+              <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-800/60 px-4 py-2 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300 font-bold shrink-0">
+                <AlertCircle size={13} />
+                يتم استخدام العارض الاحتياطي المدمج في المتصفح
               </div>
-              <div>
-                <h4 className="text-sm sm:text-base font-black text-slate-800 dark:text-white">
-                  تعذر عرض السيرة الذاتية
-                </h4>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                  {error}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 pt-2 flex-wrap justify-center">
-                {resolvedDownloadUrl && (
-                  <a
-                    href={resolvedDownloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition-all flex items-center gap-2 shadow-md active:scale-95"
-                  >
-                    <ExternalLink size={14} />
-                    <span>فتح خارجي</span>
-                  </a>
-                )}
-                <button
-                  onClick={() => {
-                    pdfDocRef.current = null;
-                    setError(null);
-                    setLoading(true);
-                    setReloadKey((k) => k + 1); // actually re-runs the loader effect
-                  }}
-                  className="px-5 py-2.5 rounded-2xl bg-[#0a66c2] hover:bg-[#004182] text-white text-xs font-black transition-all flex items-center gap-2 shadow-md active:scale-95"
-                >
-                  <RefreshCw size={14} />
-                  <span>إعادة المحاولة</span>
-                </button>
+              <object
+                key={`obj-${reloadKey}`}
+                data={resolvedUrl}
+                type="application/pdf"
+                className="flex-1 w-full"
+              >
+                {/* Final fallback if <object> not supported */}
+                <div className="flex flex-col items-center justify-center gap-4 p-8 text-center h-full">
+                  <div className="w-14 h-14 rounded-2xl bg-amber-50 dark:bg-amber-900/30 text-amber-500 flex items-center justify-center shadow-sm">
+                    <FileText size={28} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-800 dark:text-white">
+                      لا يدعم هذا المتصفح المعاينة المدمجة
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                      استخدم زر «فتح خارجي» لتحميل أو عرض السيرة الذاتية
+                    </p>
+                  </div>
+                  {resolvedUrl && (
+                    <a
+                      href={resolvedUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-5 py-2.5 rounded-2xl bg-[#0a66c2] hover:bg-[#004182] text-white text-xs font-black transition-all flex items-center gap-2 shadow-md active:scale-95"
+                    >
+                      <ExternalLink size={14} />
+                      فتح السيرة الذاتية
+                    </a>
+                  )}
+                </div>
+              </object>
+            </div>
+          )}
+
+          {/* ERROR STATE */}
+          {mode === 'error' && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-8 text-center">
+              <div className="max-w-sm bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-red-200 dark:border-red-900/50 p-8 flex flex-col items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-red-50 dark:bg-red-900/30 text-red-500 flex items-center justify-center shadow-sm">
+                  <AlertCircle size={28} />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-slate-800 dark:text-white">
+                    لا يوجد ملف سيرة ذاتية
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                    لم يرفع هذا المتقدم سيرة ذاتية بعد
+                  </p>
+                </div>
                 <button
                   onClick={onClose}
-                  className="px-4 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black transition-all hover:bg-slate-200 active:scale-95"
+                  className="px-5 py-2.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black transition-all hover:bg-slate-200 active:scale-95"
                 >
                   إغلاق
                 </button>
               </div>
             </div>
-          ) : (
-            <div className="flex justify-center items-center py-2 transition-transform duration-200">
-              <canvas
-                ref={canvasRef}
-                className="rounded-xl shadow-2xl bg-white border border-slate-300 dark:border-slate-700 max-w-full"
-              />
-            </div>
           )}
         </div>
+
+        {/* ── Footer: mode indicator + retry ── */}
+        {mode !== 'resolving' && (
+          <div className="shrink-0 flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-slate-900/80 border-t border-slate-200/60 dark:border-slate-800">
+            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-bold">
+              {mode === 'google' && '🌐 معاينة عبر Google Docs'}
+              {mode === 'object' && '💻 عارض المتصفح المدمج'}
+              {mode === 'error' && '❌ تعذّر التحميل'}
+            </span>
+            <button
+              onClick={() => {
+                setReloadKey(k => k + 1);
+              }}
+              className="flex items-center gap-1 text-[10px] font-black text-[#0a66c2] dark:text-blue-400 hover:text-[#004182] dark:hover:text-blue-300 transition-colors px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/40"
+            >
+              <RefreshCw size={11} />
+              إعادة المحاولة
+            </button>
+          </div>
+        )}
       </motion.div>
-    </motion.div>,
-    document.body
+    </motion.div>
   );
+
+  return createPortal(modalContent, document.body);
 };
