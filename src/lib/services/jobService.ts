@@ -9,6 +9,7 @@ import { withCollisionRetry } from './collisionHandler';
 import { generateUUID } from '../security/distributedId';
 import { getJobCategory, encodeCategoryInDescription } from '../utils/jobCategoryUtils';
 import { cvService } from './cvService';
+import { withTimeout } from '../utils/withTimeout';
 
 // ✅ Whitelist of allowed job types to prevent injection
 const ALLOWED_JOB_TYPES = ['دوام كامل', 'دوام جزئي', 'عن بُعد', 'عقد', 'تدريب', 'مؤقت'];
@@ -16,27 +17,17 @@ const ALLOWED_STATUSES = ['pending', 'active', 'closed'];
 
 export const jobService = {
   async fetchJobs(limit = 50) {
-    // ✅ Parameterized query with fallback join on employer profile
-    let res: any = await supabase
+    // ✅ Parameterized query via Supabase SDK — safe from SQL injection
+    const res = await supabase
       .from('jobs')
-      .select('id, title, company, location, salary, job_type, working_hours, image_url, description, requirements, created_at, employer_id, is_active, employer:profiles!employer_id(id, name, avatar_url, cover_url)')
+      .select('id, title, company, location, salary, job_type, working_hours, image_url, description, requirements, created_at, employer_id, is_active')
       .order('created_at', { ascending: false })
-      .limit(Math.min(limit, 100));
-
-    if (res.error) {
-      res = await supabase
-        .from('jobs')
-        .select('id, title, company, location, salary, job_type, working_hours, image_url, description, requirements, created_at, employer_id, is_active')
-        .order('created_at', { ascending: false })
-        .limit(Math.min(limit, 100));
-    }
+      .limit(Math.min(limit, 100)); // ✅ Enforce max limit
 
     if (res.data) {
       res.data = (res.data as any[]).map((j: any) => ({
         ...j,
-        category: getJobCategory(j),
-        employer_avatar: j.employer?.avatar_url || j.employer_avatar,
-        employer_cover: j.employer?.cover_url || j.employer_cover,
+        category: getJobCategory(j)
       }));
     }
     return res;
@@ -49,7 +40,6 @@ export const jobService = {
       title: data.title,
       company: data.company,
       employer_id: employerId,
-      slice: Math.floor(Date.now() / 10000), // Auto-rotates every 10s to never lock out re-submissions
     });
 
     return withMutex(mutexKey, () =>
@@ -80,16 +70,18 @@ export const jobService = {
             return { data: null, error: { message: 'وصف الوظيفة مطلوب (10 أحرف على الأقل)' } };
           }
 
-          // 🚫 Strict Server/Service Guard: Only Employers and Admins can post jobs (with 3s timeout)
+          // 🚫 Strict Server/Service Guard: Only Employers and Admins can post jobs
           if (data.employer_id) {
+            let profile: any = null;
             try {
-              const profileCheck = supabase.from('profiles').select('id, role, is_admin').eq('id', data.employer_id).single();
-              const profileTimeout = new Promise<any>((resolve) => setTimeout(() => resolve({ data: null }), 3000));
-              const { data: profile } = await Promise.race([profileCheck, profileTimeout]);
-              if (profile && !profile.is_admin && (profile.role === 'seeker' || profile.role === 'باحث')) {
-                return { data: null, error: { message: 'نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 🚫' } };
-              }
-            } catch (_) {}
+              const r: any = await withTimeout(supabase.from('profiles').select('id, role, is_admin').eq('id', data.employer_id).maybeSingle(), 10000, 'postJob.roleCheck');
+              profile = r?.data ?? null;
+            } catch (e) {
+              logger.warn('[postJob] role check timed out; continuing (server RLS enforces role)', e);
+            }
+            if (profile && !profile.is_admin && (profile.role === 'seeker' || profile.role === 'باحث' || profile.role !== 'employer')) {
+              return { data: null, error: { message: 'نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 🚫' } };
+            }
           }
 
           return withCollisionRetry(async (_attempt, freshId) => {
@@ -98,7 +90,9 @@ export const jobService = {
               ? encodeCategoryInDescription(description, data.category)
               : description;
 
-            const insertPromise = (supabase.from('jobs') as any).insert([{
+            let insertRes: any;
+            try {
+              insertRes = await withTimeout((supabase.from('jobs') as any).insert([{
               id:            data.id || freshId,
               title,
               company,
@@ -111,24 +105,21 @@ export const jobService = {
               image_url:     (data.imageUrl || '').trim() || null,
               employer_id:   data.employer_id,
               is_active:     data.is_active !== undefined ? Boolean(data.is_active) : true,
-            }]).select('id');
-
-            const timeoutPromise = new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('انتهت مهلة حفظ الوظيفة (10 ثوان). يرجى المحاولة مجدداً.')), 10_000)
-            );
-
-            const { data: res, error } = await Promise.race([insertPromise, timeoutPromise]);
+            }]).select(), 20000, 'postJob.insert');
+            } catch (e: any) {
+              return { data: null, error: { message: 'انتهت مهلة الاتصال أثناء نشر الوظيفة. تحقق من الإنترنت وأعد المحاولة.' } };
+            }
+            const { data: res, error } = insertRes;
 
             if (error) {
               console.error("[postJob] Supabase Insert Error:", error);
               return { data: null, error };
             }
             return { data: res, error: null };
-          }, { scope: 'postJob', maxRetries: 2 });
+          }, { scope: 'postJob' });
         },
-        { ttlMs: 10000, scope: 'jobs' }
-      ),
-      8000
+        { ttlMs: 30000, scope: 'jobs' }
+      )
     );
   },
 
@@ -202,7 +193,7 @@ export const jobService = {
             };
 
             try {
-              const res = await (supabase.from('job_applications') as any).insert([fullPayload]).select();
+              const res: any = await withTimeout((supabase.from('job_applications') as any).insert([fullPayload]).select(), 20000, 'apply.insert1');
               if (!res.error) return { data: res.data, error: null };
 
               console.warn("⚠️ [applyToJob] Full payload insert returned error, attempting standard fallback:", res.error);
@@ -215,28 +206,24 @@ export const jobService = {
                 job_id: data.jobId,
                 cover_letter: coverLetterText,
                 cv_url: cvUrlText,
-                applicant_data: data.applicantData || {},
                 status: 'pending'
               };
 
-              const res2 = await (supabase.from('job_applications') as any).insert([standardPayload]).select('id');
+              const res2: any = await withTimeout((supabase.from('job_applications') as any).insert([standardPayload]).select(), 20000, 'apply.insert2');
               if (!res2.error) return { data: res2.data, error: null };
 
               console.warn("⚠️ [applyToJob] Standard payload insert returned error, attempting minimal fallback:", res2.error);
 
-              // 3. Fallback level 2: Minimal essential columns (still keeping applicant_data and cv_url)
+              // 3. Fallback level 2: Minimal essential columns
               const minPayload = {
                 id: freshId,
                 applicant_id: applicantId,
-                employer_id: employerId,
                 job_id: data.jobId,
                 cover_letter: coverLetterText,
-                cv_url: cvUrlText,
-                applicant_data: data.applicantData || {},
                 status: 'pending'
               };
 
-              const res3 = await (supabase.from('job_applications') as any).insert([minPayload]).select('id');
+              const res3: any = await withTimeout((supabase.from('job_applications') as any).insert([minPayload]).select(), 20000, 'apply.insert3');
               return { data: res3.data, error: res3.error };
 
             } catch (err: any) {

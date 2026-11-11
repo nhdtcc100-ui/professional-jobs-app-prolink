@@ -3,14 +3,28 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, ZoomIn, ZoomOut, RotateCcw, ChevronRight, ChevronLeft,
-  FileText, Loader2, AlertCircle, RefreshCw, CheckCircle2, Download, ExternalLink
+  FileText, Loader2, AlertCircle, RefreshCw, CheckCircle2
 } from 'lucide-react';
-import * as pdfjsLib from 'pdfjs-dist';
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?url';
 import { supabase } from '../../lib/supabase';
 
-// Initialize PDF.js worker with Vite asset URL
-pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
+// Lazy-load pdf.js only when a CV is actually opened (keeps the main bundle small & fast)
+let pdfjsPromise: Promise<any> | null = null;
+const loadPdfjs = (): Promise<any> => {
+  if (!pdfjsPromise) {
+    pdfjsPromise = import('pdfjs-dist').then((m: any) => {
+      m.GlobalWorkerOptions.workerSrc = pdfWorker;
+      return m;
+    });
+  }
+  return pdfjsPromise;
+};
+
+const raceTimeout = <T,>(p: Promise<T>, ms: number, msg: string): Promise<T> =>
+  new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(msg)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
 
 interface PDFViewerModalProps {
   isOpen: boolean;
@@ -42,9 +56,11 @@ async function resolveStoragePdfUrl(source: string): Promise<string> {
 
   if (bucket && path) {
     try {
-      const signPromise = supabase.storage.from(bucket).createSignedUrl(path, 600);
-      const signTimeout = new Promise<any>((resolve) => setTimeout(() => resolve({ data: null, error: true }), 4000));
-      const { data, error } = await Promise.race([signPromise, signTimeout]);
+      const { data, error } = await raceTimeout(
+        supabase.storage.from(bucket).createSignedUrl(path, 600) as unknown as Promise<any>,
+        6000,
+        'signed-url-timeout'
+      );
       if (!error && data?.signedUrl) return data.signedUrl;
     } catch (_) {}
   }
@@ -64,7 +80,7 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
   const [scale, setScale] = useState<number>(0.5);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [retryCount, setRetryCount] = useState<number>(0);
+  const [reloadKey, setReloadKey] = useState<number>(0);
 
   const pdfDocRef = useRef<any>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -91,34 +107,23 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
     };
   }, []);
 
-  // ─── Listen to Escape key & Mobile Back button to dismiss modal ───────────────
   useEffect(() => {
     if (!isOpen) return;
-
-    try {
-      window.history.pushState({ modal: 'pdf-viewer' }, '');
-    } catch (_) {}
-
-    const handlePopState = () => {
-      onClose();
-    };
-
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
-
-    window.addEventListener('popstate', handlePopState);
     window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      window.removeEventListener('popstate', handlePopState);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
   // ─── 1. Load Document ────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!isOpen || !pdfSource) {
+    if (!isOpen) {
+      setLoading(false);
+      return;
+    }
+    if (!pdfSource) {
+      setError('لا يوجد ملف سيرة ذاتية مرفوع لهذا الحساب.');
       setLoading(false);
       return;
     }
@@ -131,6 +136,8 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
     const loadDoc = async () => {
       try {
         let loadingTask: any;
+        const pdfjsLib: any = await raceTimeout(loadPdfjs(), 15_000, 'تعذر تحميل مكتبة عرض PDF. تحقق من الاتصال.');
+        if (!isMounted) return;
 
         if (typeof pdfSource === 'string') {
           // If it's a Word document
@@ -142,15 +149,15 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
           const resolvedUrl = await resolveStoragePdfUrl(pdfSource);
           if (!isMounted) return;
 
-          // Fetch with AbortController timeout (8s) to prevent hanging
+          // Fetch with AbortController timeout (12s) to prevent hanging
           const ctrl = new AbortController();
-          const timer = setTimeout(() => ctrl.abort(), 8_000);
+          const timer = setTimeout(() => ctrl.abort(), 12_000);
           let res: Response;
           try {
             res = await fetch(resolvedUrl, { signal: ctrl.signal });
           } catch (e: any) {
             if (e?.name === 'AbortError') {
-              throw new Error('استغرق جلب ملف السيرة وقتاً أطول من المتوقع. يمكنك فتحه مباشرة عبر زر "فتح خارجي" بالأعلى.');
+              throw new Error('استغرق جلب ملف السيرة وقتاً أطول من المتوقع. تحقق من اتصال الإنترنت.');
             }
             throw e;
           } finally {
@@ -158,9 +165,9 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
           }
 
           if (!res.ok) {
-            if (res.status === 403) throw new Error('غير مصرح بالوصول إلى الملف (403). يرجى التأكد من صلاحيات الوصول.');
+            if (res.status === 403) throw new Error('غير مصرح بالوصول إلى الملف (403).');
             if (res.status === 404) throw new Error('الملف غير موجود في التخزين (404).');
-            throw new Error(`تعذر جلب الملف (رمز الاستجابة: ${res.status}). يمكنك استخدام زر الفتح المباشر.`);
+            throw new Error(`تعذر جلب الملف (رمز الاستجابة: ${res.status}).`);
           }
           const buf = await res.arrayBuffer();
           if (buf.byteLength === 0) throw new Error('الملف فارغ أو تالف (0 بايت).');
@@ -179,7 +186,7 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
           });
         }
 
-        const pdf = await loadingTask.promise;
+        const pdf = await raceTimeout(loadingTask.promise as Promise<any>, 25_000, 'استغرق تحليل الملف وقتاً طويلاً. حاول مجدداً.');
         if (!isMounted) return;
 
         pdfDocRef.current = pdf;
@@ -205,7 +212,7 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
         pdfDocRef.current = null;
       }
     };
-  }, [isOpen, pdfSource, retryCount]);
+  }, [isOpen, pdfSource, reloadKey]);
 
   // ─── 2. Render Current Page to Canvas ─────────────────────────────────────────
   useEffect(() => {
@@ -287,7 +294,11 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
       {isOpen && (
         <motion.div
           key="pdf-viewer-backdrop"
-          className="fixed inset-0 z-[999999] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md"
+          className="fixed inset-0 z-[999999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md"
+          style={{
+            top: 'calc(var(--topbar-h, 64px) + env(safe-area-inset-top, 0px))',
+            bottom: 'calc(var(--bottomnav-h, 88px) + env(safe-area-inset-bottom, 0px))',
+          }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -300,10 +311,10 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.94, opacity: 0, y: 15 }}
             transition={{ type: 'spring', stiffness: 340, damping: 28 }}
-            className="w-full h-full max-w-4xl max-h-[92vh] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
-            dir="rtl"
-            onClick={(e) => e.stopPropagation()}
-          >
+          className="w-full h-full max-w-4xl max-h-full bg-white dark:bg-slate-900 rounded-3xl shadow-2xl flex flex-col border border-slate-200 dark:border-slate-800 overflow-hidden"
+          dir="rtl"
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* ── Top Bar: User Info & Close ── */}
           <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm shrink-0">
             <div className="flex items-center gap-3">
@@ -321,23 +332,12 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
                   {userName || title}
                 </h3>
                 <p className="text-[11px] text-[#0a66c2] dark:text-blue-400 font-bold flex items-center gap-1">
-                  <CheckCircle2 size={12} /> معاينة مباشرة (بحجم 50%)
+                  <CheckCircle2 size={12} /> معاينة مباشرة وآمنة داخل التطبيق
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              {typeof pdfSource === 'string' && pdfSource && !pdfSource.startsWith('data:') && (
-                <button
-                  type="button"
-                  onClick={() => window.open(pdfSource, '_blank')}
-                  className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer"
-                  title="فتح في علامة تبويب جديدة"
-                >
-                  <ExternalLink size={14} />
-                  <span className="hidden sm:inline">فتح خارجي</span>
-                </button>
-              )}
               <motion.button
                 onClick={onClose}
                 whileHover={{ scale: 1.05 }}
@@ -449,9 +449,10 @@ export const PDFViewerModal: React.FC<PDFViewerModalProps> = ({
                 <div className="flex items-center gap-2 pt-2">
                   <button
                     onClick={() => {
-                      setLoading(true);
+                      pdfDocRef.current = null;
                       setError(null);
-                      setRetryCount(prev => prev + 1);
+                      setLoading(true);
+                      setReloadKey((k) => k + 1); // actually re-runs the loader effect
                     }}
                     className="px-5 py-2.5 rounded-2xl bg-[#0a66c2] hover:bg-[#004182] text-white text-xs font-black transition-all flex items-center gap-2 shadow-md active:scale-95"
                   >

@@ -103,53 +103,48 @@ class IdempotencyEngine {
       } catch {}
     }
 
-    // 3. Deduplicate in-flight execution: If already running, wait for it with timeout
+    // 3. Deduplicate in-flight execution: If already running, wait for it
     if (this.inFlightMap.has(key)) {
-      console.log(`[Idempotency] In-flight request detected for key: ${key}. Awaiting active operation with 12s circuit breaker...`);
-      const inFlightPromise = this.inFlightMap.get(key) as Promise<T>;
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => {
-          this.inFlightMap.delete(key);
-          reject(new Error(`[Idempotency] In-flight timeout for key: ${key}`));
-        }, 12_000)
-      );
-      try {
-        return await Promise.race([inFlightPromise, timeoutPromise]);
-      } catch (err) {
-        this.inFlightMap.delete(key);
-        // Fall through to re-attempt rather than hanging
-      }
+      console.log(`[Idempotency] In-flight request detected for key: ${key}. Awaiting active operation...`);
+      const existing = this.inFlightMap.get(key) as Promise<T>;
+      return new Promise<T>((resolve, reject) => {
+        const t = setTimeout(() => {
+          this.inFlightMap.delete(key); // never let a stuck request block retries forever
+          reject(new Error('[Idempotency] انتهت مهلة انتظار الطلب السابق، أعد المحاولة.'));
+        }, 25_000);
+        existing.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+      });
     }
 
     // 4. Start execution and register in inFlightMap
     const execPromise = (async () => {
       try {
-        const result = await operation();
+        // Hard ceiling so a hung network call can't hold the mutex / in-flight slot forever
+        const result = await new Promise<T>((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error('[Idempotency] انتهت مهلة تنفيذ العملية.')), 45_000);
+          operation().then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+        });
 
-        // ✅ Only cache successful results — NEVER cache errors or failed queries!
-        if (result && !(result as any)?.error) {
-          const record: CachedRecord<T> = {
-            response: result,
-            timestamp: Date.now(),
-            expiresAt: Date.now() + ttlMs,
-          };
+        // Do NOT cache failed responses: a failed attempt must be retryable immediately
+        const failed = !!result && typeof result === 'object' && (result as any).error;
+        if (failed) return result;
 
-          this.memoryCache.set(key, record);
+        // Cache successful or defined response
+        const record: CachedRecord<T> = {
+          response: result,
+          timestamp: Date.now(),
+          expiresAt: Date.now() + ttlMs,
+        };
 
-          if (options.persistInSession && typeof sessionStorage !== 'undefined') {
-            try {
-              sessionStorage.setItem(SESSION_PREFIX + key, JSON.stringify(record));
-            } catch {}
-          }
-        } else {
-          // Immediately purge key so immediate retries succeed
-          this.memoryCache.delete(key);
+        this.memoryCache.set(key, record);
+
+        if (options.persistInSession && typeof sessionStorage !== 'undefined') {
+          try {
+            sessionStorage.setItem(SESSION_PREFIX + key, JSON.stringify(record));
+          } catch {}
         }
 
         return result;
-      } catch (opErr) {
-        this.memoryCache.delete(key);
-        throw opErr;
       } finally {
         this.inFlightMap.delete(key);
       }
