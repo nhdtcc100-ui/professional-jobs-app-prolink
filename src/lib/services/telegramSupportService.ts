@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
 
-const DEFAULT_HANDLE = '@keko4444';
+const DEFAULT_HANDLE = '@prolink1357_support_bot';
+const DEFAULT_BOT_TOKEN = '9259272344:AAGkb7hGss2Hy9gdUPamHEg5mwLvOAe8Vw0';
 const STORAGE_HANDLE_KEY = 'prolink_telegram_support_handle';
 const STORAGE_BOT_TOKEN_KEY = 'prolink_telegram_bot_token';
 const STORAGE_CHAT_ID_KEY = 'prolink_telegram_chat_id';
@@ -20,6 +21,10 @@ export const telegramSupportService = {
     return DEFAULT_HANDLE;
   },
 
+  getDefaultBotToken(): string {
+    return DEFAULT_BOT_TOKEN;
+  },
+
   /**
    * Get cached handle synchronously for instantaneous UI rendering
    */
@@ -35,10 +40,12 @@ export const telegramSupportService = {
 
   getCachedBotToken(): string {
     try {
-      return localStorage.getItem(STORAGE_BOT_TOKEN_KEY) || '';
-    } catch (_) {
-      return '';
-    }
+      const cached = localStorage.getItem(STORAGE_BOT_TOKEN_KEY);
+      if (cached && cached.trim()) {
+        return cached.trim();
+      }
+    } catch (_) {}
+    return DEFAULT_BOT_TOKEN;
   },
 
   getCachedChatId(): string {
@@ -98,7 +105,7 @@ export const telegramSupportService = {
   getTelegramUrl(handle?: string): string {
     const raw = (handle || this.getCachedHandle()).trim();
     const clean = raw.replace(/^@+/, '').replace(/^https?:\/\/t\.me\//, '');
-    return `https://t.me/${clean || 'keko4444'}`;
+    return `https://t.me/${clean || 'prolink1357_support_bot'}`;
   },
 
   /**
@@ -164,20 +171,60 @@ export const telegramSupportService = {
   },
 
   /**
+   * Automatically detect the latest chat ID by querying getUpdates from the bot
+   */
+  async detectLatestChatId(botToken?: string): Promise<{ ok: boolean; chatId?: string; sender?: string; error?: string }> {
+    const token = (botToken || this.getCachedBotToken() || DEFAULT_BOT_TOKEN).trim();
+    if (!token) return { ok: false, error: 'رمز توكن البوت غير متوفر' };
+
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates?offset=-10`);
+      const data = await res.json();
+      if (!data.ok) {
+        return { ok: false, error: data.description || 'فشل الاتصال بتيليجرام' };
+      }
+
+      const updates = data.result;
+      if (!Array.isArray(updates) || updates.length === 0) {
+        return {
+          ok: false,
+          error: 'لم يتم العثور على أي رسائل بعد. يرجى فتح البوت في تيليجرام والضغط على Start أولاً.'
+        };
+      }
+
+      // Iterate backwards to find latest chat
+      for (let i = updates.length - 1; i >= 0; i--) {
+        const u = updates[i];
+        const msg = u.message || u.edited_message || u.channel_post || u.my_chat_member;
+        const chat = msg?.chat;
+        if (chat && chat.id) {
+          const sender = chat.title || chat.username || chat.first_name || 'مستخدم تيليجرام';
+          return { ok: true, chatId: String(chat.id), sender };
+        }
+      }
+
+      return { ok: false, error: 'لم يتم العثور على محادثة صالحة' };
+    } catch (e: any) {
+      return { ok: false, error: e?.message || 'خطأ في الاتصال بالإنترنت' };
+    }
+  },
+
+  /**
    * Test Telegram connection by sending a verification message to the bot/chat
    */
   async testTelegramConnection(botToken: string, chatId: string): Promise<{ ok: boolean; description?: string; messageId?: number }> {
-    const token = botToken.trim();
+    const token = botToken.trim() || DEFAULT_BOT_TOKEN;
     const chat = chatId.trim();
 
     if (!token || !chat) {
-      return { ok: false, description: 'يرجى إدخال توكن البوت ومعرف المحادثة أولاً' };
+      return { ok: false, description: 'يرجى إدخال معرف المحادثة (Chat ID) أولاً' };
     }
 
     try {
       const text = `🧪 *اختبار اتصال ناجح مع منصة ProLink!*
 ━━━━━━━━━━━━━━━━━━
 ✅ بوت الدعم الفني متصل بنجاح وجاهز لاستقبال واستقبال رسائل المستخدمين.
+🤖 اسم البوت: @prolink1357_support_bot
 ⏰ التوقيت: ${new Date().toLocaleString('ar-IQ')}
 ━━━━━━━━━━━━━━━━━━
 _منصة ProLink للتوظيف والخدمات المهنية_`;
@@ -215,7 +262,8 @@ _منصة ProLink للتوظيف والخدمات المهنية_`;
     messageId?: string;
   }): Promise<boolean> {
     const config = await this.getConfig();
-    if (!config.botToken || !config.chatId) {
+    const botToken = config.botToken || DEFAULT_BOT_TOKEN;
+    if (!botToken || !config.chatId) {
       return false;
     }
 
@@ -232,7 +280,7 @@ ${params.content}
 ━━━━━━━━━━━━━━━━━━
 💡 _للرد على المستخدم: قم بالرد (Reply) مباشرة على هذه الرسالة أو من لوحة تحكم ProLink._`;
 
-      const response = await fetch(`https://api.telegram.org/bot${config.botToken}/sendMessage`, {
+      const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

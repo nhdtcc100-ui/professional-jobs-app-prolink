@@ -115,6 +115,24 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   const [showBotToken, setShowBotToken] = useState(false);
   const [savingTelegram, setSavingTelegram] = useState(false);
   const [testingTelegram, setTestingTelegram] = useState(false);
+  const [detectingChatId, setDetectingChatId] = useState(false);
+
+  const handleDetectChatId = async () => {
+    setDetectingChatId(true);
+    try {
+      const res = await telegramSupportService.detectLatestChatId(editingBotToken);
+      if (res.ok && res.chatId) {
+        setEditingChatId(res.chatId);
+        addToast(`تم اكتشاف معرف المحادثة بنجاح (${res.chatId} - ${res.sender || ''}) 🎯 اضغط "حفظ كافة إعدادات تيليجرام" لتثبيته.`, 'success');
+      } else {
+        addToast(res.error || 'لم يتم العثور على رسائل. افتح البوت في تيليجرام واضغط Start أولاً!', 'warning');
+      }
+    } catch (e: any) {
+      addToast('خطأ في الاتصال: ' + e?.message, 'error');
+    } finally {
+      setDetectingChatId(false);
+    }
+  };
 
   useEffect(() => {
     telegramSupportService.getConfig().then(cfg => {
@@ -2226,14 +2244,25 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                                       <label className="text-[11px] font-black text-slate-300">
                                          معرف المحادثة أو المجموعة (Chat ID):
                                       </label>
-                                      <a
-                                         href="https://t.me/userinfobot"
-                                         target="_blank"
-                                         rel="noopener noreferrer"
-                                         className="text-[10px] font-bold text-sky-400 hover:underline"
-                                      >
-                                         معرفة الـ ID عبر @userinfobot ↗
-                                      </a>
+                                      <div className="flex items-center gap-2">
+                                         <button
+                                            type="button"
+                                            disabled={detectingChatId}
+                                            onClick={handleDetectChatId}
+                                            className="text-[10px] font-black text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20 transition-all cursor-pointer"
+                                            title="يكتشف الـ ID فوراً بمجرد فتح البوت والضغط على Start"
+                                         >
+                                            {detectingChatId ? 'جاري الفحص...' : 'اكتشاف الـ ID تلقائياً 🔍'}
+                                         </button>
+                                         <a
+                                            href="https://t.me/userinfobot"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[10px] font-bold text-sky-400 hover:underline"
+                                         >
+                                            @userinfobot ↗
+                                         </a>
+                                      </div>
                                    </div>
                                    <input
                                       type="text"

@@ -14,10 +14,12 @@ CREATE TABLE IF NOT EXISTS public.platform_settings (
 -- 2. Seed Default Telegram Support Settings
 INSERT INTO public.platform_settings (key, value, updated_at)
 VALUES 
-    ('telegram_support_handle', '@keko4444', NOW()),
-    ('telegram_bot_token', '', NOW()),
+    ('telegram_support_handle', '@prolink1357_support_bot', NOW()),
+    ('telegram_bot_token', '9259272344:AAGkb7hGss2Hy9gdUPamHEg5mwLvOAe8Vw0', NOW()),
     ('telegram_chat_id', '', NOW())
-ON CONFLICT (key) DO NOTHING;
+ON CONFLICT (key) DO UPDATE 
+SET value = EXCLUDED.value
+WHERE platform_settings.value IS NULL OR platform_settings.value = '';
 
 -- 3. Enhance support_messages with Telegram Tracking Columns
 ALTER TABLE public.support_messages 
