@@ -315,7 +315,7 @@ export const profileService = {
     if (updates.companyLogoUrl !== undefined)   dbUpdates.company_logo_url = updates.companyLogoUrl;
     if (updates.company_bio !== undefined)   dbUpdates.company_bio   = updates.company_bio;
     if (updates.companyBio !== undefined)    dbUpdates.company_bio   = updates.companyBio;
-    if (updates.role !== undefined)       dbUpdates.role          = updates.role;     // ← نوع الحساب (seeker / employer / freelancer)
+    // ⚠️ role & account_type cannot be overwritten by general updateProfile
     if (updates.current_peer_id !== undefined) dbUpdates.current_peer_id = updates.current_peer_id;
     // 🛡️ WAF Real-Time Threat Inspection before writing to database
     for (const [key, val] of Object.entries(dbUpdates)) {
@@ -566,7 +566,7 @@ export const profileService = {
       // 1. تحديث دور المستخدم في profiles
       const { error: profileErr } = await supabase
         .from('profiles')
-        .update({ role: newRole })
+        .update({ role: newRole, account_type: newRole })
         .eq('id', targetUserId);
       if (profileErr) throw profileErr;
 

@@ -1049,7 +1049,7 @@ function App() {
                     }}
                   />
                   {canUserPostAndInteract(appUser) && (
-                    <PostBox avatar={appUser?.avatar} appUser={appUser} addToast={addToast} />
+                    <PostBox avatar={appUser?.avatar} appUser={appUser} addToast={addToast} searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
                   )}
 
                   {/* ── Feed Control & Refresh Bar ── */}

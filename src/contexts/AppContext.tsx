@@ -1890,9 +1890,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // 2. Profiles
         .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, payload => {
           const p = payload.new as any;
-          if (p.id) {
+          if (p && p.id) {
             setAllUsers(prev => prev.map(u => u.id === p.id ? mapProfile(p) : u));
-            if (appUser?.id === p.id) setAppUser(mapProfile(p));
+            setAppUserRaw(current => {
+              if (current && current.id === p.id) {
+                const mapped = mapProfile(p);
+                try {
+                  localStorage.setItem('prolink_cached_user', JSON.stringify(mapped));
+                } catch (_) {}
+                return mapped;
+              }
+              return current;
+            });
           }
         })
         // 3. Jobs (Realtime Live Insert, Update, Delete)
@@ -1964,6 +1973,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (payload.eventType === 'INSERT') {
               if (n.type === 'role_change_approved') {
                 addToast(n.message || '🎉 تمت الموافقة على طلب ترقية نوع حسابك!', 'success');
+                if (user?.id) {
+                  authService.getProfile(user.id).then(({ data: prof }) => {
+                    if (prof) {
+                      const mapped = mapProfile(prof);
+                      setAppUser(mapped);
+                    }
+                  });
+                }
               } else if (n.type === 'role_change_rejected') {
                 addToast(n.message || 'تم رفض طلب تغيير نوع الحساب', 'error');
               }

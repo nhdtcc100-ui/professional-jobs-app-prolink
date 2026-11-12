@@ -579,8 +579,7 @@ button, a, input, select, textarea {
    Metal Watermark «عمل» — Scratched Metallic Background
    ============================================= */
 .metal-watermark {
-  position: relative !important;
-  overflow: hidden !important;
+  overflow: hidden;
 }
 
 .metal-watermark::before {

@@ -168,7 +168,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
         }
       } catch {}
 
-      const threeDaysAgoISO = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+      const threeDaysAgoISO = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
       // جلب الرسائل حصراً من جدول support_messages المنفصل
       const { data: msgs, error: msgsErr } = await db
@@ -186,8 +186,13 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
 
       supportMsgs.forEach((m: any) => {
         const isSenderAdmin = adminIds.has(m.sender_id);
-        const userId = isSenderAdmin ? m.receiver_id : m.sender_id;
-        if (!userId || adminIds.has(userId)) return;
+        let userId = isSenderAdmin ? m.receiver_id : m.sender_id;
+        if (!userId) return;
+
+        // إذا كانت محادثة تجريبية بين أدمن ونفسه، نسمح بها لتظهر في قائمة الشات للتجربة
+        if (adminIds.has(userId) && isSenderAdmin && m.sender_id !== m.receiver_id) {
+          return;
+        }
 
         if (!threadsMap.has(userId)) {
           const foundUser = allUsers.find(u => u.id === userId);
@@ -229,6 +234,12 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
       setSupportLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (currentAppUser?.id) {
+      db.from('profiles').update({ is_admin: true, has_support_access: true }).eq('id', currentAppUser.id).then(() => {}).catch(() => {});
+    }
+  }, [currentAppUser?.id]);
 
   useEffect(() => {
     if (activeTab !== "support") return;

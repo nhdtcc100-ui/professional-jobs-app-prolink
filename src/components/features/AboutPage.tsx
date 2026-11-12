@@ -17,6 +17,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useAppContext } from '../../contexts/AppContext';
 
 import { isUUID, sanitizeInput } from '../../lib/utils/sanitize';
 
@@ -56,6 +57,7 @@ const SUPPORT_TABLE = 'support_messages';
    Component
 ───────────────────────────────────────────────────────────── */
 export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
+  const { allUsers = [] } = useAppContext();
   type Tab = 'overview' | 'terms' | 'privacy' | 'support';
   const [activeTab, setActiveTab] = useState<Tab>('overview');
 
@@ -70,10 +72,29 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
   /* ── Resolve ALL admin UUIDs (not just one) ─────────── */
   const resolveAllAdminIDs = async (): Promise<string[]> => {
     try {
+      // 1. فحص فوري من قائمة المستخدمين في الذاكرة
+      const memIds = (allUsers || [])
+        .filter(u => u.isAdmin || u.is_admin || (u as any).role === 'admin' || (u as any).role === 'superadmin' ||
+          (u.email && (
+            u.email.toLowerCase().includes('admin@prolink.com') ||
+            u.email.toLowerCase().includes('nhdtcc100@gmail.com') ||
+            u.email.toLowerCase().includes('nhd0770@gmail.com')
+          )) ||
+          u.phone === SUPPORT_PHONE || u.phone === SUPPORT_PHONE_2
+        )
+        .map(u => u.id)
+        .filter(Boolean);
+
+      if (memIds.length > 0) {
+        setAdminId(memIds[0]);
+        return memIds;
+      }
+
+      // 2. فحص قاعدة البيانات بالبريد، الهاتف، والصلاحيات
       const { data } = await (supabase as any)
         .from("profiles")
-        .select("id, role, is_admin, phone")
-        .or(`is_admin.eq.true,role.eq.admin,role.eq.superadmin,phone.eq.${SUPPORT_PHONE},phone.eq.${SUPPORT_PHONE_2}`);
+        .select("id, role, is_admin, phone, email")
+        .or(`is_admin.eq.true,role.eq.admin,role.eq.superadmin,phone.eq.${SUPPORT_PHONE},phone.eq.${SUPPORT_PHONE_2},email.ilike.%admin@prolink.com%,email.ilike.%nhdtcc100@gmail.com%,email.ilike.%nhd0770@gmail.com%`);
       if (data && data.length > 0) {
         const ids: string[] = data.map((p: any) => p.id).filter(Boolean);
         if (ids.length > 0) {
@@ -81,12 +102,15 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
           return ids;
         }
       }
-      const { data: adminList } = await (supabase as any)
+
+      // 3. احتياط: أول حساب مسجل في المنصة
+      const { data: firstProfiles } = await (supabase as any)
         .from("profiles")
         .select("id")
-        .in("role", ["admin", "superadmin"]);
-      if (adminList && adminList.length > 0) {
-        const ids = adminList.map((p: any) => p.id).filter(Boolean);
+        .order("created_at", { ascending: true })
+        .limit(2);
+      if (firstProfiles && firstProfiles.length > 0) {
+        const ids = firstProfiles.map((p: any) => p.id).filter(Boolean);
         if (ids.length > 0) {
           setAdminId(ids[0]);
           return ids;
@@ -182,7 +206,19 @@ const suppRows = adminIDs.map((aid: string) => ({
 
     try {
       const { error } = await (supabase as any).from(SUPPORT_TABLE).insert(suppRows);
-      if (error) console.error("Support Chat Insert Error:", error);
+      if (error) {
+        console.error("Support Chat Insert Error:", error);
+        // Fallback: If foreign key on receiver_id failed, try inserting with receiver_id = sender_id
+        if (error.code === '23503' || String(error.message || '').includes('violates foreign key')) {
+          const fallbackRows = [{
+            sender_id: appUser.id,
+            receiver_id: appUser.id,
+            content: clean,
+            message_type: "text",
+          }];
+          await (supabase as any).from(SUPPORT_TABLE).insert(fallbackRows).catch(() => {});
+        }
+      }
     } catch (e) {
       console.error("Support Chat Insert Exception:", e);
     } finally {

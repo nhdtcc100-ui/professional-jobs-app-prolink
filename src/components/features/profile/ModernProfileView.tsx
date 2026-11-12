@@ -533,6 +533,9 @@ export function ModernProfileView({
       [colName]: value,
       updated_at: new Date().toISOString(),
     };
+    if (field === 'role') {
+      payload.account_type = value;
+    }
 
     const updateUrl = `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`;
     const t0 = performance.now();
@@ -593,7 +596,13 @@ export function ModernProfileView({
         if (field === 'avatar') { u.avatar = value; u.avatar_url = value; }
         if (field === 'cover') { u.coverUrl = value; u.cover_url = value; }
         if (field === 'cv') { u.cvUrl = value; u.cv_url = value; }
-        if (field === 'role') { u.role = value; }
+        if (field === 'role') {
+          u.role = value;
+          u.account_type = value;
+          try {
+            supabase.auth.updateUser({ data: { role: value, account_type: value } }).catch(() => {});
+          } catch (_) {}
+        }
         localStorage.setItem('prolink_cached_user', JSON.stringify(u));
       }
     } catch (_) {}
@@ -641,7 +650,7 @@ export function ModernProfileView({
         'تحديث نوع الحساب'
       );
       if (setAppUser) {
-        setAppUser((prev: any) => ({ ...prev, role: newRole }));
+        setAppUser((prev: any) => ({ ...prev, role: newRole, account_type: newRole }));
       }
       addToast('✅ تم تحويل الحساب إلى باحث عن عمل 🔍 بنجاح!', 'success');
     } catch (err: any) {

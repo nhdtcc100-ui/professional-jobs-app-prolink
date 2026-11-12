@@ -1,7 +1,9 @@
 import { sanitizeInput, validateField } from '../../lib/security/inputValidator';
 import { isJobPoster, isUserAdmin, canUserPostAndInteract, isJobSeeker } from '../../lib/utils/roleUtils';
 import { 
-  Image as ImageIcon, 
+  Image as ImageIcon,
+  Search,
+  X, 
   Video, 
   Briefcase, 
   FileText, 
@@ -27,6 +29,8 @@ interface PostBoxProps {
   avatar: string | undefined;
   appUser: any;
   addToast: (m: string, t?: any) => void;
+  searchQuery?: string;
+  setSearchQuery?: (q: string) => void;
 }
 
 const EMPTY_JOB_FORM = {
@@ -34,8 +38,13 @@ const EMPTY_JOB_FORM = {
   location: '', salary: '', jobType: 'دوام كامل', working_hours: '', imageUrl: '', is_active: true
 };
 
-export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) => {
-  const { setPosts, refreshData, setActiveTab, appUser: contextUser, setIsPublishingArticle } = useAppContext();
+export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, searchQuery, setSearchQuery }) => {
+  const { setPosts, refreshData, setActiveTab, appUser: contextUser, setIsPublishingArticle, searchQuery: ctxSearchQuery, setSearchQuery: ctxSetSearchQuery } = useAppContext();
+  const effectiveSearchQuery = searchQuery !== undefined ? searchQuery : (ctxSearchQuery || '');
+  const handleSearchChange = (val: string) => {
+    if (setSearchQuery) setSearchQuery(val);
+    else if (ctxSetSearchQuery) ctxSetSearchQuery(val);
+  };
   const currentUser = appUser || contextUser;
 
   // 🚫 الباحث عن عمل لا يظهر له صندوق إنشاء المنشورات على الإطلاق في الرئيسية
@@ -260,12 +269,27 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast }) =
             referrerPolicy="no-referrer" 
           />
         </div>
-        <button
-          onClick={() => setUploadType('article')}
-          className="flex-1 bg-slate-50 dark:bg-slate-900 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-2xl text-right px-6 py-3 text-sm font-black text-slate-400 hover:text-blue-600 hover:shadow-lg transition-all duration-300 shadow-inner group"
-        >
-          <span className="group-hover:translate-x-[-4px] inline-block transition-transform uppercase tracking-widest text-[10px]">بدء إرسال إشارة توجيه جديدة...</span>
-        </button>
+        {/* 🔍 Search Input Bar (مكان البحث بدلاً من بدء إرسال إشارة) */}
+        <div className="relative flex-1 flex items-center">
+          <Search size={17} className="absolute right-3.5 text-slate-400 dark:text-slate-500 pointer-events-none" />
+          <input
+            type="text"
+            value={effectiveSearchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            placeholder="ابحث عن وظائف، شركات، مهارات أو منشورات..."
+            className="w-full bg-slate-50 dark:bg-slate-900/90 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 focus:bg-white dark:focus:bg-slate-900 border border-slate-200 dark:border-slate-700/80 focus:border-blue-500 dark:focus:border-blue-400 rounded-2xl pr-10 pl-9 py-2.5 sm:py-3 text-xs sm:text-sm font-bold text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-all shadow-inner focus:shadow-md"
+            dir="rtl"
+          />
+          {effectiveSearchQuery && (
+            <button
+              type="button"
+              onClick={() => handleSearchChange('')}
+              className="absolute left-3 p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all cursor-pointer text-xs font-black"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </div>
       
       <div className="flex justify-around items-center mt-5 gap-2">

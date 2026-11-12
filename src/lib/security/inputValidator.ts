@@ -104,7 +104,6 @@ export const sanitizeInput = (
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/javascript\s*:/gi, '')
     .replace(/on\w+\s*=/gi, '')
-    .trim()
     .slice(0, maxLength);
 };
 

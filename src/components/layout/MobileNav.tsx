@@ -14,7 +14,7 @@ interface MobileNavProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   showMobileMenu: boolean;
-  setShowMobileMenu: (show: boolean) => void;
+  setShowMobileMenu: React.Dispatch<React.SetStateAction<boolean>> | ((show: boolean) => void);
   setShowPostFormGlobal: (show: boolean) => void;
   appUser: AppUser | null;
   setSelectedProfile: (user: AppUser | null) => void;
@@ -357,7 +357,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                   e.stopPropagation();
                   try { navigator.vibrate?.([8]); } catch (_) {}
                   if (item.id === 'more') {
-                    setShowMobileMenu(true);
+                    setShowMobileMenu(!showMobileMenu);
                   } else {
                     // ⚡ Urgent update — no startTransition so the tab switches
                     // immediately even if a lazy chunk or Keep-Alive render is pending
@@ -481,7 +481,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                 initial="hidden"
                 animate="show"
                 exit="exit"
-                className="fixed right-2 top-2 bottom-2 z-[110] w-[84%] max-w-[325px]
+                className="!fixed fixed right-2 top-2 bottom-2 z-[110] w-[84%] max-w-[325px]
                            rounded-[28px] border border-white/40 dark:border-white/10 shadow-2xl
                            bg-white/80 dark:bg-slate-900/85 backdrop-blur-2xl
                            flex flex-col overflow-hidden metal-watermark"
