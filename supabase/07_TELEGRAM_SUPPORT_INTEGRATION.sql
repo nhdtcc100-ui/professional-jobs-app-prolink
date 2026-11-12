@@ -16,12 +16,14 @@ INSERT INTO public.platform_settings (key, value, updated_at)
 VALUES 
     ('telegram_support_handle', '@prolink1357_support_bot', NOW()),
     ('telegram_bot_token', '9259272344:AAGkb7hGss2Hy9gdUPamHEg5mwLvOAe8Vw0', NOW()),
-    ('telegram_chat_id', '', NOW())
+    ('telegram_chat_id', '207207781', NOW())
 ON CONFLICT (key) DO UPDATE 
 SET value = EXCLUDED.value
 WHERE platform_settings.value IS NULL OR platform_settings.value = '';
 
--- 3. Enhance support_messages with Telegram Tracking Columns
+-- 3. Enhance support_messages: Drop strict foreign key constraint on receiver_id and add telegram tracking
+ALTER TABLE public.support_messages DROP CONSTRAINT IF EXISTS support_messages_receiver_id_fkey;
+ALTER TABLE public.support_messages ALTER COLUMN receiver_id DROP NOT NULL;
 ALTER TABLE public.support_messages 
 ADD COLUMN IF NOT EXISTS telegram_message_id BIGINT DEFAULT NULL,
 ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT DEFAULT NULL;

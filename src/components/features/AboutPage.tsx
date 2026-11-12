@@ -192,13 +192,13 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
 
     setSending(true);
 
-    let adminIDs = await resolveAllAdminIDs();
-    if (adminIDs.length === 0) adminIDs = adminId ? [adminId] : [appUser.id];
+    const adminList = await resolveAllAdminIDs();
+    const primaryAdminId = adminId || adminList[0] || appUser.id;
 
     const newMsg: SupportMessage = {
       id: `tmp-${Date.now()}`,
       sender_id: appUser.id,
-      receiver_id: adminIDs[0],
+      receiver_id: primaryAdminId,
       content: clean,
       message_type: "text",
       created_at: new Date().toISOString(),
@@ -207,41 +207,58 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
     setMessages(prev => [...prev, newMsg]);
     setChatMsg("");
 
-    // إرسال حصري إلى جدول support_messages المنفصل فقط
-const suppRows = adminIDs.map((aid: string) => ({
-      sender_id: appUser.id,
-      receiver_id: aid,
-      content: clean,
-      message_type: "text",
-    }));
+    let insertedId: string | undefined;
 
     try {
-      const { error, data: insertedData } = await (supabase as any).from(SUPPORT_TABLE).insert(suppRows).select('id');
-      
-      // 🚀 إشعار فوري وتلقائي عبر بوت التيليجرام إذا تم ضبط التوكن في لوحة التحكم
-      telegramSupportService.sendSupportNotification({
-        userName: appUser.name || 'مستخدم المنصة',
-        userPhone: appUser.phone || '',
-        userRole: appUser.role === 'employer' ? 'صاحب عمل' : 'باحث عن عمل',
-        userId: appUser.id,
+      // 1. محاولة الإرسال بـ primaryAdminId
+      const primaryPayload = [{
+        sender_id: appUser.id,
+        receiver_id: primaryAdminId,
         content: clean,
-        messageId: insertedData?.[0]?.id,
-      }).catch(() => {});
-      if (error) {
-        console.error("Support Chat Insert Error:", error);
-        // Fallback: If foreign key on receiver_id failed, try inserting with receiver_id = sender_id
-        if (error.code === '23503' || String(error.message || '').includes('violates foreign key')) {
-          const fallbackRows = [{
-            sender_id: appUser.id,
-            receiver_id: appUser.id,
-            content: clean,
-            message_type: "text",
-          }];
-          await (supabase as any).from(SUPPORT_TABLE).insert(fallbackRows).catch(() => {});
+        message_type: "text",
+      }];
+
+      const { data, error } = await (supabase as any)
+        .from(SUPPORT_TABLE)
+        .insert(primaryPayload)
+        .select('id');
+
+      if (!error && data && data[0]?.id) {
+        insertedId = data[0].id;
+      } else {
+        console.warn("Support Chat primary insert error, attempting self-referenced fallback:", error?.message);
+        // 2. بديل فوري: إذا فشل مفتاح الربط، نستخدم appUser.id المضمون وجوده في auth.users
+        const fallbackPayload = [{
+          sender_id: appUser.id,
+          receiver_id: appUser.id,
+          content: clean,
+          message_type: "text",
+        }];
+        const fallbackRes = await (supabase as any)
+          .from(SUPPORT_TABLE)
+          .insert(fallbackPayload)
+          .select('id');
+
+        if (fallbackRes?.data?.[0]?.id) {
+          insertedId = fallbackRes.data[0].id;
         }
       }
     } catch (e) {
-      console.error("Support Chat Insert Exception:", e);
+      console.error("Support Chat insert exception:", e);
+    }
+
+    // 🚀 3. إرسال الإشعار الفوري والمباشر إلى بوت تيليجرام
+    try {
+      await telegramSupportService.sendSupportNotification({
+        userName: appUser.name || 'مستخدم المنصة',
+        userPhone: appUser.phone || '',
+        userRole: appUser.role === 'employer' ? 'صاحب عمل 💼' : 'باحث عن عمل 👤',
+        userId: appUser.id,
+        content: clean,
+        messageId: insertedId,
+      });
+    } catch (tgErr) {
+      console.warn("Telegram notification error:", tgErr);
     } finally {
       setSending(false);
     }

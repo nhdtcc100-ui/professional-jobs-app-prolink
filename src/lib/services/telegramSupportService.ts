@@ -2,6 +2,8 @@ import { supabase } from '../supabase';
 
 const DEFAULT_HANDLE = '@prolink1357_support_bot';
 const DEFAULT_BOT_TOKEN = '9259272344:AAGkb7hGss2Hy9gdUPamHEg5mwLvOAe8Vw0';
+const DEFAULT_CHAT_ID = '207207781';
+
 const STORAGE_HANDLE_KEY = 'prolink_telegram_support_handle';
 const STORAGE_BOT_TOKEN_KEY = 'prolink_telegram_bot_token';
 const STORAGE_CHAT_ID_KEY = 'prolink_telegram_chat_id';
@@ -23,6 +25,10 @@ export const telegramSupportService = {
 
   getDefaultBotToken(): string {
     return DEFAULT_BOT_TOKEN;
+  },
+
+  getDefaultChatId(): string {
+    return DEFAULT_CHAT_ID;
   },
 
   /**
@@ -50,10 +56,12 @@ export const telegramSupportService = {
 
   getCachedChatId(): string {
     try {
-      return localStorage.getItem(STORAGE_CHAT_ID_KEY) || '';
-    } catch (_) {
-      return '';
-    }
+      const cached = localStorage.getItem(STORAGE_CHAT_ID_KEY);
+      if (cached && cached.trim()) {
+        return cached.trim();
+      }
+    } catch (_) {}
+    return DEFAULT_CHAT_ID;
   },
 
   /**
@@ -214,7 +222,7 @@ export const telegramSupportService = {
    */
   async testTelegramConnection(botToken: string, chatId: string): Promise<{ ok: boolean; description?: string; messageId?: number }> {
     const token = botToken.trim() || DEFAULT_BOT_TOKEN;
-    const chat = chatId.trim();
+    const chat = chatId.trim() || DEFAULT_CHAT_ID;
 
     if (!token || !chat) {
       return { ok: false, description: 'يرجى إدخال معرف المحادثة (Chat ID) أولاً' };
@@ -263,7 +271,10 @@ _منصة ProLink للتوظيف والخدمات المهنية_`;
   }): Promise<boolean> {
     const config = await this.getConfig();
     const botToken = config.botToken || DEFAULT_BOT_TOKEN;
-    if (!botToken || !config.chatId) {
+    const chatId = config.chatId || DEFAULT_CHAT_ID;
+
+    if (!botToken || !chatId) {
+      console.warn('Telegram notification skipped: botToken or chatId missing');
       return false;
     }
 
@@ -278,13 +289,13 @@ _منصة ProLink للتوظيف والخدمات المهنية_`;
 💬 *نص الاستفسار:*
 ${params.content}
 ━━━━━━━━━━━━━━━━━━
-💡 _للرد على المستخدم: قم بالرد (Reply) مباشرة على هذه الرسالة أو من لوحة تحكم ProLink._`;
+💡 _يمكنك متابعة الرد من لوحة تحكم ProLink أو مباشرة من تيليجرام._`;
 
       const response = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          chat_id: config.chatId,
+          chat_id: chatId,
           text,
           parse_mode: 'Markdown',
         }),
@@ -292,7 +303,6 @@ ${params.content}
 
       const data = await response.json();
       if (data.ok && data.result?.message_id && params.messageId) {
-        // Save telegram_message_id to database if possible
         try {
           await (supabase as any)
             .from('support_messages')
