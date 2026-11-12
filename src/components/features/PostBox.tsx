@@ -25,12 +25,13 @@ import { motion, AnimatePresence } from 'motion/react';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const db = supabase as any;
 
-interface PostBoxProps {
+export interface PostBoxProps {
   avatar: string | undefined;
   appUser: any;
   addToast: (m: string, t?: any) => void;
   searchQuery?: string;
   setSearchQuery?: (q: string) => void;
+  [key: string]: any;
 }
 
 const EMPTY_JOB_FORM = {
