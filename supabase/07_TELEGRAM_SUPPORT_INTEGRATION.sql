@@ -103,3 +103,55 @@ BEGIN
         END;
     END IF;
 END $$;
+
+-- 7. Secure Telegram Support Reply Function (SECURITY DEFINER)
+-- Allows inserting verified support replies without RLS restriction
+CREATE OR REPLACE FUNCTION public.receive_telegram_reply(
+    p_user_id UUID,
+    p_content TEXT,
+    p_telegram_from TEXT DEFAULT 'Telegram Support',
+    p_telegram_message_id BIGINT DEFAULT NULL
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_admin_id UUID;
+    v_new_id UUID;
+BEGIN
+    -- Resolve first admin profile
+    SELECT id INTO v_admin_id 
+    FROM public.profiles 
+    WHERE is_admin = true OR role = 'admin' OR role = 'superadmin'
+    LIMIT 1;
+
+    IF v_admin_id IS NULL THEN
+        v_admin_id := p_user_id;
+    END IF;
+
+    INSERT INTO public.support_messages (
+        sender_id,
+        receiver_id,
+        content,
+        message_type,
+        metadata
+    ) VALUES (
+        v_admin_id,
+        p_user_id,
+        p_content,
+        'text',
+        jsonb_build_object(
+            'source', 'telegram',
+            'telegram_from', p_telegram_from,
+            'telegram_message_id', p_telegram_message_id
+        )
+    )
+    RETURNING id INTO v_new_id;
+
+    RETURN v_new_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.receive_telegram_reply TO anon, authenticated;

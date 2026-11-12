@@ -318,5 +318,118 @@ ${params.content}
       console.warn('Direct telegram notification failed:', e);
       return false;
     }
+  },
+
+  /**
+   * Sync admin replies from Telegram into support_messages
+   * Reads updates from Telegram Bot API and inserts any admin replies for the user
+   */
+  async syncTelegramReplies(filterUserId?: string): Promise<{ synced: number; updates: any[] }> {
+    const config = await this.getConfig();
+    const botToken = config.botToken || DEFAULT_BOT_TOKEN;
+    if (!botToken) return { synced: 0, updates: [] };
+
+    try {
+      const response = await fetch(`https://api.telegram.org/bot${botToken}/getUpdates`);
+      const data = await response.json();
+      if (!data.ok || !Array.isArray(data.result) || data.result.length === 0) {
+        return { synced: 0, updates: [] };
+      }
+
+      const updates: any[] = data.result;
+      let maxUpdateId = 0;
+      const validReplies: {
+        updateId: number;
+        text: string;
+        targetUserId: string;
+        telegramFrom: string;
+        telegramMessageId: number;
+      }[] = [];
+
+      for (const u of updates) {
+        if (u.update_id > maxUpdateId) maxUpdateId = u.update_id;
+
+        const msg = u.message;
+        if (!msg || !msg.text || !msg.reply_to_message) continue;
+
+        const replyToText = msg.reply_to_message.text || '';
+        // Extract userId: either from "معرف المستخدم: <UUID>" or lookup
+        const userMatch = replyToText.match(/معرف المستخدم:[\s*`]*([a-f0-9\-]{36})/i);
+        const targetUserId = userMatch ? userMatch[1].trim() : null;
+
+        if (targetUserId) {
+          if (!filterUserId || filterUserId === targetUserId) {
+            validReplies.push({
+              updateId: u.update_id,
+              text: msg.text.trim(),
+              targetUserId,
+              telegramFrom: msg.from?.username ? `@${msg.from.username}` : (msg.from?.first_name || 'الدعم الفني'),
+              telegramMessageId: msg.message_id,
+            });
+          }
+        }
+      }
+
+      if (validReplies.length === 0) {
+        return { synced: 0, updates: [] };
+      }
+
+      // Resolve an admin ID to act as sender_id
+      const { data: adminProfiles } = await (supabase as any)
+        .from('profiles')
+        .select('id')
+        .or('is_admin.eq.true,role.eq.admin,role.eq.superadmin')
+        .limit(1);
+
+      const adminSenderId = adminProfiles?.[0]?.id || 'a2d5247e-8532-43b9-9a25-14b938fb2596';
+
+      let syncedCount = 0;
+      for (const item of validReplies) {
+        try {
+          // 1. Try secure RPC function first
+          const { data: rpcRes, error: rpcErr } = await (supabase as any).rpc('receive_telegram_reply', {
+            p_user_id: item.targetUserId,
+            p_content: item.text,
+            p_telegram_from: item.telegramFrom,
+            p_telegram_message_id: item.telegramMessageId,
+          });
+
+          if (!rpcErr && rpcRes) {
+            syncedCount++;
+            continue;
+          }
+
+          // 2. Fallback to direct insert
+          const { error: insErr } = await (supabase as any).from('support_messages').insert([{
+            sender_id: adminSenderId,
+            receiver_id: item.targetUserId,
+            content: item.text,
+            message_type: 'text',
+            metadata: {
+              source: 'telegram',
+              telegram_from: item.telegramFrom,
+              telegram_message_id: item.telegramMessageId,
+              telegram_update_id: item.updateId,
+            }
+          }]);
+
+          if (!insErr) {
+            syncedCount++;
+          }
+        } catch (e) {
+          console.warn('Sync item exception:', e);
+        }
+      }
+
+      // Acknowledge updates in Telegram so they aren't processed again
+      if (maxUpdateId > 0 && syncedCount > 0) {
+        fetch(`https://api.telegram.org/bot${botToken}/getUpdates?offset=${maxUpdateId + 1}`).catch(() => {});
+      }
+
+      return { synced: syncedCount, updates: validReplies };
+    } catch (e) {
+      console.warn('Telegram sync failed:', e);
+      return { synced: 0, updates: [] };
+    }
   }
 };

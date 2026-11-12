@@ -156,6 +156,31 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
       });
   }, [activeTab, appUser?.id]);
 
+  /* ── Auto-sync Telegram replies while in support tab ────── */
+  useEffect(() => {
+    if (activeTab !== "support" || !appUser?.id) return;
+
+    const pullAndRefresh = async () => {
+      try {
+        const res = await telegramSupportService.syncTelegramReplies(appUser.id);
+        if (res.synced > 0) {
+          const threeDaysAgoISO = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+          const { data } = await (supabase as any)
+            .from(SUPPORT_TABLE)
+            .select("*")
+            .or(`sender_id.eq.${appUser.id},receiver_id.eq.${appUser.id}`)
+            .gte("created_at", threeDaysAgoISO)
+            .order("created_at", { ascending: true });
+          if (data) setMessages(data as SupportMessage[]);
+        }
+      } catch (_) {}
+    };
+
+    pullAndRefresh();
+    const interval = setInterval(pullAndRefresh, 6000);
+    return () => clearInterval(interval);
+  }, [activeTab, appUser?.id]);
+
   /* ── Real‑time subscription ─────────────────────── */
   useEffect(() => {
     if (!appUser?.id) return;

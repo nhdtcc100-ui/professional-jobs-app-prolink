@@ -269,6 +269,11 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
         }
       } catch {}
 
+      // مزامنة أي ردود واردة من تيليجرام تلقائياً
+      try {
+        await telegramSupportService.syncTelegramReplies();
+      } catch (_) {}
+
       const thirtyDaysAgoISO = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
       // جلب الرسائل من جدول support_messages
