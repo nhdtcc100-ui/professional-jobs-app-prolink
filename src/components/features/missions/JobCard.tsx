@@ -136,7 +136,7 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: Math.min(delay, 0.3), duration: 0.3 }}
         onClick={() => onClick(job)}
-        className={`group bg-white dark:bg-slate-800/90 border rounded-[1.5rem] overflow-hidden cursor-pointer transition-all duration-300 active:scale-[0.99] flex items-center p-3 gap-4 border-slate-100 dark:border-slate-700 hover:shadow-md hover:border-blue-100 dark:hover:border-blue-900 ${!isActive && 'opacity-70'}`}
+        className={`group bg-white dark:bg-slate-800/90 border rounded-[1.5rem] overflow-hidden cursor-pointer transition-all duration-300 active:scale-[0.99] flex items-center p-3 gap-4 border-slate-100 dark:border-slate-700 hover:shadow-md hover:border-blue-100 dark:hover:border-blue-900 metal-watermark ${!isActive && 'opacity-70'}`}
       >
         <div className="w-12 h-12 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden bg-slate-50 dark:bg-slate-900 shrink-0">
           <img src={avatarUrl} alt={job.company} className="w-full h-full object-cover" />
@@ -187,7 +187,7 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(delay, 0.4), duration: 0.4 }}
       onClick={() => onClick(job)}
-      className={`group rounded-[2.5rem] overflow-hidden cursor-pointer transition-all duration-700 active:scale-[0.98] flex flex-col h-full bg-white dark:bg-[#0f172a] border border-slate-100 dark:border-slate-800
+      className={`group rounded-[2.5rem] overflow-hidden cursor-pointer transition-all duration-700 active:scale-[0.98] flex flex-col h-full bg-white dark:bg-[#0f172a] border border-slate-100 dark:border-slate-800 metal-watermark
         ${isActive 
           ? 'shadow-[0_15px_40px_rgba(0,0,0,0.03)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:shadow-[0_40px_80px_rgba(10,102,194,0.15)] hover:-translate-y-2' 
           : 'opacity-75 hover:opacity-100 shadow-sm'

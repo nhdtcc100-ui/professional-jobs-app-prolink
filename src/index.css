@@ -575,4 +575,83 @@ button, a, input, select, textarea {
   border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
+/* =============================================
+   Metal Watermark «عمل» — Scratched Metallic Background
+   ============================================= */
+.metal-watermark {
+  position: relative !important;
+  overflow: hidden !important;
+}
+
+.metal-watermark::before {
+  content: 'عَمَل';
+  position: absolute;
+  bottom: -18px;
+  left: -8px;
+  font-size: 6rem;
+  font-weight: 900;
+  letter-spacing: -2px;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+
+  /* Scratched / Brushed metal texture */
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(148, 163, 184, 0.22) 0px,
+    rgba(148, 163, 184, 0.08) 2px,
+    rgba(226, 232, 240, 0.18) 3px,
+    rgba(100, 116, 139, 0.25) 5px,
+    rgba(203, 213, 225, 0.05) 7px
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+
+  /* Engraved metallic edge & scratches */
+  text-shadow: 
+    1px 1px 0px rgba(255, 255, 255, 0.35),
+    -1px -1px 0px rgba(0, 0, 0, 0.12);
+  -webkit-text-stroke: 1px rgba(148, 163, 184, 0.22);
+  opacity: 0.6;
+  transform: rotate(-4deg);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.dark .metal-watermark::before {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.16) 0px,
+    rgba(148, 163, 184, 0.04) 2px,
+    rgba(255, 255, 255, 0.20) 3px,
+    rgba(71, 85, 105, 0.12) 5px,
+    rgba(255, 255, 255, 0.05) 7px
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: 
+    1px 1px 0px rgba(255, 255, 255, 0.08),
+    -1px -1px 0px rgba(0, 0, 0, 0.7);
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.08);
+  opacity: 0.45;
+}
+
+.metal-watermark:hover::before {
+  opacity: 0.8;
+  transform: rotate(-4deg) scale(1.02);
+}
+
+.dark .metal-watermark:hover::before {
+  opacity: 0.65;
+  transform: rotate(-4deg) scale(1.02);
+}
+
+/* Ensure card children stay above watermark */
+.metal-watermark > * {
+  position: relative;
+  z-index: 1;
+}
+
 

@@ -185,7 +185,7 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
           isArticle 
             ? 'border-purple-200/80 dark:border-purple-900/40 hover:border-purple-500/70 shadow-[0_4px_20px_rgba(147,51,234,0.06)]' 
             : 'border-slate-100 dark:border-slate-800 hover:border-blue-500/50'
-        } shadow-sm hover:shadow-xl transition-all overflow-hidden cursor-pointer`}
+        } shadow-sm hover:shadow-xl transition-all overflow-hidden cursor-pointer metal-watermark`}
       >
         {/* Visual Indicator (Gradient Bar) */}
         <div className={`absolute top-0 right-0 bottom-0 w-1.5 ${

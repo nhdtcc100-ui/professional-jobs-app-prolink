@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Search, Briefcase, BookOpen, Sparkles, RefreshCw } from 'lucide-react';
+import { Plus, Search, Briefcase, BookOpen, Sparkles, RefreshCw, MapPin } from 'lucide-react';
 import { jobService } from '../../lib/services/jobService';
 import { courseService } from '../../lib/services/courseService';
 import { filterAndRankJobs } from '../../lib/services/matchingService';
@@ -35,7 +35,9 @@ interface MissionsViewProps {
   messages: any[];
   onApplyJob: (job: Job) => void;
   setActiveTab?: (tab: string) => void;
-  onPublisherClick?: (user: any) => void;
+  onPublisherClick?: (user: any, job?: any) => void;
+  initialSelectedJob?: Job | null;
+  onClearInitialJob?: () => void;
 }
 
 const EMPTY_JOB_FORM = {
@@ -58,7 +60,10 @@ const EMPTY_COURSE_FORM: CoursePostFormData = {
 type MainTab = 'jobs' | 'courses';
 type JobSubTab = 'discover' | 'my-posts' | 'requests' | 'analytics';
 
-export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onApplyJob, setActiveTab, onPublisherClick }: MissionsViewProps) {
+export function MissionsView({ 
+  jobs, appUser, allUsers, addToast, messages, onApplyJob, setActiveTab, onPublisherClick,
+  initialSelectedJob, onClearInitialJob
+}: MissionsViewProps) {
   const { refreshData, markJobApplicationNotificationsAsRead } = useAppContext();
   const isAdmin = isUserAdmin(appUser);
 
@@ -75,9 +80,18 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
   }, [isAdmin, mainTab]);
   const [showPostCourse, setShowPostCourse] = useState(false);
   const [selectedJobDetails, setSelectedJobDetails] = useState<Job | null>(null);
+
+  useEffect(() => {
+    if (initialSelectedJob) {
+      setSelectedJobDetails(initialSelectedJob);
+      onClearInitialJob?.();
+    }
+  }, [initialSelectedJob]);
+
   const [formData, setFormData] = useState(EMPTY_JOB_FORM);
   const [courseFormData, setCourseFormData] = useState<CoursePostFormData>(EMPTY_COURSE_FORM);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchTitle, setSearchTitle] = useState('');
+  const [searchLocation, setSearchLocation] = useState('');
   const [filterType, setFilterType] = useState('الكل');
   const [editingJobId, setEditingJobId] = useState<string | null>(null);
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
@@ -224,20 +238,25 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
   );
 
   const filteredJobs = React.useMemo(() => {
-    const q = searchQuery.toLowerCase();
+    const qTitle = searchTitle.trim().toLowerCase();
+    const qLoc = searchLocation.trim().toLowerCase();
     return rankedJobs
       .filter(({ job }) => {
-        const matchesSearch =
-          !q ||
-          job.title.toLowerCase().includes(q) ||
-          job.company.toLowerCase().includes(q) ||
-          (job.location || '').toLowerCase().includes(q) ||
-          (job.description || '').toLowerCase().includes(q) ||
-          (job.requirements || '').toLowerCase().includes(q);
+        const matchesTitle =
+          !qTitle ||
+          job.title.toLowerCase().includes(qTitle) ||
+          job.company.toLowerCase().includes(qTitle) ||
+          (job.description || '').toLowerCase().includes(qTitle) ||
+          (job.requirements || '').toLowerCase().includes(qTitle);
+
+        const matchesLoc =
+          !qLoc ||
+          (job.location || '').toLowerCase().includes(qLoc);
+
         const matchesType = filterType === 'الكل' || (job as any).job_type === filterType || (job as any).jobType === filterType;
-        return matchesSearch && matchesType;
+        return matchesTitle && matchesLoc && matchesType;
       });
-  }, [rankedJobs, searchQuery, filterType]);
+  }, [rankedJobs, searchTitle, searchLocation, filterType]);
 
   // ── Post Job ─────────────────────────────────────────────────────────────────
   const handlePostJob = async () => {
@@ -583,14 +602,46 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
                       </button>
                     )}
                   </div>
-                  <div className="relative">
-                    <Search size={15} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
-                    <input
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-2xl pr-10 pl-4 py-3 text-sm font-bold outline-none dark:text-white transition-all"
-                      placeholder="ابحث عن الوظائف..."
-                      value={searchQuery}
-                      onChange={e => setSearchQuery(sanitizeInput(e.target.value))}
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {/* Field 1: Job Title / Company / Keyword */}
+                    <div className="relative">
+                      <Search size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                      <input
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-2xl pr-10 pl-8 py-3 text-xs sm:text-sm font-bold outline-none dark:text-white transition-all focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 shadow-xs"
+                        placeholder="المسمى الوظيفي أو الشركة..."
+                        value={searchTitle}
+                        onChange={e => setSearchTitle(sanitizeInput(e.target.value))}
+                      />
+                      {searchTitle && (
+                        <button
+                          type="button"
+                          onClick={() => setSearchTitle('')}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-black p-1"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Field 2: Location / City */}
+                    <div className="relative">
+                      <MapPin size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-blue-500 dark:text-blue-400" />
+                      <input
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 rounded-2xl pr-10 pl-8 py-3 text-xs sm:text-sm font-bold outline-none dark:text-white transition-all focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 shadow-xs"
+                        placeholder="المدينة أو المكان (بغداد، أربيل، عن بُعد...)"
+                        value={searchLocation}
+                        onChange={e => setSearchLocation(sanitizeInput(e.target.value))}
+                      />
+                      {searchLocation && (
+                        <button
+                          type="button"
+                          onClick={() => setSearchLocation('')}
+                          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs font-black p-1"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 {/* Smart match hint for seekers */}
@@ -775,7 +826,13 @@ export function MissionsView({ jobs, appUser, allUsers, addToast, messages, onAp
                 setActiveTab(tab);
               }
             }}
+            allUsers={allUsers}
             appUser={appUser}
+            onPublisherClick={(user: any, job?: any) => {
+              if (onPublisherClick) {
+                onPublisherClick(user, job || selectedJobDetails);
+              }
+            }}
           />
         )}
       </AnimatePresence>

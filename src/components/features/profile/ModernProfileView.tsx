@@ -5,13 +5,13 @@ import {
   ChevronsLeft, Upload, Download, Eye, CheckCircle2, Loader2,
   X, ExternalLink, Camera, RefreshCw,
   EyeOff, AlertCircle, WifiOff, KeyRound, ChevronDown, ChevronUp,
-  Shield, Wrench
+  Shield, Wrench, ArrowRight
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { profileService } from '../../../lib/services/profileService';
 import { cvService } from '../../../lib/services/cvService';
 import { mobileUploadService } from '../../../lib/services/mobileUploadService';
-import { AppUser, Post } from '../../../types';
+import { AppUser, Post, Job } from '../../../types';
 import { useAppContext } from '../../../contexts/AppContext';
 import { PostNewsCard } from '../PostNewsCard';
 
@@ -25,6 +25,8 @@ interface ModernProfileViewProps {
   onMessageClick?: () => void;
   onCallClick?: () => void;
   showCallButton?: boolean;
+  returnToJob?: Job | null;
+  onReturnToJob?: (job: Job) => void;
 }
 
 // ─── Fast Client-Side Image Resizer (Canvas-based, RAM efficient) ───────────
@@ -107,6 +109,8 @@ export function ModernProfileView({
   onMessageClick,
   onCallClick,
   showCallButton = false,
+  returnToJob,
+  onReturnToJob,
 }: ModernProfileViewProps) {
   // ─── Form State ───────────────────────────────────────────────────────────────
   const [name, setName] = useState(profile?.name || '');
@@ -980,6 +984,33 @@ export function ModernProfileView({
 
   return (
     <div className="w-full max-w-xl mx-auto space-y-4 pb-28 pt-2 md:pt-4 px-3 sm:px-4" dir="rtl">
+
+      {/* Return to Job Details Banner (shown when arriving from a job detail view) */}
+      {returnToJob && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-3.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 rounded-2xl shadow-lg flex items-center justify-between text-white gap-3 border border-blue-400/30 mb-2"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+              <Briefcase size={18} className="text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-black truncate">أنت تتصفح ملف ناشر وظيفة: {returnToJob.title}</p>
+              <p className="text-[10px] text-blue-100 font-bold truncate">انقر هنا للعودة الفورية لتفاصيل الوظيفة</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onReturnToJob ? onReturnToJob(returnToJob) : onBack?.()}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-white text-blue-700 hover:bg-blue-50 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
+          >
+            <span>العودة للوظيفة</span>
+            <ArrowRight size={14} />
+          </button>
+        </motion.div>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════════════
           CARD 1 — المعلومات الشخصية (Cover + Avatar + Info)

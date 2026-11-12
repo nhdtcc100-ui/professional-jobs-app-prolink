@@ -178,8 +178,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                 icon={<Bell size={22} />}
                 label="الإشعارات"
                 active={showNotifications}
-                onPointerDown={() => setShowNotifications(!showNotifications)}
-                onClick={(e) => { e?.preventDefault(); setShowNotifications(!showNotifications); }}
+                onClick={(e) => {
+                  e?.preventDefault();
+                  setShowNotifications(!showNotifications);
+                }}
               />
               {unreadNotificationsCount > 0 && (
                 <span className="absolute top-2.5 right-0.5 z-30 min-w-[18px] h-[18px] px-1 notif-badge-premium text-[9px] rounded-full animate-bounce pointer-events-none flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-lg">

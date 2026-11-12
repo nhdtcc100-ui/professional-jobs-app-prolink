@@ -21,6 +21,8 @@ interface ProfilePageProps {
   onMessageClick?: () => void;
   onCallClick?: (u: any) => void;
   onGoToSettings?: () => void;
+  returnToJob?: any;
+  onReturnToJob?: (job: any) => void;
   [key: string]: any;
 }
 
@@ -33,6 +35,8 @@ export function ProfilePage({
   setAppUser,
   onMessageClick,
   onCallClick,
+  returnToJob,
+  onReturnToJob,
 }: ProfilePageProps) {
   return (
     <ModernProfileView
@@ -45,6 +49,8 @@ export function ProfilePage({
       onMessageClick={onMessageClick}
       onCallClick={() => onCallClick?.(profile)}
       showCallButton={!isMe}
+      returnToJob={returnToJob}
+      onReturnToJob={onReturnToJob}
     />
   );
 }

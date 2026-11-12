@@ -113,7 +113,7 @@ interface DetailFeedPageProps {
   onDislike?: (id: string) => void;
   onAddComment?: (id: string, c: string) => void;
   allUsers?: any[];
-  onPublisherClick?: (user: any) => void;
+  onPublisherClick?: (user: any, job?: any) => void;
 }
 
 export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
@@ -136,6 +136,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
   const [currentIndex, setCurrentIndex] = useState(
     Math.max(0, Math.min(initialIndex, items.length - 1))
   );
+  const [isFeedReady, setIsFeedReady] = useState(initialIndex === 0);
   const containerRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<(HTMLElement | null)[]>([]);
 
@@ -168,13 +169,23 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
     return () => observer.disconnect();
   }, [items]);
 
-  // Initial scroll to initialIndex smoothly
+  // Initial positioning: Instant scroll before revealing feed to eliminate any jumping or visible scrolling
   useEffect(() => {
-    if (initialIndex > 0 && sectionRefs.current[initialIndex]) {
+    if (initialIndex > 0) {
+      const el = sectionRefs.current[initialIndex];
+      const root = containerRef.current;
+      if (root && el) {
+        root.scrollTop = el.offsetTop;
+      }
       const timer = setTimeout(() => {
-        sectionRefs.current[initialIndex]?.scrollIntoView({ behavior: 'instant', block: 'start' });
-      }, 50);
+        if (root && el) {
+          root.scrollTop = el.offsetTop;
+        }
+        setIsFeedReady(true);
+      }, 30);
       return () => clearTimeout(timer);
+    } else {
+      setIsFeedReady(true);
     }
   }, [initialIndex]);
 
@@ -323,7 +334,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
       {/* ── Single Continuous Smooth Vertical Feed (No Snapping, Free Browsing) ── */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-auto no-scrollbar overscroll-contain bg-slate-50/50 dark:bg-slate-950 scroll-smooth"
+        className={`flex-1 overflow-y-auto no-scrollbar overscroll-contain bg-slate-50/50 dark:bg-slate-950 scroll-smooth transition-opacity duration-200 ${isFeedReady ? 'opacity-100' : 'opacity-0'}`}
         style={{
           overscrollBehaviorY: 'contain',
           WebkitOverflowScrolling: 'touch' as any,
@@ -350,7 +361,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   
                   {/* Job Hero Header with cover & publisher avatar */}
                   {(() => {
-                    const pubUser = allUsers.find(u => u.id === (item.employer_id || item.employerId || item.author_id || item.authorId)) ||
+                    const pubUser = allUsersList.find(u => u.id === (item.employer_id || item.employerId || item.author_id || item.authorId)) ||
                       (appUser && (appUser.id === item.employerId || appUser.id === item.authorId) ? appUser : null);
                     const pubAvatar = pubUser?.avatar || item.employer_avatar || item.employerAvatar || item.authorAvatar;
                     // Ensure cover is distinct from personal avatar photo
@@ -359,10 +370,32 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                       heroCover = pubUser?.coverUrl || (pubUser as any)?.cover_url || null;
                     }
 
+                    const handleOpenPublisher = () => {
+                      const targetUser = pubUser || {
+                        id: item.employer_id || item.employerId || item.author_id || item.authorId,
+                        name: item.company || 'صاحب العمل',
+                        avatar: pubAvatar,
+                        isEmployer: true,
+                        role: 'employer'
+                      };
+                      if (onPublisherClick) {
+                        onClose();
+                        onPublisherClick(targetUser, item);
+                      } else if (setSelectedProfile) {
+                        onClose();
+                        setSelectedProfile(targetUser);
+                        if (onNavigateTab) onNavigateTab('profile');
+                      }
+                    };
+
                     return (
-                      <div className={`relative overflow-hidden ${heroCover ? 'h-52 md:h-64' : 'h-44 md:h-52'} shrink-0`}>
+                      <div 
+                        onClick={handleOpenPublisher}
+                        className={`relative overflow-hidden ${heroCover ? 'h-52 md:h-64' : 'h-44 md:h-52'} shrink-0 cursor-pointer group/hero`}
+                        title="النقر هنا يفتح الملف المهني للناشر"
+                      >
                         {heroCover ? (
-                          <img src={heroCover} alt={item.title} className="w-full h-full object-cover" />
+                          <img src={heroCover} alt={item.title} className="w-full h-full object-cover transition-transform duration-700 group-hover/hero:scale-105" />
                         ) : (
                           <div className="w-full h-full bg-gradient-to-br from-[#0a66c2] via-[#0d5ca8] to-[#003d7a] relative overflow-hidden">
                             <div className="absolute inset-0 opacity-10 flex items-center justify-center scale-150"><Briefcase size={100} className="text-white" /></div>
@@ -370,6 +403,13 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                           </div>
                         )}
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
+                        
+                        {/* Publisher profile shortcut pill */}
+                        <div className="absolute top-3.5 left-3.5 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/45 hover:bg-black/65 backdrop-blur-md text-white text-[10px] font-black border border-white/20 transition-all shadow-md group-hover/hero:scale-105">
+                          <ExternalLink size={12} />
+                          <span>الملف المهني للناشر 🏢</span>
+                        </div>
+
                         <div className="absolute bottom-5 right-5 left-5 z-10">
                           <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-md border mb-2.5 ${
                             isActive ? 'bg-emerald-500/20 border-emerald-400/30 text-emerald-400' : 'bg-slate-700/40 border-slate-600/30 text-slate-300'
@@ -381,12 +421,10 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                           <h1 className="text-xl md:text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md">{item.title}</h1>
                           
                           <div 
-                            className={`flex items-center gap-2.5 mt-2 ${pubUser && onPublisherClick ? 'cursor-pointer hover:opacity-90' : ''}`}
-                            onClick={() => {
-                              if (pubUser && onPublisherClick) {
-                                onClose();
-                                onPublisherClick(pubUser);
-                              }
+                            className="flex items-center gap-2.5 mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenPublisher();
                             }}
                           >
                             {pubAvatar ? (

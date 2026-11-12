@@ -247,6 +247,8 @@ function App() {
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [selectedPostDetail, setSelectedPostDetail] = useState<Post | null>(null);
   const [selectedJobDetail, setSelectedJobDetail] = useState<Job | null>(null);
+  const [returnToJob, setReturnToJob] = useState<Job | null>(null);
+  const [initialJobForMissions, setInitialJobForMissions] = useState<Job | null>(null);
   const webRTCServiceRef = useRef<WebRTCService | null>(null);
   
   // 💓 Presence Heartbeat: Update 'last_seen_at' every 60 seconds
@@ -1171,8 +1173,11 @@ function App() {
                       addToast={addToast} 
                       messages={messages} 
                       setActiveTab={setActiveTab}
-                      onPublisherClick={(user) => {
+                      initialSelectedJob={initialJobForMissions}
+                      onClearInitialJob={() => setInitialJobForMissions(null)}
+                      onPublisherClick={(user, job) => {
                         setSelectedProfile(user);
+                        if (job) setReturnToJob(job);
                         setActiveTab('profile');
                       }}
                       onApplyJob={(job) => {
@@ -1433,7 +1438,24 @@ function App() {
                       isMe={(selectedProfile?.id || appUser?.id) === appUser?.id}
                       isEditing={isEditingProfile}
                       user={user || appUser}
-                      onBack={() => { setSelectedProfile(null); setActiveTab('home'); }}
+                      returnToJob={returnToJob}
+                      onReturnToJob={(job: any) => {
+                        setSelectedProfile(null);
+                        setActiveTab('jobs');
+                        setInitialJobForMissions(job);
+                        setReturnToJob(null);
+                      }}
+                      onBack={() => {
+                        if (returnToJob) {
+                          setSelectedProfile(null);
+                          setActiveTab('jobs');
+                          setInitialJobForMissions(returnToJob);
+                          setReturnToJob(null);
+                        } else {
+                          setSelectedProfile(null);
+                          setActiveTab('home');
+                        }
+                      }}
                       isConnected={connections.some(c =>
                         c.status === 'accepted' &&
                         ((c.requesterId === appUser?.id && c.recipientId === (selectedProfile || appUser)?.id) ||
@@ -1579,9 +1601,10 @@ function App() {
             onDislike={handleDislike}
             onAddComment={handleAddComment}
             allUsers={allUsers}
-            onPublisherClick={(user) => {
+            onPublisherClick={(user: any, job?: any) => {
               setDetailFeed(null);
               setSelectedProfile(user);
+              if (job) setReturnToJob(job);
               setActiveTab('profile');
             }}
           />
