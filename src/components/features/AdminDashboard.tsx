@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { profileService } from '../../lib/services/profileService';
+import { telegramSupportService } from '../../lib/services/telegramSupportService';
 import { useAppContext } from '../../contexts/AppContext';
 import { isUUID, sanitizeInput } from '../../lib/utils/sanitize';
 import { threatEngine } from '../../lib/security/threatEngine';
@@ -105,6 +106,45 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   const handleSearchChange = (val: string) => setSearchQuery(sanitizeInput(val));
   const [localReports, setLocalReports] = useState(reports);
   const [securityThreatCount, setSecurityThreatCount] = useState<number>(() => threatEngine.getTodayCount());
+
+  // ── Telegram Support Configuration State ──────────────────
+  const [telegramHandle, setTelegramHandle] = useState<string>(() => telegramSupportService.getCachedHandle());
+  const [editingTelegramHandle, setEditingTelegramHandle] = useState<string>(() => telegramSupportService.getCachedHandle());
+  const [savingTelegram, setSavingTelegram] = useState(false);
+
+  useEffect(() => {
+    telegramSupportService.getHandle().then(h => {
+      setTelegramHandle(h);
+      setEditingTelegramHandle(h);
+    });
+    const onHandleChange = (e: any) => {
+      if (e?.detail?.handle) {
+        setTelegramHandle(e.detail.handle);
+        setEditingTelegramHandle(e.detail.handle);
+      }
+    };
+    window.addEventListener('prolink_telegram_handle_changed', onHandleChange);
+    return () => window.removeEventListener('prolink_telegram_handle_changed', onHandleChange);
+  }, []);
+
+  const handleSaveTelegramHandle = async (targetHandle?: string) => {
+    const target = targetHandle || editingTelegramHandle;
+    setSavingTelegram(true);
+    try {
+      const res = await telegramSupportService.saveHandle(target);
+      if (res.success) {
+        setTelegramHandle(res.handle);
+        setEditingTelegramHandle(res.handle);
+        addToast(`تم حفظ وتحديث معرّف تيليجرام بنجاح (${res.handle}) ✈️`, 'success');
+      } else {
+        addToast('حدث خطأ أثناء حفظ المعرّف: ' + (res.error || 'خطأ غير معروف'), 'error');
+      }
+    } catch (e: any) {
+      addToast('فشل الحفظ: ' + e?.message, 'error');
+    } finally {
+      setSavingTelegram(false);
+    }
+  };
 
   useEffect(() => {
     const handleSecurityUpdate = () => setSecurityThreatCount(threatEngine.getTodayCount());
@@ -1070,6 +1110,29 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                     </div>
                   </div>
 
+                  {/* Telegram Support Quick Badge */}
+                  <div className="flex items-center gap-2.5 px-4 py-2 bg-slate-900/70 border border-sky-500/30 rounded-2xl shadow-inner">
+                    <Send size={15} className="text-sky-400 rotate-[-45deg]" />
+                    <span className="text-[11px] font-black text-slate-300">معرّف تيليجرام:</span>
+                    <span className="text-xs font-black text-sky-400 font-mono" dir="ltr">{telegramHandle}</span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('settings')}
+                      className="px-2.5 py-1 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30 text-[10px] font-black transition-all cursor-pointer"
+                    >
+                      تغيير ⚙️
+                    </button>
+                    <a
+                      href={telegramSupportService.getTelegramUrl(telegramHandle)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-2 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-black transition-all"
+                      title="فتح تيليجرام"
+                    >
+                      تجربة ↗
+                    </a>
+                  </div>
+
                   {/* Sub-tabs toggle & Refresh */}
                   <div className="flex items-center gap-3 flex-wrap">
                     <div className="flex items-center gap-1.5 bg-slate-900/80 p-1.5 rounded-2xl border border-slate-700/60 shadow-inner">
@@ -2009,6 +2072,97 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
              )}
             {activeTab === 'settings' && (
               <motion.div key="settings" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
+                 {/* ── Telegram Support Configuration Card ── */}
+                 <div className="bg-gradient-to-br from-slate-800/60 via-slate-800/40 to-sky-950/30 border border-sky-500/30 rounded-[2.5rem] p-8 shadow-2xl backdrop-blur-md relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-96 h-96 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
+                    <div className="relative z-10">
+                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                          <div className="flex items-center gap-4">
+                             <div className="p-3.5 bg-gradient-to-br from-sky-500 to-blue-600 rounded-2xl shadow-[0_0_25px_rgba(14,165,233,0.4)] text-white">
+                                <Send size={22} className="rotate-[-45deg]" />
+                             </div>
+                             <div>
+                                <h3 className="text-base font-black text-white">إعدادات الدعم عبر تيليجرام (Telegram Support)</h3>
+                                <p className="text-xs text-slate-400 font-medium">التحكم في معرّف تيليجرام للدعم الفني الذي يظهر للمستخدمين والربط التلقائي</p>
+                             </div>
+                          </div>
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[10px] font-black self-start sm:self-auto">
+                             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                             نشط ومتزامن لحظياً
+                          </span>
+                       </div>
+
+                       <div className="p-6 bg-slate-900/60 border border-slate-700/60 rounded-3xl space-y-5">
+                          <div>
+                             <label className="block text-xs font-black text-slate-300 mb-2">
+                                معرّف حساب أو بوت التيليجرام للدعم (Username):
+                             </label>
+                             <div className="flex flex-col sm:flex-row gap-3">
+                                <div className="relative flex-1">
+                                   <input
+                                      type="text"
+                                      value={editingTelegramHandle}
+                                      onChange={(e) => setEditingTelegramHandle(e.target.value)}
+                                      placeholder="@keko4444"
+                                      dir="ltr"
+                                      className="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-2xl px-4 py-3 text-sm font-black text-white placeholder:text-slate-500 outline-none transition-all font-mono"
+                                   />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                   <button
+                                      type="button"
+                                      disabled={savingTelegram}
+                                      onClick={() => handleSaveTelegramHandle()}
+                                      className="flex-1 sm:flex-initial px-6 py-3 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 disabled:opacity-50 text-white font-black text-xs shadow-lg shadow-sky-500/20 transition-all active:scale-95 cursor-pointer"
+                                   >
+                                      {savingTelegram ? 'جاري الحفظ...' : 'حفظ المعرّف 💾'}
+                                   </button>
+                                   <button
+                                      type="button"
+                                      disabled={savingTelegram}
+                                      onClick={() => {
+                                         setEditingTelegramHandle('@keko4444');
+                                         handleSaveTelegramHandle('@keko4444');
+                                      }}
+                                      className="px-3.5 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-black transition-all cursor-pointer"
+                                      title="استعادة الافتراضي (@keko4444)"
+                                   >
+                                      الافتراضي
+                                   </button>
+                                   <a
+                                      href={telegramSupportService.getTelegramUrl(editingTelegramHandle)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 border border-slate-700 text-xs font-black transition-all flex items-center gap-1.5"
+                                   >
+                                      <span>تجربة</span>
+                                      <ArrowRight size={14} className="rotate-180" />
+                                   </a>
+                                </div>
+                             </div>
+                             <p className="text-[11px] text-slate-400 font-medium mt-2">
+                                الرابط المولد حالياً للمستخدمين: <a href={telegramSupportService.getTelegramUrl(telegramHandle)} target="_blank" rel="noopener noreferrer" className="text-sky-400 underline font-mono font-bold" dir="ltr">{telegramSupportService.getTelegramUrl(telegramHandle)}</a>
+                             </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-slate-800">
+                             <div className="p-3.5 bg-slate-800/40 rounded-2xl border border-slate-700/40">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">الظهور للمستخدمين</p>
+                                <p className="text-xs font-black text-white">زر مباشر في صفحة الدعم (AboutPage)</p>
+                             </div>
+                             <div className="p-3.5 bg-slate-800/40 rounded-2xl border border-slate-700/40">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">حفظ الإعداد</p>
+                                <p className="text-xs font-black text-emerald-400">قاعدة البيانات + ذاكرة التخزين</p>
+                             </div>
+                             <div className="p-3.5 bg-slate-800/40 rounded-2xl border border-slate-700/40">
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">تحديث فوري</p>
+                                <p className="text-xs font-black text-sky-400">يتزامن تلقائياً دون إعادة تحميل</p>
+                             </div>
+                          </div>
+                       </div>
+                    </div>
+                 </div>
+
                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="bg-slate-800/40 border border-slate-700/50 rounded-[2.5rem] p-8 shadow-xl backdrop-blur-md">
                        <div className="flex items-center gap-4 mb-8">

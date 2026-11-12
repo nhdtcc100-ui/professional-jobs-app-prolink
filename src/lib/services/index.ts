@@ -8,4 +8,5 @@ export * from './groupService';
 export * from './concurrencyMutex';
 export * from './idempotencyEngine';
 export * from './collisionHandler';
+export * from './telegramSupportService';
 export * from '../security/distributedId';

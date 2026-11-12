@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppContext } from '../../contexts/AppContext';
+import { telegramSupportService } from '../../lib/services/telegramSupportService';
 
 import { isUUID, sanitizeInput } from '../../lib/utils/sanitize';
 
@@ -67,6 +68,16 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
   const [messages, setMessages]       = useState<SupportMessage[]>([]);
   const [adminId, setAdminId]         = useState<string | null>(null);
   const [chatLoading, setChatLoading] = useState(false);
+  const [telegramHandle, setTelegramHandle] = useState<string>(() => telegramSupportService.getCachedHandle());
+
+  useEffect(() => {
+    telegramSupportService.getHandle().then(h => setTelegramHandle(h));
+    const onHandleChange = (e: any) => {
+      if (e?.detail?.handle) setTelegramHandle(e.detail.handle);
+    };
+    window.addEventListener('prolink_telegram_handle_changed', onHandleChange);
+    return () => window.removeEventListener('prolink_telegram_handle_changed', onHandleChange);
+  }, []);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   /* ── Resolve ALL admin UUIDs (not just one) ─────────── */
