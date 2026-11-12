@@ -110,39 +110,75 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   // ── Telegram Support Configuration State ──────────────────
   const [telegramHandle, setTelegramHandle] = useState<string>(() => telegramSupportService.getCachedHandle());
   const [editingTelegramHandle, setEditingTelegramHandle] = useState<string>(() => telegramSupportService.getCachedHandle());
+  const [editingBotToken, setEditingBotToken] = useState<string>(() => telegramSupportService.getCachedBotToken());
+  const [editingChatId, setEditingChatId] = useState<string>(() => telegramSupportService.getCachedChatId());
+  const [showBotToken, setShowBotToken] = useState(false);
   const [savingTelegram, setSavingTelegram] = useState(false);
+  const [testingTelegram, setTestingTelegram] = useState(false);
 
   useEffect(() => {
-    telegramSupportService.getHandle().then(h => {
-      setTelegramHandle(h);
-      setEditingTelegramHandle(h);
+    telegramSupportService.getConfig().then(cfg => {
+      setTelegramHandle(cfg.handle);
+      setEditingTelegramHandle(cfg.handle);
+      setEditingBotToken(cfg.botToken || '');
+      setEditingChatId(cfg.chatId || '');
     });
     const onHandleChange = (e: any) => {
-      if (e?.detail?.handle) {
-        setTelegramHandle(e.detail.handle);
-        setEditingTelegramHandle(e.detail.handle);
+      if (e?.detail) {
+        const detail = e.detail;
+        if (detail.handle) {
+          setTelegramHandle(detail.handle);
+          setEditingTelegramHandle(detail.handle);
+        }
+        if (detail.botToken !== undefined) setEditingBotToken(detail.botToken);
+        if (detail.chatId !== undefined) setEditingChatId(detail.chatId);
       }
     };
     window.addEventListener('prolink_telegram_handle_changed', onHandleChange);
     return () => window.removeEventListener('prolink_telegram_handle_changed', onHandleChange);
   }, []);
 
-  const handleSaveTelegramHandle = async (targetHandle?: string) => {
-    const target = targetHandle || editingTelegramHandle;
+  const handleSaveTelegramConfig = async (overrideHandle?: string) => {
     setSavingTelegram(true);
     try {
-      const res = await telegramSupportService.saveHandle(target);
+      const res = await telegramSupportService.saveConfig({
+        handle: overrideHandle || editingTelegramHandle,
+        botToken: editingBotToken,
+        chatId: editingChatId,
+      });
       if (res.success) {
-        setTelegramHandle(res.handle);
-        setEditingTelegramHandle(res.handle);
-        addToast(`تم حفظ وتحديث معرّف تيليجرام بنجاح (${res.handle}) ✈️`, 'success');
+        setTelegramHandle(res.config.handle);
+        setEditingTelegramHandle(res.config.handle);
+        setEditingBotToken(res.config.botToken);
+        setEditingChatId(res.config.chatId);
+        addToast(`تم حفظ إعدادات تيليجرام وبوت الدعم بنجاح (${res.config.handle}) ✈️`, 'success');
       } else {
-        addToast('حدث خطأ أثناء حفظ المعرّف: ' + (res.error || 'خطأ غير معروف'), 'error');
+        addToast('حدث خطأ أثناء حفظ الإعدادات: ' + (res.error || 'خطأ غير معروف'), 'error');
       }
     } catch (e: any) {
       addToast('فشل الحفظ: ' + e?.message, 'error');
     } finally {
       setSavingTelegram(false);
+    }
+  };
+
+  const handleTestTelegramBot = async () => {
+    if (!editingBotToken || !editingChatId) {
+      addToast('يرجى كتابة توكن البوت ومعرف المحادثة (Chat ID) أولاً لإجراء الفحص ⚠️', 'warning');
+      return;
+    }
+    setTestingTelegram(true);
+    try {
+      const res = await telegramSupportService.testTelegramConnection(editingBotToken, editingChatId);
+      if (res.ok) {
+        addToast('نجح الاتصال! وصلت رسالة الاختبار إلى تيليجرام بنجاح 🚀', 'success');
+      } else {
+        addToast('فشل اختبار الاتصال: ' + (res.description || 'تأكد من صحة التوكن و Chat ID'), 'error');
+      }
+    } catch (e: any) {
+      addToast('خطأ أثناء فحص البوت: ' + e?.message, 'error');
+    } finally {
+      setTestingTelegram(false);
     }
   };
 
@@ -2092,11 +2128,23 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                           </span>
                        </div>
 
-                       <div className="p-6 bg-slate-900/60 border border-slate-700/60 rounded-3xl space-y-5">
+                       <div className="p-6 bg-slate-900/60 border border-slate-700/60 rounded-3xl space-y-6">
+                          {/* 1. Telegram Handle */}
                           <div>
-                             <label className="block text-xs font-black text-slate-300 mb-2">
-                                معرّف حساب أو بوت التيليجرام للدعم (Username):
-                             </label>
+                             <div className="flex items-center justify-between mb-2">
+                                <label className="text-xs font-black text-slate-200">
+                                   معرّف حساب أو بوت التيليجرام للدعم (Username):
+                                </label>
+                                <button
+                                   type="button"
+                                   onClick={() => {
+                                      setEditingTelegramHandle('@keko4444');
+                                   }}
+                                   className="text-[10px] font-bold text-sky-400 hover:text-sky-300 transition-colors"
+                                >
+                                   الافتراضي: @keko4444
+                                </button>
+                             </div>
                              <div className="flex flex-col sm:flex-row gap-3">
                                 <div className="relative flex-1">
                                    <input
@@ -2109,54 +2157,130 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                                    />
                                 </div>
                                 <div className="flex items-center gap-2">
-                                   <button
-                                      type="button"
-                                      disabled={savingTelegram}
-                                      onClick={() => handleSaveTelegramHandle()}
-                                      className="flex-1 sm:flex-initial px-6 py-3 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 disabled:opacity-50 text-white font-black text-xs shadow-lg shadow-sky-500/20 transition-all active:scale-95 cursor-pointer"
-                                   >
-                                      {savingTelegram ? 'جاري الحفظ...' : 'حفظ المعرّف 💾'}
-                                   </button>
-                                   <button
-                                      type="button"
-                                      disabled={savingTelegram}
-                                      onClick={() => {
-                                         setEditingTelegramHandle('@keko4444');
-                                         handleSaveTelegramHandle('@keko4444');
-                                      }}
-                                      className="px-3.5 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-black transition-all cursor-pointer"
-                                      title="استعادة الافتراضي (@keko4444)"
-                                   >
-                                      الافتراضي
-                                   </button>
                                    <a
                                       href={telegramSupportService.getTelegramUrl(editingTelegramHandle)}
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       className="px-4 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-sky-400 hover:text-sky-300 border border-slate-700 text-xs font-black transition-all flex items-center gap-1.5"
                                    >
-                                      <span>تجربة</span>
+                                      <span>فتح الرابط</span>
                                       <ArrowRight size={14} className="rotate-180" />
                                    </a>
                                 </div>
                              </div>
-                             <p className="text-[11px] text-slate-400 font-medium mt-2">
-                                الرابط المولد حالياً للمستخدمين: <a href={telegramSupportService.getTelegramUrl(telegramHandle)} target="_blank" rel="noopener noreferrer" className="text-sky-400 underline font-mono font-bold" dir="ltr">{telegramSupportService.getTelegramUrl(telegramHandle)}</a>
+                             <p className="text-[11px] text-slate-400 font-medium mt-1.5">
+                                الرابط المباشر الذي يظهر للمستخدمين: <a href={telegramSupportService.getTelegramUrl(telegramHandle)} target="_blank" rel="noopener noreferrer" className="text-sky-400 underline font-mono font-bold" dir="ltr">{telegramSupportService.getTelegramUrl(telegramHandle)}</a>
                              </p>
+                          </div>
+
+                          {/* 2. Bot Token & Chat ID (Automation Section) */}
+                          <div className="pt-4 border-t border-slate-800 space-y-4">
+                             <div className="flex items-center justify-between">
+                                <div>
+                                   <h4 className="text-xs font-black text-white flex items-center gap-2">
+                                      <span>ربط البوت الآلي لاستقبال الرسائل في تيليجرام</span>
+                                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/20 font-bold">اختياري للإشعار اللحظي</span>
+                                   </h4>
+                                   <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+                                      أدخل توكن البوت و ID المحادثة لتصلك كل رسالة دعم فني جديدة مباشرة على هاتفك في تيليجرام.
+                                   </p>
+                                </div>
+                             </div>
+
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                   <div className="flex items-center justify-between mb-1.5">
+                                      <label className="text-[11px] font-black text-slate-300">
+                                         توكن البوت (Bot Token):
+                                      </label>
+                                      <a
+                                         href="https://t.me/BotFather"
+                                         target="_blank"
+                                         rel="noopener noreferrer"
+                                         className="text-[10px] font-bold text-sky-400 hover:underline"
+                                      >
+                                         احصل عليه من @BotFather ↗
+                                      </a>
+                                   </div>
+                                   <div className="relative">
+                                      <input
+                                         type={showBotToken ? "text" : "password"}
+                                         value={editingBotToken}
+                                         onChange={(e) => setEditingBotToken(e.target.value)}
+                                         placeholder="123456789:ABCdefGHIjklMNOpqrs..."
+                                         dir="ltr"
+                                         className="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-2xl pr-4 pl-12 py-3 text-xs font-black text-white placeholder:text-slate-500 outline-none transition-all font-mono"
+                                      />
+                                      <button
+                                         type="button"
+                                         onClick={() => setShowBotToken(!showBotToken)}
+                                         className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-black"
+                                      >
+                                         {showBotToken ? 'إخفاء' : 'عرض'}
+                                      </button>
+                                   </div>
+                                </div>
+
+                                <div>
+                                   <div className="flex items-center justify-between mb-1.5">
+                                      <label className="text-[11px] font-black text-slate-300">
+                                         معرف المحادثة أو المجموعة (Chat ID):
+                                      </label>
+                                      <a
+                                         href="https://t.me/userinfobot"
+                                         target="_blank"
+                                         rel="noopener noreferrer"
+                                         className="text-[10px] font-bold text-sky-400 hover:underline"
+                                      >
+                                         معرفة الـ ID عبر @userinfobot ↗
+                                      </a>
+                                   </div>
+                                   <input
+                                      type="text"
+                                      value={editingChatId}
+                                      onChange={(e) => setEditingChatId(e.target.value)}
+                                      placeholder="مثال: 987654321 أو -100123456789"
+                                      dir="ltr"
+                                      className="w-full bg-slate-800/90 border border-slate-700 focus:border-sky-500 rounded-2xl px-4 py-3 text-xs font-black text-white placeholder:text-slate-500 outline-none transition-all font-mono"
+                                   />
+                                </div>
+                             </div>
+
+                             {/* Buttons Action Bar */}
+                             <div className="flex flex-wrap items-center gap-3 pt-2">
+                                <button
+                                   type="button"
+                                   disabled={savingTelegram}
+                                   onClick={() => handleSaveTelegramConfig()}
+                                   className="px-6 py-3 rounded-2xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 disabled:opacity-50 text-white font-black text-xs shadow-lg shadow-sky-500/20 transition-all active:scale-95 cursor-pointer"
+                                >
+                                   {savingTelegram ? 'جاري حفظ الإعدادات...' : 'حفظ كافة إعدادات تيليجرام 💾'}
+                                </button>
+
+                                <button
+                                   type="button"
+                                   disabled={testingTelegram || !editingBotToken || !editingChatId}
+                                   onClick={handleTestTelegramBot}
+                                   className="px-5 py-3 rounded-2xl bg-slate-800 hover:bg-slate-750 disabled:opacity-40 text-emerald-400 border border-emerald-500/30 hover:border-emerald-500/50 text-xs font-black transition-all flex items-center gap-2 cursor-pointer"
+                                >
+                                   <span className={testingTelegram ? 'animate-spin' : ''}>🧪</span>
+                                   <span>{testingTelegram ? 'جاري الفحص...' : 'فحص اتصال البوت (إرسال رسالة تجريبية)'}</span>
+                                </button>
+                             </div>
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-3 border-t border-slate-800">
                              <div className="p-3.5 bg-slate-800/40 rounded-2xl border border-slate-700/40">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">الظهور للمستخدمين</p>
-                                <p className="text-xs font-black text-white">زر مباشر في صفحة الدعم (AboutPage)</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">الربط المباشر</p>
+                                <p className="text-xs font-black text-white">زر تيليجرام المباشر في صفحة الدعم</p>
                              </div>
                              <div className="p-3.5 bg-slate-800/40 rounded-2xl border border-slate-700/40">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">حفظ الإعداد</p>
-                                <p className="text-xs font-black text-emerald-400">قاعدة البيانات + ذاكرة التخزين</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">البوت التلقائي</p>
+                                <p className="text-xs font-black text-emerald-400">{editingBotToken ? 'مُعد وجاهز للإشعار' : 'بانتظار إدخال التوكن'}</p>
                              </div>
                              <div className="p-3.5 bg-slate-800/40 rounded-2xl border border-slate-700/40">
-                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">تحديث فوري</p>
-                                <p className="text-xs font-black text-sky-400">يتزامن تلقائياً دون إعادة تحميل</p>
+                                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">الحفظ والأمان</p>
+                                <p className="text-xs font-black text-sky-400">مشفر في قاعدة البيانات محلياً</p>
                              </div>
                           </div>
                        </div>

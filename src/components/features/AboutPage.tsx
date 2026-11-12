@@ -216,7 +216,17 @@ const suppRows = adminIDs.map((aid: string) => ({
     }));
 
     try {
-      const { error } = await (supabase as any).from(SUPPORT_TABLE).insert(suppRows);
+      const { error, data: insertedData } = await (supabase as any).from(SUPPORT_TABLE).insert(suppRows).select('id');
+      
+      // 🚀 إشعار فوري وتلقائي عبر بوت التيليجرام إذا تم ضبط التوكن في لوحة التحكم
+      telegramSupportService.sendSupportNotification({
+        userName: appUser.name || 'مستخدم المنصة',
+        userPhone: appUser.phone || '',
+        userRole: appUser.role === 'employer' ? 'صاحب عمل' : 'باحث عن عمل',
+        userId: appUser.id,
+        content: clean,
+        messageId: insertedData?.[0]?.id,
+      }).catch(() => {});
       if (error) {
         console.error("Support Chat Insert Error:", error);
         // Fallback: If foreign key on receiver_id failed, try inserting with receiver_id = sender_id
