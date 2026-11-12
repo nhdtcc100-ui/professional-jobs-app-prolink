@@ -477,6 +477,11 @@ function App() {
     return () => { delete window.onCallClosed; };
   }, []);
 
+  // Close notifications modal when navigating between tabs
+  useEffect(() => {
+    setShowNotifications(false);
+  }, [activeTab]);
+
   // Cleanup on tab close
   useEffect(() => {
     const handleUnload = () => {
@@ -1186,6 +1191,15 @@ function App() {
                           exitGuestMode();
                           return;
                         }
+                        const isPublisher = !appUser.isAdmin && (appUser.id === job.employer_id || appUser.id === (job as any).employerId);
+                        if (isPublisher) {
+                          addToast('أنت ناشر هذه الوظيفة، لا يمكنك التقديم عليها 🏢', 'error' as any);
+                          return;
+                        }
+                        if (appUser.role === 'employer' && !appUser.isAdmin) {
+                          addToast('أصحاب العمل لا يمكنهم التقديم على الوظائف. يمكنك التقديم فقط بعد تحويل حسابك إلى باحث عن عمل 👤', 'error' as any);
+                          return;
+                        }
                         setApplyingJob(job);
                         setIsApplying(false);
                       }} 
@@ -1590,6 +1604,15 @@ function App() {
               if (!appUser || isGuestMode) {
                 addToast('يجب تسجيل الدخول أو إنشاء حساب للتقديم على هذه الوظيفة 💼', 'info' as any);
                 exitGuestMode();
+                return;
+              }
+              const isPublisher = !appUser.isAdmin && (appUser.id === job.employer_id || appUser.id === (job as any).employerId);
+              if (isPublisher) {
+                addToast('أنت ناشر هذه الوظيفة، لا يمكنك التقديم عليها 🏢', 'error' as any);
+                return;
+              }
+              if (appUser.role === 'employer' && !appUser.isAdmin) {
+                addToast('أصحاب العمل لا يمكنهم التقديم على الوظائف. يمكنك التقديم فقط بعد تحويل حسابك إلى باحث عن عمل 👤', 'error' as any);
                 return;
               }
               setDetailFeed(null);

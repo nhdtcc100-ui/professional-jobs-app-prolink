@@ -39,6 +39,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose, on
 
   // Only block the actual job publisher from applying — admins CAN apply
   const isPublisher = !!(appUser && !appUser.isAdmin && (appUser.id === job?.employer_id || appUser.id === (job as any)?.employerId || appUser.id === (job as any)?.authorId || appUser.id === (job as any)?.author_id));
+  const isEmployer = !!(appUser && !appUser.isAdmin && appUser.role === 'employer');
 
   if (!job) return null;
 
@@ -155,7 +156,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose, on
         <div className="p-5 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 space-y-2.5" style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 80px), 96px)' }}>
           <button
             onClick={() => onApply(job, applicationText)}
-            disabled={!isActive || isPublisher}
+            disabled={!isActive || isPublisher || isEmployer}
             className={`w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-black text-sm transition-all active:scale-[0.98] ${
               isPublisher
                 ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-400/30 cursor-not-allowed shadow-none'
@@ -166,6 +167,8 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose, on
           >
             {isPublisher ? (
               <span>أنت ناشر هذه الوظيفة 🏢 (لا يمكنك التقديم)</span>
+            ) : isEmployer ? (
+              <span>أصحاب العمل لا يمكنهم التقديم (للباحثين عن عمل فقط) 💼</span>
             ) : (
               <>
                 <Send size={18} />

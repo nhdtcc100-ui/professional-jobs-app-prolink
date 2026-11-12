@@ -72,6 +72,15 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
 
   const handleSubmit = async () => {
     if (!appUser || !applyingJob) return;
+    if (appUser.role === 'employer' && !appUser.isAdmin) {
+      addToast('أصحاب العمل لا يمكنهم التقديم على الوظائف. يمكنك التقديم فقط بعد تحويل حسابك إلى باحث عن عمل 👤', 'error');
+      return;
+    }
+    const isJobPub = !appUser.isAdmin && (appUser.id === applyingJob.employer_id || appUser.id === (applyingJob as any).employerId);
+    if (isJobPub) {
+      addToast('أنت ناشر هذه الوظيفة، لا يمكنك التقديم عليها 🏢', 'error');
+      return;
+    }
 
     if (!applyingJob.employer_id) {
       addToast('لا يمكن التقديم: صاحب العمل غير محدد في هذه الوظيفة', 'error');

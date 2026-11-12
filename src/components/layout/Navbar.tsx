@@ -57,7 +57,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div
             className="relative group cursor-pointer"
             onMouseEnter={() => preloadTab('about')}
-            onPointerDown={() => { setActiveTab('about'); setSearchQuery(''); }}
+            onPointerDown={() => { setActiveTab('about'); setSearchQuery(''); setShowNotifications(false); }}
             onClick={(e) => { e.preventDefault(); setActiveTab('about'); setSearchQuery(''); }}
           >
             <div className="absolute inset-0 bg-blue-500 blur-2xl opacity-0 group-hover:opacity-30 transition-opacity animate-pulse" />
@@ -96,7 +96,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             icon={<Home size={22} />}
             label="الرئيسية"
             active={activeTab === 'home'}
-            onPointerDown={() => { setActiveTab('home'); setSearchQuery(''); }}
+            onPointerDown={() => { setActiveTab('home'); setSearchQuery(''); setShowNotifications(false); }}
             onClick={(e) => { e?.preventDefault(); setActiveTab('home'); setSearchQuery(''); }}
           />
           
@@ -106,7 +106,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               icon={<Users size={22} />}
               label="شبكتي"
               active={activeTab === 'network'}
-              onPointerDown={() => setActiveTab('network')}
+              onPointerDown={() => { setActiveTab('network'); setShowNotifications(false); }}
               onMouseEnter={() => preloadTab('network')}
               onClick={(e) => { e?.preventDefault(); setActiveTab('network'); }}
             />
@@ -121,7 +121,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             icon={<Briefcase size={22} />}
             label="الوظائف"
             active={activeTab === 'jobs'}
-            onPointerDown={() => setActiveTab('jobs')}
+            onPointerDown={() => { setActiveTab('jobs'); setShowNotifications(false); }}
             onMouseEnter={() => preloadTab('jobs')}
             onClick={(e) => { e?.preventDefault(); setActiveTab('jobs'); }}
           />
@@ -130,7 +130,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               icon={<Building2 size={22} />}
               label="الموارد"
               active={activeTab === 'erp'}
-              onPointerDown={() => setActiveTab('erp')}
+              onPointerDown={() => { setActiveTab('erp'); setShowNotifications(false); }}
               onMouseEnter={() => preloadTab('erp')}
               onClick={(e) => { e?.preventDefault(); setActiveTab('erp'); }}
             />
@@ -140,7 +140,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               icon={<Phone size={22} />}
               label="المكالمات"
               active={activeTab === 'calls'}
-              onPointerDown={() => setActiveTab('calls')}
+              onPointerDown={() => { setActiveTab('calls'); setShowNotifications(false); }}
               onClick={(e) => { e?.preventDefault(); setActiveTab('calls'); }}
             />
           )}
@@ -148,7 +148,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             icon={<Globe size={22} />}
             label="الأخبار"
             active={activeTab === 'news'}
-            onPointerDown={() => setActiveTab('news')}
+            onPointerDown={() => { setActiveTab('news'); setShowNotifications(false); }}
             onMouseEnter={() => preloadTab('news')}
             onClick={(e) => { e?.preventDefault(); setActiveTab('news'); }}
           />

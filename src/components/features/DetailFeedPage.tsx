@@ -486,11 +486,12 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   <div className="px-4 md:px-6 pt-5 space-y-2.5" style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 80px), 96px)' }}>
                     {(() => {
                       const isPublisher = !!(appUser && !appUser.isAdmin && (appUser.id === item.employerId || appUser.id === item.employer_id || appUser.id === item.authorId || appUser.id === item.author_id));
+                      const isEmployer = !!(appUser && !appUser.isAdmin && appUser.role === 'employer');
 
                       return (
                         <button
                           onClick={() => onApplyJob?.(item)}
-                          disabled={!isActive || isPublisher}
+                          disabled={!isActive || isPublisher || isEmployer}
                           className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-lg ${
                             isPublisher
                               ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-400/30 cursor-not-allowed shadow-none'
@@ -501,6 +502,8 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                         >
                           {isPublisher ? (
                             <span>أنت ناشر هذه الوظيفة 🏢 (لا يمكنك التقديم)</span>
+                          ) : isEmployer ? (
+                            <span>أصحاب العمل لا يمكنهم التقديم (للباحثين عن عمل فقط) 💼</span>
                           ) : (
                             <>
                               <Send size={18} />

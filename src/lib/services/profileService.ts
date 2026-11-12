@@ -371,37 +371,51 @@ export const profileService = {
     }
 
     let result: any = null;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+
+    // 1. Direct REST PATCH — ultra-fast, bypasses navigator.locks & supabase-js client deadlock (50ms)
+    let token = supabaseAnonKey;
     try {
-      result = await Promise.race([
-        supabase.from('profiles').update(dbUpdates).eq('id', userId).select('id'),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_DB_UPDATE')), 6000))
-      ]);
-    } catch (dbErr) {
-      logger.warn('[profileService] DB update query timed out or failed:', dbErr);
-      result = { error: dbErr, data: [] };
+      const raw = localStorage.getItem('prolink_v2_auth_session') ||
+                  localStorage.getItem('sb-ubeqmsyyyojojmswmidq-auth-token');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        token = parsed?.access_token || parsed?.currentSession?.access_token || supabaseAnonKey;
+      }
+    } catch (_) {}
+
+    try {
+      const res = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': supabaseAnonKey,
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify({ ...dbUpdates, updated_at: new Date().toISOString() }),
+      });
+
+      if (res.ok) {
+        const rows = await res.json().catch(() => []);
+        if (Array.isArray(rows) && rows.length > 0) {
+          result = { data: rows, error: null };
+        }
+      }
+    } catch (fetchErr) {
+      logger.warn('[profileService] Direct REST PATCH failed, falling back to client:', fetchErr);
     }
-    
-    if (result.error || !result.data || result.data.length === 0) {
-      logger.warn(`⚠️ [profileService] Update returned 0 modified rows for user ${userId}. Retrying with upsert...`);
+
+    // 2. Client fallback only if direct REST didn't return rows
+    if (!result || !result.data || result.data.length === 0) {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const activeUid = session?.user?.id || userId;
-        let nameFallback = dbUpdates.name;
-        if (!nameFallback) {
-          try {
-            const cached = localStorage.getItem('prolink_cached_user');
-            if (cached) nameFallback = JSON.parse(cached)?.name;
-          } catch {}
-          if (!nameFallback) {
-            nameFallback = session?.user?.user_metadata?.full_name || session?.user?.email?.split('@')[0] || 'مستخدم';
-          }
-        }
-        const upsertRes = await supabase.from('profiles').upsert({ id: activeUid, name: nameFallback, ...dbUpdates }).select('id');
-        if (upsertRes.data && upsertRes.data.length > 0) {
-          result = upsertRes;
-        }
-      } catch (upsertErr) {
-        logger.warn('[profileService] Upsert fallback warning:', upsertErr);
+        result = await Promise.race([
+          supabase.from('profiles').update(dbUpdates).eq('id', userId).select('id'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_DB_UPDATE')), 4000))
+        ]);
+      } catch (dbErr) {
+        result = { error: dbErr, data: [] };
       }
     }
 

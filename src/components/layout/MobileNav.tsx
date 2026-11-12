@@ -66,7 +66,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   logout, setShowAdmin,
   theme, toggleTheme
 }) => {
-  const { posts, connections, unreadMessagesCount, pendingRequestsCount, userTotalPostsCount, isGuestMode } = useAppContext();
+  const { posts, connections, unreadMessagesCount, pendingRequestsCount, userTotalPostsCount, isGuestMode, setShowNotifications } = useAppContext();
 
   // Hide messages tab on mobile dock for guests
   const visibleNavItems = useMemo(() => {
@@ -363,6 +363,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                     // immediately even if a lazy chunk or Keep-Alive render is pending
                     setActiveTab(item.id);
                     setShowMobileMenu(false);
+                    setShowNotifications?.(false);
                   }
                 }}
                 className="relative flex flex-col items-center justify-center flex-1 h-13 select-none cursor-pointer focus:outline-none bg-transparent border-0 p-0"
@@ -510,6 +511,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                           setSelectedProfile(appUser);
                           setActiveTab('profile');
                           setShowMobileMenu(false);
+                          setShowNotifications?.(false);
                         }}
                       >
                         {appUser.avatar ? (

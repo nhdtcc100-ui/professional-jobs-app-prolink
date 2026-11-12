@@ -950,7 +950,7 @@ export function ModernProfileView({
     }
   };
 
-  // ─── 6. Change Password ───────────────────────────────────────────────────────
+  // ─── 6. Change Password (سريع وفوري دون تعليق أو إعادة تحميل الجلسة) ─────────────
   const handleSavePassword = async () => {
     if (!currentPassword) { addToast('يرجى إدخال كلمة المرور الحالية', 'error'); return; }
     if (showChangePassword) {
@@ -960,25 +960,51 @@ export function ModernProfileView({
     }
     try {
       setSavingPassword(true);
-      const email = user?.email || profile?.email || '';
-      const { error: verifyErr } = await supabase.auth.signInWithPassword({ email, password: currentPassword });
-      if (verifyErr) {
-        addToast('كلمة المرور الحالية غير صحيحة ❌', 'error');
-        return;
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+
+      // 1. استخراج البريد (مع دعم حسابات الهاتف 0770...@prolink.internal)
+      let targetEmail = user?.email || profile?.email || (user?.user_metadata as any)?.email || '';
+      const phoneDigits = (profile?.phone || user?.phone || (user?.user_metadata as any)?.phone || '').replace(/\D/g, '');
+      if ((!targetEmail || !targetEmail.includes('@')) && phoneDigits) {
+        targetEmail = `${phoneDigits}@prolink.internal`;
       }
+
+      // 2. التحقق فائق السرعة من الرمز الحالي عبر REST مباشرة دون إطلاق onAuthStateChange
+      if (targetEmail && targetEmail.includes('@')) {
+        const verifyRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+          method: 'POST',
+          headers: {
+            'apikey': supabaseAnonKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ email: targetEmail, password: currentPassword }),
+        });
+
+        if (!verifyRes.ok) {
+          addToast('كلمة المرور الحالية غير صحيحة ❌', 'error');
+          return;
+        }
+      }
+
+      // 3. تحديث كلمة المرور للرمز الجديد
       if (showChangePassword && newPassword) {
-        const { error } = await supabase.auth.updateUser({ password: newPassword });
+        const { error } = await Promise.race([
+          supabase.auth.updateUser({ password: newPassword }),
+          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_PW')), 8000))
+        ]);
         if (error) throw error;
         setNewPassword('');
         setConfirmPassword('');
         setShowChangePassword(false);
         addToast('✅ تم تحديث كلمة المرور بنجاح!', 'success');
       } else {
-        addToast('✅ تم التحقق من كلمة المرور بنجاح!', 'success');
+        addToast('✅ تم التحقق من كلمة المرور الحالية بنجاح!', 'success');
       }
       setCurrentPassword('');
     } catch (err: any) {
-      addToast('تعذر تغيير كلمة المرور: ' + (err?.message || ''), 'error');
+      console.error('Password change error:', err);
+      addToast('تعذر تغيير كلمة المرور: ' + (err?.message || 'خطأ في الاتصال'), 'error');
     } finally {
       setSavingPassword(false);
     }
