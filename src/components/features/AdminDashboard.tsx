@@ -223,6 +223,13 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   const [roleRequestFilter, setRoleRequestFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
   const [roleRequestSearch, setRoleRequestSearch] = useState('');
   const [roleActionLoadingId, setRoleActionLoadingId] = useState<string | null>(null);
+  const supportChatBottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (supportSubTab === 'chat' && supportMessages.length > 0) {
+      supportChatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [supportMessages, supportSubTab, selectedSupportUser]);
 
   const fetchRoleRequests = async () => {
     setLoadingRoleRequests(true);
@@ -262,13 +269,13 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
         }
       } catch {}
 
-      const threeDaysAgoISO = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const thirtyDaysAgoISO = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
-      // جلب الرسائل حصراً من جدول support_messages المنفصل
+      // جلب الرسائل من جدول support_messages
       const { data: msgs, error: msgsErr } = await db
         .from("support_messages")
         .select("*")
-        .gte("created_at", threeDaysAgoISO)
+        .gte("created_at", thirtyDaysAgoISO)
         .order("created_at", { ascending: true });
 
       if (msgsErr) {
@@ -280,32 +287,75 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
 
       supportMsgs.forEach((m: any) => {
         const isSenderAdmin = adminIds.has(m.sender_id);
-        let userId = isSenderAdmin ? m.receiver_id : m.sender_id;
-        if (!userId) return;
+        let threadUserId: string;
 
-        // إذا كانت محادثة تجريبية بين أدمن ونفسه، نسمح بها لتظهر في قائمة الشات للتجربة
-        if (adminIds.has(userId) && isSenderAdmin && m.sender_id !== m.receiver_id) {
-          return;
+        if (isSenderAdmin) {
+          // إذا كان المرسل أدمن، المحادثة تتبع للمستقبل (المستخدم)
+          // إلا إذا كان المستقبل غير محدد أو أدمن آخر (مثل تجربة الأدمن للشات من صفحة الدعم)
+          if (m.receiver_id && !adminIds.has(m.receiver_id)) {
+            threadUserId = m.receiver_id;
+          } else {
+            threadUserId = m.receiver_id || m.sender_id;
+          }
+        } else {
+          // المستخدم العادي هو صاحب المحادثة
+          threadUserId = m.sender_id;
         }
 
-        if (!threadsMap.has(userId)) {
-          const foundUser = allUsers.find(u => u.id === userId);
-          threadsMap.set(userId, {
-            userId,
-            user: foundUser || { id: userId, name: "مستخدم الدعم", avatar: "", phone: "", role: "seeker" },
+        if (!threadUserId) return;
+
+        if (!threadsMap.has(threadUserId)) {
+          const foundUser = allUsers.find(u => u.id === threadUserId);
+          threadsMap.set(threadUserId, {
+            userId: threadUserId,
+            user: foundUser || { id: threadUserId, name: "مستخدم الدعم", avatar: "", phone: "", role: "seeker" },
             messages: [],
             lastMessage: m,
             unreadCount: 0
           });
         }
 
-        const thread = threadsMap.get(userId)!;
+        const thread = threadsMap.get(threadUserId)!;
         thread.messages.push(m);
         thread.lastMessage = m;
         if (!isSenderAdmin && !m.read) {
           thread.unreadCount += 1;
         }
       });
+
+      // إثراء بيانات المستخدمين لجميع المحادثات من جدول profiles مباشرةً
+      const missingUserIds = Array.from(threadsMap.keys()).filter(id => {
+        const u = threadsMap.get(id)?.user;
+        return !u || !u.name || u.name === "مستخدم الدعم" || !u.phone;
+      });
+
+      if (missingUserIds.length > 0) {
+        try {
+          const { data: fetchedProfiles } = await db
+            .from("profiles")
+            .select("id, name, full_name, phone, avatar, avatar_url, role, email")
+            .in("id", missingUserIds);
+
+          if (fetchedProfiles) {
+            fetchedProfiles.forEach((p: any) => {
+              const thread = threadsMap.get(p.id);
+              if (thread) {
+                thread.user = {
+                  ...thread.user,
+                  id: p.id,
+                  name: p.full_name || p.name || thread.user.name || "مستخدم",
+                  phone: p.phone || thread.user.phone || "",
+                  email: p.email || thread.user.email || "",
+                  avatar: p.avatar_url || p.avatar || thread.user.avatar || "",
+                  role: p.role || thread.user.role || "seeker",
+                };
+              }
+            });
+          }
+        } catch (enrichErr) {
+          console.warn("Could not enrich thread profiles:", enrichErr);
+        }
+      }
 
       const threads = Array.from(threadsMap.values()).sort((a, b) =>
         new Date(b.lastMessage.created_at).getTime() - new Date(a.lastMessage.created_at).getTime()
@@ -318,6 +368,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
       } else if (selectedSupportUser) {
         const activeThread = threads.find(t => t.userId === selectedSupportUser.id);
         if (activeThread) {
+          setSelectedSupportUser(activeThread.user);
           setSupportMessages(activeThread.messages);
         }
       }
@@ -364,7 +415,20 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
     if (!cleanText || !selectedSupportUser?.id) return;
 
     setSendingSupportReply(true);
-    const adminSenderId = currentAppUser?.id || "support-admin";
+
+    let adminSenderId = currentAppUser?.id;
+    if (!adminSenderId) {
+      try {
+        const { data: authUser } = await db.auth.getUser();
+        if (authUser?.user?.id) adminSenderId = authUser.user.id;
+      } catch {}
+    }
+
+    if (!adminSenderId) {
+      addToast("يرجى تسجيل الدخول بحساب مسؤول لتتمكن من إرسال الرد", "error");
+      setSendingSupportReply(false);
+      return;
+    }
 
     const newMsg = {
       id: `tmp-${Date.now()}`,
@@ -1515,9 +1579,15 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                             return (
                               <div
                                 key={thread.userId}
-                                onClick={() => {
+                                onClick={async () => {
                                   setSelectedSupportUser(thread.user);
                                   setSupportMessages(thread.messages);
+                                  if (thread.unreadCount > 0) {
+                                    try {
+                                      await db.from("support_messages").update({ read: true }).eq("sender_id", thread.userId);
+                                      setSupportThreads(prev => prev.map(t => t.userId === thread.userId ? { ...t, unreadCount: 0 } : t));
+                                    } catch {}
+                                  }
                                 }}
                                 className={`p-3.5 rounded-2xl cursor-pointer transition-all border flex items-center gap-3 ${
                                   isSelected
@@ -1675,6 +1745,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                                 </div>
                               );
                             })}
+                            <div ref={supportChatBottomRef} />
                           </div>
 
                           {/* Reply Input Bar */}

@@ -210,38 +210,42 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
     let insertedId: string | undefined;
 
     try {
-      // 1. محاولة الإرسال بـ primaryAdminId
-      const primaryPayload = [{
-        sender_id: appUser.id,
-        receiver_id: primaryAdminId,
-        content: clean,
-        message_type: "text",
-      }];
-
-      const { data, error } = await (supabase as any)
-        .from(SUPPORT_TABLE)
-        .insert(primaryPayload)
-        .select('id');
-
-      if (!error && data && data[0]?.id) {
-        insertedId = data[0].id;
-      } else {
-        console.warn("Support Chat primary insert error, attempting self-referenced fallback:", error?.message);
-        // 2. بديل فوري: إذا فشل مفتاح الربط، نستخدم appUser.id المضمون وجوده في auth.users
-        const fallbackPayload = [{
-          sender_id: appUser.id,
-          receiver_id: appUser.id,
-          content: clean,
-          message_type: "text",
-        }];
-        const fallbackRes = await (supabase as any)
+      // 1. محاولة الإرسال بـ primaryAdminId (إذا كان UUID صحيحاً)
+      let inserted = false;
+      if (primaryAdminId && primaryAdminId !== appUser.id) {
+        const { data, error } = await (supabase as any)
           .from(SUPPORT_TABLE)
-          .insert(fallbackPayload)
+          .insert([{ sender_id: appUser.id, receiver_id: primaryAdminId, content: clean, message_type: "text" }])
           .select('id');
-
-        if (fallbackRes?.data?.[0]?.id) {
-          insertedId = fallbackRes.data[0].id;
+        if (!error && data?.[0]?.id) {
+          insertedId = data[0].id;
+          inserted = true;
+        } else {
+          console.warn("Support Chat: primary admin receiver failed:", error?.message);
         }
+      }
+
+      // 2. بديل: إرسال بدون receiver_id (nullable بعد SQL migration)
+      if (!inserted) {
+        const { data: d2, error: e2 } = await (supabase as any)
+          .from(SUPPORT_TABLE)
+          .insert([{ sender_id: appUser.id, receiver_id: null, content: clean, message_type: "text" }])
+          .select('id');
+        if (!e2 && d2?.[0]?.id) {
+          insertedId = d2[0].id;
+          inserted = true;
+        } else {
+          console.warn("Support Chat: null-receiver fallback failed:", e2?.message);
+        }
+      }
+
+      // 3. بديل أخير: إرسال مع receiver_id = appUser.id (مضمون وجوده في auth.users)
+      if (!inserted) {
+        const { data: d3 } = await (supabase as any)
+          .from(SUPPORT_TABLE)
+          .insert([{ sender_id: appUser.id, receiver_id: appUser.id, content: clean, message_type: "text" }])
+          .select('id');
+        if (d3?.[0]?.id) insertedId = d3[0].id;
       }
     } catch (e) {
       console.error("Support Chat insert exception:", e);
