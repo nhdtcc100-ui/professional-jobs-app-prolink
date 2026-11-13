@@ -43,6 +43,7 @@ import {
   Eye
 } from 'lucide-react';
 import { GroupDetailView, CreateGroupPage } from './groups';
+import { MessagingSettingsPage } from './MessagingSettingsPage';
 import { supabase } from '../../lib/supabase';
 import { imageService } from '../../lib/services/imageService';
 import { AppUser, AppConnection } from '../../types';
@@ -78,7 +79,7 @@ export interface ChatSettings {
   chatWallpaper: 'default' | 'subtle-blue' | 'slate' | 'dots';
 }
 
-const DEFAULT_CHAT_SETTINGS: ChatSettings = {
+export const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   fontSize: 'normal',
   sendOnEnter: true,
   messageSounds: true,
@@ -90,20 +91,20 @@ const DEFAULT_CHAT_SETTINGS: ChatSettings = {
   chatWallpaper: 'default',
 };
 
-const FONT_SIZE_CLASSES: Record<ChatSettings['fontSize'], string> = {
+export const FONT_SIZE_CLASSES: Record<ChatSettings['fontSize'], string> = {
   small: 'text-xs',
   normal: 'text-sm',
   large: 'text-base',
   huge: 'text-lg',
 };
 
-const BUBBLE_ROUNDED: Record<ChatSettings['bubbleStyle'], { mine: string; others: string }> = {
+export const BUBBLE_ROUNDED: Record<ChatSettings['bubbleStyle'], { mine: string; others: string }> = {
   modern: { mine: 'rounded-2xl rounded-bl-sm', others: 'rounded-2xl rounded-br-sm' },
   classic: { mine: 'rounded-xl rounded-tr-none', others: 'rounded-xl rounded-tl-none' },
   minimal: { mine: 'rounded-3xl', others: 'rounded-3xl' },
 };
 
-const WALLPAPERS: Record<ChatSettings['chatWallpaper'], string> = {
+export const WALLPAPERS: Record<ChatSettings['chatWallpaper'], string> = {
   default: '',
   'subtle-blue': 'bg-blue-50/50 dark:bg-slate-900/60',
   slate: 'bg-slate-100/70 dark:bg-slate-900/90',
@@ -987,6 +988,27 @@ export function MessagingView({
     );
   }
 
+  // ─── Messaging Settings Full Page ───
+  if (showMessagingSettings) {
+    return (
+      <div className="fixed inset-0 top-[60px] md:top-[68px] bottom-[80px] md:bottom-0 left-0 right-0 z-40 overflow-y-auto bg-slate-50 dark:bg-slate-950 px-2 sm:px-4 py-4 overscroll-contain">
+        <MessagingSettingsPage
+          settings={chatSettings}
+          onUpdate={updateChatSetting}
+          onReset={() => {
+            setChatSettings(DEFAULT_CHAT_SETTINGS);
+            try {
+              localStorage.setItem('prolink_chat_settings', JSON.stringify(DEFAULT_CHAT_SETTINGS));
+            } catch (_) {}
+            addToast?.('تمت استعادة الإعدادات الافتراضية');
+          }}
+          onBack={() => setShowMessagingSettings(false)}
+          addToast={addToast}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col md:flex-row md:rounded-t-[3rem] overflow-hidden shadow-2xl border-x border-t border-white/80 bg-white fixed md:relative top-[85px] bottom-[105px] left-3 right-3 md:top-0 md:bottom-0 md:left-0 md:right-0 md:h-[calc(100vh-75px)] md:mt-0 md:mx-auto anti-gravity-card rounded-[2.5rem] md:rounded-none" dir="rtl">
 
@@ -1060,6 +1082,14 @@ export function MessagingView({
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
+            <button
+              type="button"
+              onClick={() => setShowMessagingSettings(true)}
+              title="إعدادات المراسلة"
+              className="p-2.5 rounded-2xl text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-all shrink-0 cursor-pointer active:scale-95"
+            >
+              <Settings size={20} />
+            </button>
           </div>
 
           <div className="flex gap-2 py-4 px-3">
@@ -1543,296 +1573,6 @@ export function MessagingView({
               </div>
             </motion.div>
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Telegram-Style Messaging Settings Modal ── */}
-      <AnimatePresence>
-        {showMessagingSettings && (
-          <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[550] flex items-center justify-center p-3 sm:p-4" dir="rtl">
-            <motion.div
-              initial={{ scale: 0.92, opacity: 0, y: 20 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.92, opacity: 0, y: 20 }}
-              className="bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-800"
-            >
-              {/* Header with Telegram styling */}
-              <div className="bg-gradient-to-r from-blue-600 via-sky-600 to-indigo-600 p-5 sm:p-6 text-white relative shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setShowMessagingSettings(false)}
-                  className="absolute top-5 left-5 w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors cursor-pointer"
-                >
-                  <X size={16} className="text-white" />
-                </button>
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center shadow-lg">
-                    <Settings size={24} className="text-white" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-black text-white leading-tight">إعدادات المراسلة والدردشة</h3>
-                    <p className="text-xs text-blue-100 font-bold mt-0.5">تخصيص كامل للمظهر والخطوط والسلوك كالتليجرام</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto custom-chat-scroll p-5 space-y-4 text-slate-800 dark:text-slate-100">
-                {/* 1. حجم خط المحادثة والفقاعات */}
-                <div className="space-y-3">
-                  <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                    🎨 مظهر الرسائل والخطوط
-                  </span>
-                  
-                  {/* Font Size */}
-                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-2">
-                        <Type size={16} className="text-blue-600" />
-                        حجم خط نصوص المحادثة
-                      </span>
-                      <span className="text-[10px] font-bold text-blue-600 bg-blue-50 dark:bg-blue-950/40 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-800/40">
-                        {chatSettings.fontSize === 'small' ? 'صغير (12px)' : chatSettings.fontSize === 'normal' ? 'قياسي (14px)' : chatSettings.fontSize === 'large' ? 'كبير (16px)' : 'كبير جداً (18px)'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-4 gap-2">
-                      {[
-                        { id: 'small', label: 'صغير' },
-                        { id: 'normal', label: 'قياسي' },
-                        { id: 'large', label: 'كبير' },
-                        { id: 'huge', label: 'ضخم' },
-                      ].map(sz => (
-                        <button
-                          key={sz.id}
-                          type="button"
-                          onClick={() => updateChatSetting('fontSize', sz.id as any)}
-                          className={`py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${chatSettings.fontSize === sz.id ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 scale-[1.02]' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-50'}`}
-                        >
-                          {sz.label}
-                        </button>
-                      ))}
-                    </div>
-                    {/* Live Preview */}
-                    <div className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex justify-end">
-                      <div className={`px-4 py-2 rounded-2xl rounded-bl-sm bg-[#0a66c2] text-white shadow-sm ${FONT_SIZE_CLASSES[chatSettings.fontSize]}`}>
-                        معاينة: مرحباً! كيف يمكنني مساعدتك؟ ✨
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Bubble Style */}
-                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 space-y-2.5">
-                    <span className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-2">
-                      <MessageSquare size={16} className="text-blue-600" />
-                      شكل فقاعات الرسائل
-                    </span>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { id: 'modern', label: 'عصري منحني' },
-                        { id: 'classic', label: 'كلاسيكي' },
-                        { id: 'minimal', label: 'دائري ناعم' },
-                      ].map(b => (
-                        <button
-                          key={b.id}
-                          type="button"
-                          onClick={() => updateChatSetting('bubbleStyle', b.id as any)}
-                          className={`py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${chatSettings.bubbleStyle === b.id ? 'bg-blue-600 text-white shadow-md' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600'}`}
-                        >
-                          {b.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Wallpaper */}
-                  <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 space-y-2.5">
-                    <span className="text-xs font-black text-slate-800 dark:text-white flex items-center gap-2">
-                      <Palette size={16} className="text-blue-600" />
-                      خلفية الشات
-                    </span>
-                    <div className="grid grid-cols-4 gap-2">
-                      {[
-                        { id: 'default', label: 'افتراضي' },
-                        { id: 'subtle-blue', label: 'أزرق هادئ' },
-                        { id: 'slate', label: 'رمادي دافئ' },
-                        { id: 'dots', label: 'نقاط' },
-                      ].map(wp => (
-                        <button
-                          key={wp.id}
-                          type="button"
-                          onClick={() => updateChatSetting('chatWallpaper', wp.id as any)}
-                          className={`py-2 rounded-xl text-[11px] font-black transition-all cursor-pointer ${chatSettings.chatWallpaper === wp.id ? 'bg-blue-600 text-white shadow-md' : 'bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600'}`}
-                        >
-                          {wp.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. الإدخال والإرسال */}
-                <div className="space-y-2.5 pt-2">
-                  <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                    ⌨️ الإدخال والإرسال
-                  </span>
-
-                  <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-                    <div>
-                      <h4 className="text-xs font-black text-slate-800 dark:text-white">الإرسال بمفتاح Enter</h4>
-                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-0.5">
-                        إرسال الرسالة مباشرة بالضغط على Enter (و Shift+Enter لسطر جديد)
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => updateChatSetting('sendOnEnter', !chatSettings.sendOnEnter)}
-                      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${chatSettings.sendOnEnter ? 'bg-blue-600 justify-end' : 'bg-slate-300 dark:bg-slate-600 justify-start'}`}
-                    >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-md" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* 3. الأصوات والاهتزاز */}
-                <div className="space-y-2.5 pt-2">
-                  <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                    🔔 الأصوات والاهتزاز
-                  </span>
-
-                  <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-                    <div className="flex items-start gap-2.5">
-                      <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shrink-0"><Volume2 size={16} /></div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-xs font-black text-slate-800 dark:text-white">صوت إرسال الرسائل</h4>
-                          <button
-                            type="button"
-                            onClick={() => playSendSound()}
-                            className="text-[9px] font-bold text-blue-600 hover:underline px-1.5 py-0.5 bg-blue-50 dark:bg-blue-950/40 rounded-md"
-                          >
-                            ▶ استمع
-                          </button>
-                        </div>
-                        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-0.5">تشغيل نغمة لطيفة عند إرسال واستقبال الرسائل</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => updateChatSetting('messageSounds', !chatSettings.messageSounds)}
-                      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${chatSettings.messageSounds ? 'bg-blue-600 justify-end' : 'bg-slate-300 dark:bg-slate-600 justify-start'}`}
-                    >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-md" />
-                    </button>
-                  </div>
-
-                  <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-                    <div className="flex items-start gap-2.5">
-                      <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shrink-0"><Smartphone size={16} /></div>
-                      <div>
-                        <h4 className="text-xs font-black text-slate-800 dark:text-white">الاهتزاز اللمسي (Haptic Feedback)</h4>
-                        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-0.5">اهتزاز خفيف للهاتف عند إرسال الرسائل والتفاعل</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const next = !chatSettings.hapticFeedback;
-                        updateChatSetting('hapticFeedback', next);
-                        if (next) triggerHaptic();
-                      }}
-                      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${chatSettings.hapticFeedback ? 'bg-blue-600 justify-end' : 'bg-slate-300 dark:bg-slate-600 justify-start'}`}
-                    >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-md" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* 4. الخصوصية ومؤشرات القراءة */}
-                <div className="space-y-2.5 pt-2">
-                  <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                    🔒 الخصوصية ومؤشرات القراءة
-                  </span>
-
-                  <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-                    <div className="flex items-start gap-2.5">
-                      <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shrink-0"><CheckCheck size={16} /></div>
-                      <div>
-                        <h4 className="text-xs font-black text-slate-800 dark:text-white">مؤشرات قراءة الرسائل (✓✓)</h4>
-                        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-0.5">إظهار علامتي الصح الزرقاء عند رؤية الطرف الآخر للرسالة</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => updateChatSetting('readReceipts', !chatSettings.readReceipts)}
-                      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${chatSettings.readReceipts ? 'bg-blue-600 justify-end' : 'bg-slate-300 dark:bg-slate-600 justify-start'}`}
-                    >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-md" />
-                    </button>
-                  </div>
-
-                  <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-                    <div className="flex items-start gap-2.5">
-                      <div className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 shrink-0"><Eye size={16} /></div>
-                      <div>
-                        <h4 className="text-xs font-black text-slate-800 dark:text-white">إظهار حالة الاتصال</h4>
-                        <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-0.5">عرض نقطة الاتصال الخضراء "متصل الآن" للآخرين</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => updateChatSetting('showOnlineStatus', !chatSettings.showOnlineStatus)}
-                      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${chatSettings.showOnlineStatus ? 'bg-blue-600 justify-end' : 'bg-slate-300 dark:bg-slate-600 justify-start'}`}
-                    >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-md" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* 5. الوسائط والبيانات */}
-                <div className="space-y-2.5 pt-2">
-                  <span className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider block">
-                    🖼️ البيانات والوسائط
-                  </span>
-
-                  <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60">
-                    <div>
-                      <h4 className="text-xs font-black text-slate-800 dark:text-white">التحميل التلقائي للصور</h4>
-                      <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 mt-0.5">عرض الصور ومقاطع الفيديو فور استلامها مباشرة</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => updateChatSetting('autoDownloadMedia', !chatSettings.autoDownloadMedia)}
-                      className={`w-11 h-6 flex items-center rounded-full p-1 transition-colors cursor-pointer shrink-0 ${chatSettings.autoDownloadMedia ? 'bg-blue-600 justify-end' : 'bg-slate-300 dark:bg-slate-600 justify-start'}`}
-                    >
-                      <motion.div layout className="w-4 h-4 rounded-full bg-white shadow-md" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="p-4 bg-slate-50 dark:bg-slate-800/70 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setChatSettings(DEFAULT_CHAT_SETTINGS);
-                    try { localStorage.setItem('prolink_chat_settings', JSON.stringify(DEFAULT_CHAT_SETTINGS)); } catch (_) {}
-                    addToast?.('تمت استعادة الإعدادات الافتراضية');
-                  }}
-                  className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white transition-colors"
-                >
-                  استعادة الافتراضي
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowMessagingSettings(false)}
-                  className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-600/20 active:scale-95 transition-all cursor-pointer"
-                >
-                  تم، حفظ التفضيلات
-                </button>
-              </div>
-            </motion.div>
-          </div>
         )}
       </AnimatePresence>
     </div>
