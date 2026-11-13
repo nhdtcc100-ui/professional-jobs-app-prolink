@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Clock, 
@@ -11,7 +11,6 @@ import {
   Loader2,
   FileText
 } from 'lucide-react';
-import { CalligraphyBg } from '../ui/CalligraphyBg';
 import { Post } from '../../types';
 import { safeTimeAgo } from '../../lib/utils/formatDate';
 import { useAppContext } from '../../contexts/AppContext';
@@ -187,10 +186,7 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
             ? 'border-purple-200/80 dark:border-purple-900/40 hover:border-purple-500/70 shadow-[0_4px_20px_rgba(147,51,234,0.06)]' 
             : 'border-slate-100 dark:border-slate-800 hover:border-blue-500/50'
         } shadow-sm hover:shadow-xl transition-all overflow-hidden cursor-pointer metal-watermark`}
-      >
-        {/* خلفية خط ديواني */}
-        <CalligraphyBg word={isArticle ? 'خبر' : 'نشر'} size="5.5rem" opacity={0.05} position="bottom-right" />
-        {/* Visual Indicator (Gradient Bar) */}
+      >        {/* Visual Indicator (Gradient Bar) */}
         <div className={`absolute top-0 right-0 bottom-0 w-1.5 ${
           isArticle 
             ? 'bg-gradient-to-b from-purple-600 via-indigo-600 to-blue-600' 

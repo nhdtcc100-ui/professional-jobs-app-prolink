@@ -2,7 +2,6 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { SkeletonConversationItem } from '../ui';
 import { sanitizeInput } from '../../lib/utils/sanitize';
-import { CalligraphyBg } from '../ui/CalligraphyBg';
 import { validateField } from '../../lib/security/inputValidator';
 import { 
   Users, 
@@ -1181,9 +1180,7 @@ export function MessagingView({
             </div>
 
             {/* Messages Area */}
-            <div className="flex-1 min-h-0 overflow-y-auto custom-chat-scroll p-4 space-y-3 relative z-0">
-              <CalligraphyBg word="رسالة" size="9rem" opacity={0.045} position="center" />
-              {chatMessages.length === 0 ? (
+            <div className="flex-1 min-h-0 overflow-y-auto custom-chat-scroll p-4 space-y-3 relative z-0">              {chatMessages.length === 0 ? (
                 <div className="h-full flex flex-col items-center justify-center gap-4 opacity-40">
                   <div className="w-20 h-20 bg-white rounded-[2.5rem] shadow-xl flex items-center justify-center"><MessageSquare size={36} className="text-blue-100" /></div>
                   <p className="text-xs font-black text-slate-400 uppercase tracking-widest">ابدأ محادثتك الأولى</p>
