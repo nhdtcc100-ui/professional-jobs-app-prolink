@@ -5,7 +5,7 @@ import {
   TrendingUp, Eye, Trash2, CheckCircle, XCircle, Search,
   BarChart3, Activity, Crown, RefreshCw, Building2, Phone,
   ArrowRight, Plus, HeadphonesIcon, Send, MessageSquare, Clock, UserCheck,
-  ShieldAlert, Bell, BellRing, Globe, CheckCheck, EyeOff, Filter, ArrowLeftRight, Check, X
+  ShieldAlert, Bell, BellRing, Globe, CheckCheck, EyeOff, Filter, ArrowLeftRight, Check, X, Copy
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { profileService } from '../../lib/services/profileService';
@@ -211,8 +211,62 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   }, []);
 
   /* ── Admin Support Chat state ────────────────────────────── */
+  const SUPPORT_PROFILES_CACHE_KEY = 'prolink_support_profiles_cache';
+  const SELECTED_SUPPORT_USER_KEY = 'prolink_selected_support_user_id';
+
+  const getCachedSupportProfile = (id: string) => {
+    try {
+      const raw = localStorage.getItem(SUPPORT_PROFILES_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return parsed[id] || null;
+      }
+    } catch {}
+    return null;
+  };
+
+  const saveSupportProfilesToCache = (profiles: any[]) => {
+    try {
+      const raw = localStorage.getItem(SUPPORT_PROFILES_CACHE_KEY);
+      const cache = raw ? JSON.parse(raw) : {};
+      profiles.forEach(p => {
+        if (p && p.id) {
+          cache[p.id] = {
+            id: p.id,
+            name: p.full_name || p.name || cache[p.id]?.name || 'مستخدم',
+            phone: p.phone || cache[p.id]?.phone || '',
+            email: p.email || cache[p.id]?.email || '',
+            avatar: p.avatar_url || p.avatar || cache[p.id]?.avatar || '',
+            role: p.role || cache[p.id]?.role || 'seeker'
+          };
+        }
+      });
+      localStorage.setItem(SUPPORT_PROFILES_CACHE_KEY, JSON.stringify(cache));
+    } catch {}
+  };
+
   const [supportThreads, setSupportThreads] = useState<any[]>([]);
-  const [selectedSupportUser, setSelectedSupportUser] = useState<any | null>(null);
+  const [selectedSupportUser, setSelectedSupportUserState] = useState<any | null>(() => {
+    try {
+      const savedId = localStorage.getItem('prolink_selected_support_user_id');
+      if (savedId) {
+        const cached = getCachedSupportProfile(savedId);
+        if (cached) return cached;
+      }
+    } catch {}
+    return null;
+  });
+
+  const setSelectedSupportUser = (user: any | null) => {
+    setSelectedSupportUserState(user);
+    try {
+      if (user?.id) {
+        localStorage.setItem(SELECTED_SUPPORT_USER_KEY, user.id);
+      }
+    } catch {}
+  };
+
+  const [supportSearchQuery, setSupportSearchQuery] = useState('');
   const [supportMessages, setSupportMessages] = useState<any[]>([]);
   const [supportReplyText, setSupportReplyText] = useState('');
   const [sendingSupportReply, setSendingSupportReply] = useState(false);
@@ -310,10 +364,18 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
         if (!threadUserId) return;
 
         if (!threadsMap.has(threadUserId)) {
+          const cachedUser = getCachedSupportProfile(threadUserId);
           const foundUser = allUsers.find(u => u.id === threadUserId);
+          const initialUser = foundUser || cachedUser || {
+            id: threadUserId,
+            name: "مستخدم (" + threadUserId.slice(0, 8) + ")",
+            avatar: "",
+            phone: "",
+            role: "seeker"
+          };
           threadsMap.set(threadUserId, {
             userId: threadUserId,
-            user: foundUser || { id: threadUserId, name: "مستخدم الدعم", avatar: "", phone: "", role: "seeker" },
+            user: initialUser,
             messages: [],
             lastMessage: m,
             unreadCount: 0
@@ -328,20 +390,17 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
         }
       });
 
-      // إثراء بيانات المستخدمين لجميع المحادثات من جدول profiles مباشرةً
-      const missingUserIds = Array.from(threadsMap.keys()).filter(id => {
-        const u = threadsMap.get(id)?.user;
-        return !u || !u.name || u.name === "مستخدم الدعم" || !u.phone;
-      });
-
-      if (missingUserIds.length > 0) {
+      // إثراء وتحديث بيانات المستخدمين لجميع المحادثات من جدول profiles مباشرةً
+      const allThreadUserIds = Array.from(threadsMap.keys());
+      if (allThreadUserIds.length > 0) {
         try {
           const { data: fetchedProfiles } = await db
             .from("profiles")
             .select("id, name, full_name, phone, avatar, avatar_url, role, email")
-            .in("id", missingUserIds);
+            .in("id", allThreadUserIds);
 
-          if (fetchedProfiles) {
+          if (fetchedProfiles && fetchedProfiles.length > 0) {
+            saveSupportProfilesToCache(fetchedProfiles);
             fetchedProfiles.forEach((p: any) => {
               const thread = threadsMap.get(p.id);
               if (thread) {
@@ -367,15 +426,17 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
       );
 
       setSupportThreads(threads);
-      if (threads.length > 0 && !selectedSupportUser) {
-        setSelectedSupportUser(threads[0].user);
-        setSupportMessages(threads[0].messages);
-      } else if (selectedSupportUser) {
-        const activeThread = threads.find(t => t.userId === selectedSupportUser.id);
-        if (activeThread) {
-          setSelectedSupportUser(activeThread.user);
-          setSupportMessages(activeThread.messages);
+      const savedUserId = localStorage.getItem(SELECTED_SUPPORT_USER_KEY);
+      if (threads.length > 0) {
+        let active = threads.find(t => t.userId === savedUserId);
+        if (!active && selectedSupportUser) {
+          active = threads.find(t => t.userId === selectedSupportUser.id);
         }
+        if (!active) {
+          active = threads[0];
+        }
+        setSelectedSupportUser(active.user);
+        setSupportMessages(active.messages);
       }
     } catch (e) {
       console.error("Support fetch error:", e);
@@ -1566,7 +1627,34 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[500px]">
                     {/* Left: Threads list */}
                     <div className="lg:col-span-4 bg-slate-800/40 border border-slate-700/50 rounded-[2rem] p-4 space-y-3 backdrop-blur-md flex flex-col">
-                      <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest px-2 pt-1 mb-2">المحادثات الواردة ({supportThreads.length})</h4>
+                      <div className="flex items-center justify-between px-2 pt-1">
+                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                          المحادثات ({supportThreads.length})
+                        </h4>
+                        <span className="text-[10px] font-bold text-slate-500">
+                          {supportThreads.reduce((acc, t) => acc + (t.unreadCount || 0), 0)} غير مقروء
+                        </span>
+                      </div>
+
+                      {/* Fast search input for threads */}
+                      <div className="relative">
+                        <Search size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={supportSearchQuery}
+                          onChange={(e) => setSupportSearchQuery(e.target.value)}
+                          placeholder="بحث بالاسم أو المعرف (ID) أو الهاتف..."
+                          className="w-full bg-slate-900/80 border border-slate-700 rounded-xl pr-9 pl-3 py-2 text-xs font-medium text-white placeholder:text-slate-500 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        />
+                        {supportSearchQuery && (
+                          <button
+                            onClick={() => setSupportSearchQuery('')}
+                            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white text-xs font-bold"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
 
                       {supportLoading ? (
                         <div className="flex justify-center items-center py-20">
@@ -1579,7 +1667,18 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                         </div>
                       ) : (
                         <div className="space-y-2 overflow-y-auto max-h-[550px] pr-1">
-                          {supportThreads.map((thread) => {
+                          {supportThreads
+                            .filter((thread) => {
+                              if (!supportSearchQuery.trim()) return true;
+                              const q = supportSearchQuery.toLowerCase();
+                              return (
+                                (thread.user?.name || '').toLowerCase().includes(q) ||
+                                (thread.user?.phone || '').includes(q) ||
+                                (thread.userId || '').toLowerCase().includes(q) ||
+                                (thread.lastMessage?.content || '').toLowerCase().includes(q)
+                              );
+                            })
+                            .map((thread) => {
                             const isSelected = selectedSupportUser?.id === thread.userId;
                             return (
                               <div
@@ -1600,20 +1699,43 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                                     : 'bg-slate-900/40 border-slate-800 text-slate-300 hover:bg-slate-800/60'
                                 }`}
                               >
-                                <img
-                                  src={thread.user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(thread.user?.name || 'U')}&background=random`}
-                                  className="w-10 h-10 rounded-xl object-cover border border-slate-700 shrink-0"
-                                  alt=""
-                                />
+                                <div className="relative shrink-0">
+                                  <img
+                                    src={thread.user?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(thread.user?.name || 'U')}&background=random`}
+                                    className="w-11 h-11 rounded-xl object-cover border border-slate-700 shrink-0"
+                                    alt=""
+                                  />
+                                  <span className={`absolute -bottom-1 -right-1 text-[8px] font-black px-1.5 py-0.2 rounded-full border shadow-sm ${
+                                    thread.user?.role === 'employer'
+                                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                      : 'bg-blue-500/20 text-blue-300 border-blue-500/40'
+                                  }`}>
+                                    {thread.user?.role === 'employer' ? '💼 صاحب عمل' : '👤 باحث'}
+                                  </span>
+                                </div>
+
                                 <div className="flex-1 min-w-0">
-                                  <div className="flex justify-between items-baseline mb-1">
-                                    <p className="text-xs font-black truncate">{thread.user?.name || 'مستخدم'}</p>
+                                  <div className="flex justify-between items-baseline mb-0.5">
+                                    <p className="text-xs font-black truncate text-white">{thread.user?.name || 'مستخدم'}</p>
                                     {thread.unreadCount > 0 && (
-                                      <span className="text-[9px] font-black bg-rose-500 text-white px-1.5 py-0.5 rounded-full shadow-md">
+                                      <span className="text-[9px] font-black bg-rose-500 text-white px-1.5 py-0.5 rounded-full shadow-md shrink-0">
                                         {thread.unreadCount} جديد
                                       </span>
                                     )}
                                   </div>
+
+                                  {/* User UUID snippet & Phone tags */}
+                                  <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                    <span className="text-[9px] font-mono text-cyan-300 bg-cyan-950/70 border border-cyan-800/50 px-1.5 py-0.2 rounded font-bold" title={thread.userId}>
+                                      ID: {thread.userId.slice(0, 8)}...
+                                    </span>
+                                    {thread.user?.phone && (
+                                      <span className="text-[9px] font-bold text-slate-400">
+                                        {thread.user.phone}
+                                      </span>
+                                    )}
+                                  </div>
+
                                   <p className="text-[10px] text-slate-400 truncate font-medium">
                                     {thread.lastMessage?.content || '...'}
                                   </p>
@@ -1630,19 +1752,52 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                       {selectedSupportUser ? (
                         <>
                           {/* Selected User Header */}
-                          <div className="pb-4 mb-4 border-b border-slate-700/50 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
+                          <div className="pb-4 mb-4 border-b border-slate-700/50 flex flex-wrap items-center justify-between gap-3">
+                            <div className="flex items-center gap-3.5 min-w-0">
                               <img
                                 src={selectedSupportUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedSupportUser.name || 'U')}&background=random`}
-                                className="w-11 h-11 rounded-2xl object-cover border border-slate-700 shadow-md"
+                                className="w-12 h-12 rounded-2xl object-cover border border-slate-700 shadow-md shrink-0"
                                 alt=""
                               />
-                              <div>
-                                <h4 className="text-sm font-black text-white">{selectedSupportUser.name || 'مستخدم الدعم'}</h4>
-                                <p className="text-[10px] text-slate-400 font-bold">{selectedSupportUser.phone || selectedSupportUser.email || 'حساب مسجّل'}</p>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="text-sm font-black text-white truncate">{selectedSupportUser.name || 'مستخدم الدعم'}</h4>
+                                  <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black border ${
+                                    selectedSupportUser.role === 'employer'
+                                      ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                                      : 'bg-blue-500/15 text-blue-300 border-blue-500/30'
+                                  }`}>
+                                    {selectedSupportUser.role === 'employer' ? 'صاحب عمل 💼' : 'باحث عن عمل 👤'}
+                                  </span>
+                                </div>
+
+                                <div className="flex items-center gap-3 mt-1 flex-wrap text-[10px] text-slate-400 font-bold">
+                                  {selectedSupportUser.phone && <span>📞 {selectedSupportUser.phone}</span>}
+                                  {selectedSupportUser.email && <span>✉️ {selectedSupportUser.email}</span>}
+                                </div>
+
+                                {/* Full UUID with 1-click Copy button */}
+                                <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                                  <span className="text-[9px] text-slate-400 font-black">المعرّف (ID):</span>
+                                  <code className="text-[10px] font-mono text-cyan-300 bg-slate-900 border border-slate-700/80 px-2 py-0.5 rounded-md select-all">
+                                    {selectedSupportUser.id}
+                                  </code>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(selectedSupportUser.id);
+                                      addToast(`تم نسخ معرف المستخدم (${selectedSupportUser.id.slice(0, 8)}...) بنجاح 📋`, 'success');
+                                    }}
+                                    className="p-1 hover:bg-slate-700/60 rounded text-slate-400 hover:text-white transition-colors"
+                                    title="نسخ المعرف بالكامل"
+                                  >
+                                    <Copy size={13} />
+                                  </button>
+                                </div>
                               </div>
                             </div>
-                            <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black rounded-full">
+
+                            <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black rounded-full flex items-center gap-1.5 shrink-0">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                               محادثة نشطة
                             </span>
                           </div>
