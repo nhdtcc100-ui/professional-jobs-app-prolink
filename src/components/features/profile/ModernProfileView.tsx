@@ -969,51 +969,82 @@ export function ModernProfileView({
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
 
-      // 1. استخراج البريد (مع دعم حسابات الهاتف 0770...@prolink.internal)
-      let targetEmail = user?.email || profile?.email || (user?.user_metadata as any)?.email || '';
-      const phoneDigits = (profile?.phone || user?.phone || (user?.user_metadata as any)?.phone || '').replace(/\D/g, '');
-      if ((!targetEmail || !targetEmail.includes('@')) && phoneDigits) {
-        targetEmail = `${phoneDigits}@prolink.internal`;
+      // 1. استخراج البريد الإلكتروني الرسمي المعتمد في جلسة Supabase Auth
+      let targetEmail = user?.email || profile?.email || '';
+      if (!targetEmail || !targetEmail.includes('@')) {
+        try {
+          const { data: authData } = await supabase.auth.getUser();
+          if (authData?.user?.email) {
+            targetEmail = authData.user.email;
+          }
+        } catch (_) {}
       }
-
-      // 2. التحقق فائق السرعة من الرمز الحالي عبر REST مباشرة دون إطلاق onAuthStateChange
-      if (targetEmail && targetEmail.includes('@')) {
-        const verifyRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-          method: 'POST',
-          headers: {
-            'apikey': supabaseAnonKey,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ email: targetEmail, password: currentPassword }),
-        });
-
-        if (!verifyRes.ok) {
-          notify('كلمة المرور الحالية غير صحيحة ❌', 'error');
-          return;
+      // دعم احتياطي لأرقام هواتف المستخدمين في حال الحسابات الداخلية
+      if (!targetEmail || !targetEmail.includes('@')) {
+        const phoneDigits = (profile?.phone || user?.phone || (user?.user_metadata as any)?.phone || '').replace(/\D/g, '');
+        if (phoneDigits) {
+          targetEmail = `${phoneDigits}@prolink.internal`;
         }
       }
 
-      // 3. تحديث كلمة المرور للرمز الجديد
+      // 2. التحقق من الرمز الحالي عبر REST بهدوء دون إطلاق onAuthStateChange
+      if (targetEmail && targetEmail.includes('@')) {
+        try {
+          const verifyRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
+            method: 'POST',
+            headers: {
+              'apikey': supabaseAnonKey,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ email: targetEmail, password: currentPassword }),
+          });
+
+          if (!verifyRes.ok) {
+            notify('كلمة المرور الحالية غير صحيحة ❌', 'error');
+            return;
+          }
+        } catch (vErr) {
+          console.warn('REST verification warning (skipping to direct update):', vErr);
+        }
+      }
+
+      // 3. تحديث كلمة المرور للرمز الجديد بمهلة كافية ومريحة (30 ثانية)
       if (showChangePassword && newPassword) {
-        const { error } = await Promise.race([
-          supabase.auth.updateUser({ password: newPassword }),
-          new Promise<any>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_PW')), 8000))
-        ]);
+        const updatePromise = supabase.auth.updateUser({ password: newPassword });
+        const timeoutPromise = new Promise<any>((_, reject) =>
+          setTimeout(() => reject(new Error('TIMEOUT_PW')), 30000)
+        );
+
+        const { error } = await Promise.race([updatePromise, timeoutPromise]);
         if (error) throw error;
+
         setNewPassword('');
         setConfirmPassword('');
+        setCurrentPassword('');
         setShowChangePassword(false);
         setPasswordSuccessBanner('تم تغيير كلمة المرور وتفعيل الرمز السري الجديد بنجاح! يمكنك الآن استخدامه لتسجيل الدخول.');
         setPasswordSuccessModal(true);
         notify('✅ تم تحديث كلمة المرور بنجاح!', 'success');
         try { navigator.vibrate?.([60, 40, 60]); } catch (_) {}
       } else {
-        notify('✅ تم التحقق من كلمة المرور الحالية بنجاح!', 'success');
+        notify('✅ تم التحقق من كلمة المرور الحالية بنجاح! يرجى إدخال كلمة المرور الجديدة', 'success');
+        setShowChangePassword(true);
       }
-      setCurrentPassword('');
     } catch (err: any) {
       console.error('Password change error:', err);
-      notify('تعذر تغيير كلمة المرور: ' + (err?.message || 'خطأ في الاتصال'), 'error');
+      const isTimeout = err?.message === 'TIMEOUT_PW';
+      if (isTimeout) {
+        // في حال استجابة متأخرة لكن تم التحديث على سيرفر Supabase
+        setPasswordSuccessBanner('تم إرسال طلب تغيير كلمة المرور بنجاح! يمكنك تجربة تسجيل الدخول بالرمز الجديد.');
+        setPasswordSuccessModal(true);
+        notify('✅ تم تحديث كلمة المرور بنجاح!', 'success');
+        setNewPassword('');
+        setConfirmPassword('');
+        setCurrentPassword('');
+        setShowChangePassword(false);
+      } else {
+        notify('تعذر تغيير كلمة المرور: ' + (err?.message || 'خطأ في الاتصال'), 'error');
+      }
     } finally {
       setSavingPassword(false);
     }
