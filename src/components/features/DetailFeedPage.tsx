@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { motion } from 'motion/react';
 import { 
   ArrowRight, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Briefcase, MapPin, DollarSign, 
@@ -136,7 +136,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
   const [currentIndex, setCurrentIndex] = useState(
     Math.max(0, Math.min(initialIndex, items.length - 1))
   );
-  const [isFeedReady, setIsFeedReady] = useState(initialIndex === 0);
+  const [isFeedReady, setIsFeedReady] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const sectionRefs = useRef<(HTMLElement | null)[]>([]);
 
@@ -169,25 +169,36 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
     return () => observer.disconnect();
   }, [items]);
 
-  // Initial positioning: Instant scroll before revealing feed to eliminate any jumping or visible scrolling
-  useEffect(() => {
-    if (initialIndex > 0) {
-      const el = sectionRefs.current[initialIndex];
-      const root = containerRef.current;
-      if (root && el) {
+  // Initial positioning: Instant jump without any animation or top-feed scrolling before revealing
+  useLayoutEffect(() => {
+    const root = containerRef.current;
+    if (!root) return;
+
+    // Immediately disable smooth scrolling so positioning is 0ms instant without any slide from top
+    root.style.scrollBehavior = 'auto';
+
+    const targetIdx = Math.max(0, Math.min(initialIndex, items.length - 1));
+    const el = sectionRefs.current[targetIdx];
+    if (el) {
+      root.scrollTop = el.offsetTop;
+    }
+
+    const rId = requestAnimationFrame(() => {
+      if (el) {
         root.scrollTop = el.offsetTop;
       }
-      const timer = setTimeout(() => {
-        if (root && el) {
-          root.scrollTop = el.offsetTop;
-        }
-        setIsFeedReady(true);
-      }, 30);
-      return () => clearTimeout(timer);
-    } else {
       setIsFeedReady(true);
-    }
-  }, [initialIndex]);
+
+      // Re-enable smooth scrolling only for subsequent user interactions (arrows/swipes)
+      setTimeout(() => {
+        if (root) {
+          root.style.scrollBehavior = 'smooth';
+        }
+      }, 150);
+    });
+
+    return () => cancelAnimationFrame(rId);
+  }, [initialIndex, items]);
 
   const scrollToItem = (index: number) => {
     if (index >= 0 && index < items.length) {
@@ -334,7 +345,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
       {/* ── Single Continuous Smooth Vertical Feed (No Snapping, Free Browsing) ── */}
       <div
         ref={containerRef}
-        className={`flex-1 overflow-y-auto no-scrollbar overscroll-contain bg-slate-50/50 dark:bg-slate-950 scroll-smooth transition-opacity duration-200 ${isFeedReady ? 'opacity-100' : 'opacity-0'}`}
+        className={`flex-1 overflow-y-auto no-scrollbar overscroll-contain bg-slate-50/50 dark:bg-slate-950 transition-opacity duration-150 ${isFeedReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         style={{
           overscrollBehaviorY: 'contain',
           WebkitOverflowScrolling: 'touch' as any,

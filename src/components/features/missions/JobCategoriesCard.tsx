@@ -220,7 +220,7 @@ export const JobCategoriesCard: React.FC<JobCategoriesCardProps> = ({
 
         {/* ── Active Filter Announcement Bar ── */}
         <AnimatePresence>
-          {selectedCategory !== 'الكل' && (
+          {selectedCategory !== 'الكل' && selectedCategory !== 'services' && (
             <motion.div
               initial={{ opacity: 0, height: 0, marginTop: 0 }}
               animate={{ opacity: 1, height: 'auto', marginTop: 10 }}
