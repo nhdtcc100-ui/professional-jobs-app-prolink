@@ -11,6 +11,7 @@ import {
   Loader2,
   FileText
 } from 'lucide-react';
+import { CalligraphyBg } from '../ui/CalligraphyBg';
 import { Post } from '../../types';
 import { safeTimeAgo } from '../../lib/utils/formatDate';
 import { useAppContext } from '../../contexts/AppContext';
@@ -187,6 +188,8 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
             : 'border-slate-100 dark:border-slate-800 hover:border-blue-500/50'
         } shadow-sm hover:shadow-xl transition-all overflow-hidden cursor-pointer metal-watermark`}
       >
+        {/* خلفية خط ديواني */}
+        <CalligraphyBg word={isArticle ? 'خبر' : 'نشر'} size="5.5rem" opacity={0.05} position="bottom-right" />
         {/* Visual Indicator (Gradient Bar) */}
         <div className={`absolute top-0 right-0 bottom-0 w-1.5 ${
           isArticle 

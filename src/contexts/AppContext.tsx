@@ -793,11 +793,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAppUser(null);
     setPosts([]);
     setJobs([]);
+    setAllUsers([]);
+    setMessages([]);
+    setNotifications([]);
     setNeedsRole(false);
     setAuthMode('login');
+
+    // حفظ الثيم قبل المسح ثم استعادته
+    let savedTheme: string | null = null;
+    try { savedTheme = localStorage.getItem('prolink_theme'); } catch (_) {}
     try {
       localStorage.clear();
       sessionStorage.clear();
+      if (savedTheme) localStorage.setItem('prolink_theme', savedTheme);
     } catch (e) {}
     addToast('تم تسجيل الخروج بنجاح 👋', 'success');
 
@@ -1586,6 +1594,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       const u = session?.user || null;
       setUser(u as any);
+
+      // ── مسح كاش المستخدم القديم فوراً إذا تسجّل مستخدم مختلف ──
+      if (u) {
+        try {
+          const cachedRaw = localStorage.getItem('prolink_cached_user');
+          if (cachedRaw) {
+            const cachedId = JSON.parse(cachedRaw)?.id;
+            if (cachedId && cachedId !== u.id) {
+              // مستخدم مختلف — امسح كل كاش المستخدم القديم فوراً
+              const savedTheme = localStorage.getItem('prolink_theme');
+              localStorage.clear();
+              if (savedTheme) localStorage.setItem('prolink_theme', savedTheme);
+              sessionStorage.clear();
+              // إعادة تهيئة الحالة
+              setAllUsers([]);
+              setMessages([]);
+              setNotifications([]);
+              setPosts([]);
+              setJobs([]);
+            }
+          }
+        } catch (_) {}
+      }
 
       if (u) {
         if (!isInitialized) setLoading(true);

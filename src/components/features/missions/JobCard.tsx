@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   MapPin, DollarSign, Clock, ArrowLeft, Building2, 
@@ -8,6 +8,8 @@ import {
 import { Job, AppUser } from '../../../types';
 import { useAppContext } from '../../../contexts/AppContext';
 import { safeTimeAgo } from '../../../lib/utils/formatDate';
+import { CalligraphyBg } from '../../ui/CalligraphyBg';
+import { CalligraphyBg } from '../../ui/CalligraphyBg';
 import { supabase } from '../../../lib/supabase';
 import { getJobCategory, cleanJobDescription } from '../../../lib/utils/jobCategoryUtils';
 
@@ -138,6 +140,7 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
         onClick={() => onClick(job)}
         className={`group bg-white dark:bg-slate-800/90 border rounded-[1.5rem] overflow-hidden cursor-pointer transition-all duration-300 active:scale-[0.99] flex items-center p-3 gap-4 border-slate-100 dark:border-slate-700 hover:shadow-md hover:border-blue-100 dark:hover:border-blue-900 metal-watermark ${!isActive && 'opacity-70'}`}
       >
+        <CalligraphyBg word="وظيفة" size="4.5rem" opacity={0.05} position="bottom-right" />
         <div className="w-12 h-12 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden bg-slate-50 dark:bg-slate-900 shrink-0">
           <img src={avatarUrl} alt={job.company} className="w-full h-full object-cover" />
         </div>

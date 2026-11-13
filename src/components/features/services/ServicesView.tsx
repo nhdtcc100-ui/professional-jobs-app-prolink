@@ -141,6 +141,20 @@ const ServiceCard: React.FC<{
   );
 };
 
+// ── بيانات تصنيفات الخدمات ─────────────────────────────────────────────────
+const SERVICE_CATEGORIES = [
+  { id: 'electric',  label: 'كهربائي',   search: 'كهربائي',  calligraphy: 'نور',   icon: '⚡', grad: ['#F59E0B','#D97706'], deco: ['💡','🔌'] },
+  { id: 'plumber',   label: 'سباك',      search: 'سباك',     calligraphy: 'ماء',   icon: '🔧', grad: ['#3B82F6','#0891B2'], deco: ['💧','🚿'] },
+  { id: 'carpenter', label: 'نجار',      search: 'نجار',     calligraphy: 'خشب',   icon: '🪵', grad: ['#92400E','#B45309'], deco: ['🪚','🔨'] },
+  { id: 'painter',   label: 'دهان',      search: 'دهان',     calligraphy: 'لون',   icon: '🖌️', grad: ['#EC4899','#F43F5E'], deco: ['🎨','✏️'] },
+  { id: 'builder',   label: 'بنّاء',    search: 'بناء',     calligraphy: 'بناء',  icon: '🧱', grad: ['#EA580C','#DC2626'], deco: ['⚒️','🏗️'] },
+  { id: 'mechanic',  label: 'ميكانيكي', search: 'ميكانيكي', calligraphy: 'آلة',   icon: '🔩', grad: ['#475569','#374151'], deco: ['⚙️','🛠️'] },
+  { id: 'ac',        label: 'تكييف',    search: 'تكييف',    calligraphy: 'هواء',  icon: '❄️', grad: ['#0EA5E9','#2563EB'], deco: ['🌬️','🌡️'] },
+  { id: 'barber',    label: 'حلاق',     search: 'حلاق',     calligraphy: 'جمال',  icon: '✂️', grad: ['#8B5CF6','#7C3AED'], deco: ['💈','🪒'] },
+  { id: 'welder',    label: 'حدّاد',   search: 'حداد',     calligraphy: 'حديد',  icon: '⛓️', grad: ['#B91C1C','#92400E'], deco: ['🔥','⚒️'] },
+  { id: 'kitchen',   label: 'مطبخ',    search: 'مطبخ',     calligraphy: 'طعام',  icon: '🍳', grad: ['#059669','#0D9488'], deco: ['🥘','🫕'] },
+];
+
 // ── المكون الرئيسي ─────────────────────────────────────────────────────────
 export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick, onRequireAuth }) => {
   const [searchTitle, setSearchTitle] = useState('');
@@ -393,6 +407,77 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
             </button>
           );
         })}
+      </div>
+
+      {/* ── بطاقات تصنيفات الخدمات ── */}
+      <div className="overflow-x-auto pb-1 -mx-0.5 px-0.5 scrollbar-none" dir="rtl">
+        <div className="flex gap-2.5 w-max py-0.5">
+          {SERVICE_CATEGORIES.map((cat) => {
+            const isSelected = searchTitle === cat.search;
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => {
+                  const nextVal = isSelected ? '' : cat.search;
+                  if (debounceRef.current) clearTimeout(debounceRef.current);
+                  setSearchTitle(nextVal);
+                  startTransition(() => {
+                    setDebouncedTitle(nextVal);
+                    setPage(0);
+                  });
+                }}
+                className={`relative flex-shrink-0 w-[86px] h-[82px] rounded-2xl overflow-hidden transition-all duration-200 active:scale-95 ${
+                  isSelected
+                    ? 'ring-2 ring-white/80 shadow-xl scale-105'
+                    : 'opacity-80 hover:opacity-100 hover:scale-[1.03]'
+                }`}
+                style={{
+                  background: `linear-gradient(135deg, ${cat.grad[0]}, ${cat.grad[1]})`,
+                }}
+              >
+                {/* كلمة الخط الديواني - مفرغة شفافة */}
+                <div
+                  className="absolute inset-0 flex items-center justify-center overflow-hidden select-none pointer-events-none"
+                  aria-hidden="true"
+                >
+                  <span
+                    style={{
+                      fontFamily: "'Scheherazade New', 'Traditional Arabic', 'Amiri', 'Noto Naskh Arabic', serif",
+                      fontSize: '2.8rem',
+                      fontWeight: 900,
+                      WebkitTextStroke: '1.5px rgba(255,255,255,0.3)',
+                      WebkitTextFillColor: 'transparent',
+                      lineHeight: 1,
+                      userSelect: 'none',
+                      whiteSpace: 'nowrap',
+                      letterSpacing: '-0.02em',
+                    } as React.CSSProperties}
+                  >
+                    {cat.calligraphy}
+                  </span>
+                </div>
+
+                {/* أيقونات زخرفية صغيرة بالزوايا */}
+                <span className="absolute top-1 right-1.5 text-[9px] opacity-40 select-none pointer-events-none" aria-hidden="true">{cat.deco[0]}</span>
+                <span className="absolute top-1 left-1.5 text-[9px] opacity-40 select-none pointer-events-none" aria-hidden="true">{cat.deco[1]}</span>
+
+                {/* المحتوى الرئيسي */}
+                <div className="relative z-10 flex flex-col items-center justify-end h-full pb-2.5 gap-0.5">
+                  <span className="text-[1.6rem] leading-none drop-shadow-sm">{cat.icon}</span>
+                  <span className="text-white font-black text-[9px] mt-0.5 drop-shadow text-center leading-tight px-1">
+                    {cat.label}
+                  </span>
+                </div>
+
+                {/* طبقة توهج عند التحديد */}
+                {isSelected && (
+                  <div className="absolute inset-0 bg-white/20 backdrop-blur-[0.5px]" />
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* نتائج البحث */}

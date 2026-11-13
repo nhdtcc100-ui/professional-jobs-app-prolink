@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Phone, Lock, User, ArrowRight, ShieldCheck, Sparkles, CheckCircle, AlertCircle, Wrench, Building2, MapPin, FileQuestion } from "lucide-react";
 import { GlassCard } from "../ui";
+import { CalligraphyBg } from "../ui/CalligraphyBg";
 import { authService, unifiedAuth } from "../../lib/services/authService";
 import { detectIdentifierType, checkPasswordStrength, sanitizeInput, validateName } from "../../lib/security/inputValidator";
 import { supabase } from "../../lib/supabase";
@@ -188,8 +189,14 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, handleGoogleLogin
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-400/15 dark:bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-10 right-10 w-[350px] h-[350px] bg-indigo-400/15 dark:bg-indigo-600/10 rounded-full blur-[100px] pointer-events-none" />
 
+      {/* خلفية خط ديواني للصفحة كاملة */}
+      <CalligraphyBg word="تواصل" size="14rem" opacity={0.04} position="top-right" />
+      <CalligraphyBg word="فرصة" size="12rem" opacity={0.035} position="bottom-left" />
+
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md z-10">
-        <GlassCard className="p-8 rounded-3xl backdrop-blur-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xl shadow-blue-950/5 bg-white/90 dark:bg-slate-900/95 text-slate-800 dark:text-white">
+        <GlassCard className="p-8 rounded-3xl backdrop-blur-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xl shadow-blue-950/5 bg-white/90 dark:bg-slate-900/95 text-slate-800 dark:text-white relative overflow-hidden">
+          {/* خلفية خط ديواني داخل الكارد */}
+          <CalligraphyBg word="دخول" size="8rem" opacity={0.045} position="bottom-right" color="#6366f1" />
           <div className="text-center mb-6">
             <div className="w-14 h-14 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-blue-500/25 border border-white/20">
               <ShieldCheck className="w-8 h-8 text-white" />

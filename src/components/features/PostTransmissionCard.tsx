@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   MessageCircle, 
@@ -16,6 +16,7 @@ import { sanitizeInput } from '../../lib/security/inputValidator';
 import { useAppContext } from '../../contexts/AppContext';
 import { BilingualSmartText } from '../../lib/utils/bilingualText';
 import { canUserPostAndInteract } from '../../lib/utils/roleUtils';
+import { CalligraphyBg } from '../ui/CalligraphyBg';
 
 // Helper component to format text with clickable links and phone numbers
 const FormattedText = ({ text, className }: { text: string, className?: string }) => {
@@ -240,6 +241,8 @@ export function PostTransmissionCard({
       transition={{ delay }}
       className="bg-white dark:bg-[#0f172a] border border-slate-100 dark:border-slate-800 shadow-[0_10px_30px_rgba(0,0,0,0.04)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] rounded-[2.5rem] overflow-hidden group mb-6 transition-all duration-500 hover:shadow-[0_40px_80px_rgba(10,102,194,0.12)] hover:-translate-y-1.5"
     >
+      {/* خلفية خط ديواني */}
+      <CalligraphyBg word="نشر" size="6rem" opacity={0.05} position="bottom-right" />
       {/* 🔁 Echo / Repost banner */}
       {(post as any).isEcho && (
         <div className="flex items-center gap-2 px-6 pt-4 pb-2 border-b border-slate-100 dark:border-slate-800">
