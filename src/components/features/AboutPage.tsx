@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ShieldCheck,
@@ -15,6 +15,7 @@ import {
   Building2,
   ChevronLeft,
   ChevronRight,
+  Scale,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppContext } from '../../contexts/AppContext';
@@ -59,7 +60,7 @@ const SUPPORT_TABLE = 'support_messages';
 ───────────────────────────────────────────────────────────── */
 export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
   const { allUsers = [] } = useAppContext();
-  type Tab = 'overview' | 'terms' | 'privacy' | 'support';
+  type Tab = 'overview' | 'terms' | 'labor' | 'privacy' | 'support';
   const [activeTab, setActiveTab] = useState<Tab>('overview');
 
   /* ── Support chat state ────────────────────────────────── */
@@ -297,6 +298,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
   const TABS = [
     { id: 'overview' as Tab, label: 'عن المنصة',         icon: Building2 },
     { id: 'terms'    as Tab, label: 'شروط الاستخدام',    icon: FileText },
+    { id: 'labor'    as Tab, label: 'قانون العمل',        icon: Scale },
     { id: 'privacy'  as Tab, label: 'الخصوصية',          icon: Lock },
     { id: 'support'  as Tab, label: 'الدعم',             icon: HeadphonesIcon },
   ];
@@ -422,6 +424,179 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
             </div>
           )}
 
+          {/* ══ LABOR LAW ══ */}
+          {activeTab === 'labor' && (
+            <div className="space-y-4" dir="rtl">
+              {/* رأس القسم */}
+              <div className="bg-gradient-to-br from-emerald-600 to-teal-700 rounded-[2rem] p-6 text-white relative overflow-hidden">
+                <div className="absolute -left-8 -bottom-8 w-40 h-40 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+                <div className="relative z-10">
+                  <div className="flex items-center gap-3 mb-2">
+                    <div className="w-10 h-10 bg-white/20 rounded-2xl flex items-center justify-center">
+                      <Scale size={20} className="text-white" />
+                    </div>
+                    <div>
+                      <h3 className="font-black text-lg leading-tight">قانون العمل العراقي</h3>
+                      <p className="text-emerald-100 text-[11px] font-bold">رقم 37 لسنة 2015 — أبرز المواد والأحكام</p>
+                    </div>
+                  </div>
+                  <p className="text-emerald-50 text-xs font-medium leading-relaxed">
+                    هذا ملخص للمواد الأساسية التي تنظم علاقة العمل في جمهورية العراق. يُرجى الرجوع إلى النص الرسمي للقانون لأغراض قانونية رسمية.
+                  </p>
+                </div>
+              </div>
+
+              {/* الباب الأول */}
+              <div className="bg-white dark:bg-slate-800 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-700 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-7 h-7 bg-blue-100 dark:bg-blue-900/40 rounded-xl flex items-center justify-center">
+                    <span className="text-blue-600 dark:text-blue-400 text-[10px] font-black">١</span>
+                  </div>
+                  <h4 className="font-black text-slate-800 dark:text-white text-sm">الباب الأول: نطاق السريان والمبادئ الأساسية</h4>
+                </div>
+                {[
+                  {
+                    art: 'المادة (2)',
+                    text: 'تسري أحكام هذا القانون على جميع العمال في جمهورية العراق. لا تسري على: الموظفين العموميين المعينين وفق قانون الخدمة المدنية، وأفراد القوات المسلحة ومنتسبي الشرطة والأمن الداخلي.',
+                    color: 'blue',
+                  },
+                  {
+                    art: 'المادة (4)',
+                    text: 'العمل حق لكل مواطن قادر عليه، وتعمل الدولة على توفيره على أساس تكافؤ الفرص دون أي نوع من أنواع التمييز.',
+                    color: 'blue',
+                  },
+                  {
+                    art: 'المادة (5)',
+                    text: 'يُحظر العمل الجبري أو الإلزامي بكافة أشكاله. لا يُعدّ جبرياً: الأعمال المفروضة بحكم قضائي تحت إشراف السلطات العامة، والواجبات المدنية الاعتيادية، وأعمال حالات الطوارئ.',
+                    color: 'blue',
+                  },
+                  {
+                    art: 'المادة (7)',
+                    text: 'يُحدد الحد الأدنى لسن العمل بعمر (15) خمس عشرة سنة.',
+                    color: 'amber',
+                  },
+                  {
+                    art: 'المادة (8)',
+                    text: 'يُحظر التمييز في الاستخدام والمهنة على أساس العرق أو اللون أو الجنس أو الدين أو المعتقد أو الرأي السياسي أو الأصل القومي أو الاجتماعي.',
+                    color: 'red',
+                  },
+                  {
+                    art: 'المادتان (10) و(11)',
+                    text: 'يُحظر التحرش الجنسي في مكان العمل، ومنع خلق بيئة عمل ترهيبية أو عدائية أو مهينة.',
+                    color: 'red',
+                  },
+                ].map(item => (
+                  <div key={item.art} className={`border-r-2 border-${item.color}-300 dark:border-${item.color}-700 pr-4 py-1`}>
+                    <span className={`inline-block text-[10px] font-black text-${item.color}-600 dark:text-${item.color}-400 bg-${item.color}-50 dark:bg-${item.color}-900/30 px-2 py-0.5 rounded-full mb-1.5`}>{item.art}</span>
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-relaxed">{item.text}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* عقود العمل */}
+              <div className="bg-white dark:bg-slate-800 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-700 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-7 h-7 bg-indigo-100 dark:bg-indigo-900/40 rounded-xl flex items-center justify-center">
+                    <span className="text-indigo-600 dark:text-indigo-400 text-[10px] font-black">٢</span>
+                  </div>
+                  <h4 className="font-black text-slate-800 dark:text-white text-sm">عقود العمل والتزامات الطرفين</h4>
+                </div>
+                {[
+                  {
+                    art: 'المادة (37)',
+                    text: 'يُبرم عقد العمل شفوياً أو تحريرياً باتفاق الطرفين. إذا كان مكتوباً يُنظَّم بثلاث نسخ. لا يجوز تحديد مدة للعقد في الأعمال ذات الطبيعة المستمرة. يتمتع العامل بعقد محدد المدة بنفس حقوق العقد الدائم. يُعدّ العقد غير محدد المدة إذا جُدِّد أكثر من مرة.',
+                    color: 'indigo',
+                  },
+                  {
+                    art: 'المادة (41) — التزامات صاحب العمل',
+                    text: 'توفير بيئة عمل آمنة وصحية، دفع الأجور في مواعيدها، واحترام كرامة العامل وعدم الإساءة إليه.',
+                    color: 'indigo',
+                  },
+                  {
+                    art: 'المادة (42) — حقوق العامل',
+                    text: 'تقاضي الأجر العادل، التمتع بفترات الراحة اليومية والأسبوعية، والعمل في بيئة خالية من التحرش والتمييز.',
+                    color: 'indigo',
+                  },
+                  {
+                    art: 'المادة (43) — التزامات العامل',
+                    text: 'أداء الواجبات بدقة وأمانة، الحفاظ على ممتلكات العمل، عدم إفشاء الأسرار، والالتزام بقواعد الصحة والسلامة المهنية.',
+                    color: 'indigo',
+                  },
+                ].map(item => (
+                  <div key={item.art} className={`border-r-2 border-${item.color}-300 dark:border-${item.color}-700 pr-4 py-1`}>
+                    <span className={`inline-block text-[10px] font-black text-${item.color}-600 dark:text-${item.color}-400 bg-${item.color}-50 dark:bg-${item.color}-900/30 px-2 py-0.5 rounded-full mb-1.5`}>{item.art}</span>
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-relaxed">{item.text}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* ساعات العمل والإجازات */}
+              <div className="bg-white dark:bg-slate-800 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-700 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-7 h-7 bg-amber-100 dark:bg-amber-900/40 rounded-xl flex items-center justify-center">
+                    <span className="text-amber-600 dark:text-amber-400 text-[10px] font-black">٣</span>
+                  </div>
+                  <h4 className="font-black text-slate-800 dark:text-white text-sm">ساعات العمل والأجور والإجازات</h4>
+                </div>
+                {[
+                  {
+                    art: 'المادة (66) وما بعدها',
+                    text: 'تحديد ساعات العمل اليومية والأسبوعية بحد أقصى 48 ساعة أسبوعياً، وتنظيم العمل النهاري والليلي والمختلط.',
+                    color: 'amber',
+                  },
+                  {
+                    art: 'المادة (81) وما بعدها — الإجازات',
+                    text: 'حق العامل في الإجازات السنوية المأجورة مع زيادة تدريجية بمرور سنوات الخدمة. الإجازات الخاصة: الزواج، والوفاة، والأعياد الرسمية والدينية.',
+                    color: 'amber',
+                  },
+                ].map(item => (
+                  <div key={item.art} className={`border-r-2 border-${item.color}-300 dark:border-${item.color}-700 pr-4 py-1`}>
+                    <span className={`inline-block text-[10px] font-black text-${item.color}-600 dark:text-${item.color}-400 bg-${item.color}-50 dark:bg-${item.color}-900/30 px-2 py-0.5 rounded-full mb-1.5`}>{item.art}</span>
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-relaxed">{item.text}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* حماية المرأة */}
+              <div className="bg-white dark:bg-slate-800 rounded-[2rem] p-6 border border-slate-100 dark:border-slate-700 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-7 h-7 bg-pink-100 dark:bg-pink-900/40 rounded-xl flex items-center justify-center">
+                    <span className="text-pink-600 dark:text-pink-400 text-[10px] font-black">٤</span>
+                  </div>
+                  <h4 className="font-black text-slate-800 dark:text-white text-sm">حماية المرأة العاملة</h4>
+                </div>
+                {[
+                  {
+                    art: 'المادة (85)',
+                    text: 'يُحظر إرغام المرأة الحامل أو المرضع على أداء عمل إضافي أو أي عمل تعده الجهة الصحية مضراً بصحة الأم أو الطفل.',
+                    color: 'pink',
+                  },
+                  {
+                    art: 'المادة (86)',
+                    text: 'تنظيم ضوابط تشغيل المرأة في العمل الليلي والقيود المفروضة، ومنحها فترة راحة يومية متواصلة لا تقل عن (11) ساعة.',
+                    color: 'pink',
+                  },
+                  {
+                    art: 'المادتان (87) و(88)',
+                    text: 'إجازات الحمل والوضع والرضاعة وشروطها والأجر خلالها لحماية حقوق الأمومة العاملة.',
+                    color: 'pink',
+                  },
+                ].map(item => (
+                  <div key={item.art} className={`border-r-2 border-${item.color}-300 dark:border-${item.color}-700 pr-4 py-1`}>
+                    <span className={`inline-block text-[10px] font-black text-${item.color}-600 dark:text-${item.color}-400 bg-${item.color}-50 dark:bg-${item.color}-900/30 px-2 py-0.5 rounded-full mb-1.5`}>{item.art}</span>
+                    <p className="text-xs font-medium text-slate-600 dark:text-slate-300 leading-relaxed">{item.text}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* تذييل */}
+              <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-[1.5rem] p-4 border border-emerald-100 dark:border-emerald-900/40 text-center">
+                <p className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300 leading-relaxed">
+                  ⚖️ هذا الملخص لأغراض توعوية فقط — للاستشارات القانونية الرجاء التواصل مع محامٍ مختص أو الجهات العمالية الرسمية.
+                </p>
+              </div>
+            </div>
+          )}
           {/* ══ PRIVACY ══ */}
           {activeTab === 'privacy' && (
             <div className="bg-white dark:bg-slate-800 rounded-[2rem] p-8 space-y-5 border border-slate-100 dark:border-slate-700 shadow-sm">
