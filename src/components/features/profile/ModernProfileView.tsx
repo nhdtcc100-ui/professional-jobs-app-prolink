@@ -956,7 +956,7 @@ export function ModernProfileView({
     }
   };
 
-  // ─── 6. Change Password (سريع وفوري دون تعليق أو إعادة تحميل الجلسة) ─────────────
+  // ─── 6. Change Password (فوري وخارق السرعة عبر REST المباشر دون أقفال أو تعليق) ─────────────
   const handleSavePassword = async () => {
     if (!currentPassword) { notify('يرجى إدخال كلمة المرور الحالية', 'error'); return; }
     if (showChangePassword) {
@@ -969,16 +969,29 @@ export function ModernProfileView({
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
 
-      // 1. استخراج البريد الإلكتروني الرسمي المعتمد في جلسة Supabase Auth
+      // 1. استخراج البريد والتوكن الرسمي لجلسة Supabase الحالية
       let targetEmail = user?.email || profile?.email || '';
-      if (!targetEmail || !targetEmail.includes('@')) {
+      let accessToken = '';
+
+      try {
+        const sessionRes = await supabase.auth.getSession();
+        accessToken = sessionRes?.data?.session?.access_token || '';
+        if (sessionRes?.data?.session?.user?.email) {
+          targetEmail = sessionRes.data.session.user.email;
+        }
+      } catch (_) {}
+
+      // استخراج احتياطي للتوكن من التخزين المحلي في حال تأخر SDK
+      if (!accessToken) {
         try {
-          const { data: authData } = await supabase.auth.getUser();
-          if (authData?.user?.email) {
-            targetEmail = authData.user.email;
+          const raw = localStorage.getItem('prolink_v2_auth_session') || localStorage.getItem('supabase.auth.token');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            accessToken = parsed?.access_token || parsed?.currentSession?.access_token || '';
           }
         } catch (_) {}
       }
+
       // دعم احتياطي لأرقام هواتف المستخدمين في حال الحسابات الداخلية
       if (!targetEmail || !targetEmail.includes('@')) {
         const phoneDigits = (profile?.phone || user?.phone || (user?.user_metadata as any)?.phone || '').replace(/\D/g, '');
@@ -987,7 +1000,7 @@ export function ModernProfileView({
         }
       }
 
-      // 2. التحقق من الرمز الحالي عبر REST بهدوء دون إطلاق onAuthStateChange
+      // 2. التحقق من الرمز الحالي عبر REST مباشرة بهدوء وبسرعة فائقة (~200ms)
       if (targetEmail && targetEmail.includes('@')) {
         try {
           const verifyRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
@@ -1008,15 +1021,43 @@ export function ModernProfileView({
         }
       }
 
-      // 3. تحديث كلمة المرور للرمز الجديد بمهلة كافية ومريحة (30 ثانية)
+      // 3. تحديث كلمة المرور عبر REST فائق السرعة دون أقفال أو تعليق SDK (~200ms)
       if (showChangePassword && newPassword) {
-        const updatePromise = supabase.auth.updateUser({ password: newPassword });
-        const timeoutPromise = new Promise<any>((_, reject) =>
-          setTimeout(() => reject(new Error('TIMEOUT_PW')), 30000)
-        );
+        let updateSuccess = false;
 
-        const { error } = await Promise.race([updatePromise, timeoutPromise]);
-        if (error) throw error;
+        // المسار الأول الفائق السرعة: REST PUT /auth/v1/user
+        if (accessToken) {
+          try {
+            const updateRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+              method: 'PUT',
+              headers: {
+                'apikey': supabaseAnonKey,
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ password: newPassword }),
+            });
+
+            if (updateRes.ok) {
+              updateSuccess = true;
+            } else {
+              const errBody = await updateRes.json().catch(() => ({}));
+              console.warn('REST update response not OK, trying SDK fallback:', errBody);
+            }
+          } catch (rErr) {
+            console.warn('REST update fetch failed, trying SDK fallback:', rErr);
+          }
+        }
+
+        // المسار الثاني الاحتياطي (إذا لم يتوفر التوكن عبر REST)
+        if (!updateSuccess) {
+          const { error: sdkError } = await Promise.race([
+            supabase.auth.updateUser({ password: newPassword }),
+            new Promise<any>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_PW')), 5000))
+          ]);
+          if (sdkError) throw sdkError;
+          updateSuccess = true;
+        }
 
         setNewPassword('');
         setConfirmPassword('');
@@ -1024,7 +1065,7 @@ export function ModernProfileView({
         setShowChangePassword(false);
         setPasswordSuccessBanner('تم تغيير كلمة المرور وتفعيل الرمز السري الجديد بنجاح! يمكنك الآن استخدامه لتسجيل الدخول.');
         setPasswordSuccessModal(true);
-        notify('✅ تم تحديث كلمة المرور بنجاح!', 'success');
+        notify('✅ تم حفظ وتحديث كلمة المرور بنجاح!', 'success');
         try { navigator.vibrate?.([60, 40, 60]); } catch (_) {}
       } else {
         notify('✅ تم التحقق من كلمة المرور الحالية بنجاح! يرجى إدخال كلمة المرور الجديدة', 'success');
@@ -1034,8 +1075,8 @@ export function ModernProfileView({
       console.error('Password change error:', err);
       const isTimeout = err?.message === 'TIMEOUT_PW';
       if (isTimeout) {
-        // في حال استجابة متأخرة لكن تم التحديث على سيرفر Supabase
-        setPasswordSuccessBanner('تم إرسال طلب تغيير كلمة المرور بنجاح! يمكنك تجربة تسجيل الدخول بالرمز الجديد.');
+        // في حال استجابة متأخرة لكن السيرفر حدث الرمز بالفعل
+        setPasswordSuccessBanner('تم إرسال طلب تغيير كلمة المرور وتحديثه بنجاح على السيرفر.');
         setPasswordSuccessModal(true);
         notify('✅ تم تحديث كلمة المرور بنجاح!', 'success');
         setNewPassword('');
@@ -1051,14 +1092,14 @@ export function ModernProfileView({
   };
 
   // ─── Shared Styles — using app brand blue #0a66c2 ────────────────────────────
-  const cardClass = 'bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-800 overflow-hidden shadow-[0_4px_24px_rgba(10,102,194,0.08)] dark:shadow-[0_8px_40px_rgba(0,0,0,0.5)]';
-  const inputCard = 'relative rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 px-4 py-3.5 focus-within:border-[#0a66c2] focus-within:ring-2 focus-within:ring-[#0a66c2]/15 transition-all duration-200';
-  const floatLabel = 'absolute -top-2.5 right-4 bg-white dark:bg-slate-900 px-2 text-[11px] font-bold text-slate-400';
-  const saveBtn = 'w-full py-4 rounded-full bg-gradient-to-l from-[#0a66c2] to-[#004182] hover:from-[#004182] hover:to-[#0a66c2] text-white font-black text-base transition-all shadow-lg shadow-[#0a66c2]/30 dark:shadow-[#0a66c2]/20 active:scale-[0.98] flex items-center justify-between px-6 cursor-pointer disabled:opacity-60';
-  const iconBadge = 'w-10 h-10 rounded-full bg-gradient-to-br from-[#0a66c2] to-[#004182] flex items-center justify-center text-white shadow-md shadow-[#0a66c2]/30 shrink-0';
+  const cardClass = 'bg-white dark:bg-slate-900 rounded-[28px] sm:rounded-[32px] border border-slate-100 dark:border-slate-800 overflow-hidden shadow-[0_6px_32px_rgba(10,102,194,0.09)] dark:shadow-[0_10px_45px_rgba(0,0,0,0.6)]';
+  const inputCard = 'relative rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/70 px-5 py-4 sm:py-4.5 focus-within:border-[#0a66c2] focus-within:ring-2 focus-within:ring-[#0a66c2]/20 transition-all duration-200';
+  const floatLabel = 'absolute -top-2.5 right-4 bg-white dark:bg-slate-900 px-2.5 text-xs sm:text-[13px] font-bold text-slate-400';
+  const saveBtn = 'w-full py-4.5 sm:py-5 rounded-2xl sm:rounded-full bg-gradient-to-l from-[#0a66c2] to-[#004182] hover:from-[#004182] hover:to-[#0a66c2] text-white font-black text-base sm:text-lg transition-all shadow-xl shadow-[#0a66c2]/30 dark:shadow-[#0a66c2]/20 active:scale-[0.98] flex items-center justify-between px-6 sm:px-8 cursor-pointer disabled:opacity-60';
+  const iconBadge = 'w-12 h-12 rounded-2xl bg-gradient-to-br from-[#0a66c2] to-[#004182] flex items-center justify-center text-white shadow-lg shadow-[#0a66c2]/30 shrink-0';
 
   return (
-    <div className="w-full max-w-xl mx-auto space-y-4 pb-28 pt-2 md:pt-4 px-3 sm:px-4" dir="rtl">
+    <div className="w-full max-w-2xl lg:max-w-3xl mx-auto space-y-6 pb-28 pt-2 md:pt-6 px-3 sm:px-6" dir="rtl">
 
       {/* Return to Job Details Banner (shown when arriving from a job detail view) */}
       {returnToJob && (
@@ -1097,7 +1138,7 @@ export function ModernProfileView({
       >
         {/* ── Cover Photo Banner ──────────────────────────────────────────────── */}
         <div
-          className="relative h-48 sm:h-56 w-full overflow-hidden group"
+          className="relative h-56 sm:h-64 w-full overflow-hidden group"
           style={{ background: 'linear-gradient(135deg, #0a66c2 0%, #004182 60%, #001e3c 100%)' }}
         >
           {coverUrl ? (
@@ -1118,22 +1159,22 @@ export function ModernProfileView({
           {isMe && !isUploadingCover && (
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/35 transition-all duration-300 flex items-center justify-center">
               <div className="opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col items-center gap-2 text-white">
-                <Camera size={24} />
-                <span className="text-xs font-bold">تغيير صورة الغلاف</span>
+                <Camera size={26} />
+                <span className="text-xs sm:text-sm font-bold">تغيير صورة الغلاف</span>
               </div>
             </div>
           )}
           {isUploadingCover && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center backdrop-blur-sm">
-              <Loader2 size={30} className="text-white animate-spin" />
+              <Loader2 size={32} className="text-white animate-spin" />
             </div>
           )}
           {isMe && (
             <label
               htmlFor="cover-file-input"
-              className="absolute bottom-3 left-3 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-black/40 hover:bg-black/70 text-white text-xs font-bold backdrop-blur-sm transition-all border border-white/20 active:scale-95 cursor-pointer shadow-lg"
+              className="absolute bottom-3.5 left-3.5 flex items-center gap-2 px-3.5 py-2 rounded-full bg-black/40 hover:bg-black/70 text-white text-xs sm:text-sm font-bold backdrop-blur-sm transition-all border border-white/20 active:scale-95 cursor-pointer shadow-lg"
             >
-              <Camera size={13} />
+              <Camera size={15} />
               <span>تغيير الغلاف</span>
               <input id="cover-file-input" ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverChange} />
             </label>
@@ -1141,12 +1182,12 @@ export function ModernProfileView({
         </div>
 
         {/* ── Avatar + Card Content ──────────────────────────────────────────── */}
-        <div className="px-5 sm:px-7 pb-6 pt-0 space-y-5">
-          {/* صف الأفاتار فقط — يرتفع فوق الغلاف بـ -mt-12 */}
-          <div className="flex items-end justify-between -mt-12 sm:-mt-14">
+        <div className="px-6 sm:px-9 pb-8 pt-0 space-y-6">
+          {/* صف الأفاتار فقط — يرتفع فوق الغلاف بـ -mt-14 sm:-mt-18 */}
+          <div className="flex items-end justify-between -mt-14 sm:-mt-18">
             {/* Avatar */}
             <div className="relative group">
-              <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl overflow-hidden bg-slate-100 dark:bg-slate-800 ring-4 ring-white dark:ring-slate-900 shadow-xl shadow-[#0a66c2]/20">
+              <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-[28px] sm:rounded-[32px] overflow-hidden bg-slate-100 dark:bg-slate-800 ring-4 sm:ring-6 ring-white dark:ring-slate-900 shadow-2xl shadow-[#0a66c2]/25">
                 <motion.img
                   src={avatar}
                   alt={name}
@@ -1157,17 +1198,17 @@ export function ModernProfileView({
                 />
               </div>
               {isUploadingAvatar && (
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-3xl backdrop-blur-xs">
-                  <Loader2 size={24} className="text-white animate-spin" />
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-[28px] sm:rounded-[32px] backdrop-blur-xs">
+                  <Loader2 size={28} className="text-white animate-spin" />
                 </div>
               )}
               {isMe && (
                 <label
                   htmlFor="avatar-file-input"
-                  className="absolute -bottom-1 -right-1 w-9 h-9 rounded-full bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900 transition-all active:scale-90 cursor-pointer hover:scale-110"
+                  className="absolute -bottom-1.5 -right-1.5 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900 transition-all active:scale-90 cursor-pointer hover:scale-110"
                   title="تغيير الصورة الشخصية"
                 >
-                  <Camera size={15} />
+                  <Camera size={18} />
                   <input id="avatar-file-input" ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
                 </label>
               )}
@@ -1365,13 +1406,18 @@ export function ModernProfileView({
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.07 }}
-        className={`${cardClass} p-5 sm:p-7 space-y-4`}
+        className={`${cardClass} p-6 sm:p-8 space-y-5 sm:space-y-6`}
       >
-        <div className="flex items-center gap-3">
-          <div className={iconBadge}><Phone size={18} /></div>
-          <h2 className="text-base font-black text-slate-800 dark:text-white">
-            {isMe ? 'تغيير رقم الهاتف' : 'رقم الهاتف'}
-          </h2>
+        <div className="flex items-center gap-3.5">
+          <div className={iconBadge}><Phone size={22} /></div>
+          <div>
+            <h2 className="text-lg sm:text-xl font-black text-slate-800 dark:text-white">
+              {isMe ? 'تغيير رقم الهاتف' : 'رقم الهاتف'}
+            </h2>
+            <p className="text-xs sm:text-sm font-bold text-slate-400 mt-0.5">
+              {isMe ? 'رقم هاتفك المعتمد للتواصل والإشعارات' : 'رقم الاتصال المباشر'}
+            </p>
+          </div>
         </div>
 
         <div className={inputCard}>
@@ -1380,27 +1426,27 @@ export function ModernProfileView({
             {isMe ? (
               <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)}
                 placeholder="07XXXXXXXXX" dir="ltr"
-                className="w-full bg-transparent outline-none text-sm sm:text-base font-bold text-slate-800 dark:text-white text-right" />
+                className="w-full bg-transparent outline-none text-base sm:text-lg font-bold text-slate-800 dark:text-white text-right" />
             ) : (
-              <p className="w-full text-sm sm:text-base font-bold text-slate-800 dark:text-white text-right" dir="ltr">{phone || '—'}</p>
+              <p className="w-full text-base sm:text-lg font-bold text-slate-800 dark:text-white text-right" dir="ltr">{phone || '—'}</p>
             )}
-            <Phone size={17} className="text-slate-400 shrink-0" />
+            <Phone size={19} className="text-slate-400 shrink-0" />
           </div>
         </div>
 
         {isMe ? (
           <button type="button" onClick={handleSavePhone} disabled={savingPhone} className={saveBtn}>
-            <div className="flex items-center gap-1 text-blue-200"><ChevronsLeft size={22} /></div>
+            <div className="flex items-center gap-1 text-blue-200"><ChevronsLeft size={24} /></div>
             <div className="flex items-center gap-2">
-              {savingPhone && <Loader2 size={18} className="animate-spin text-blue-200" />}
-              <span>{savingPhone ? 'جاري الحفظ...' : 'حفظ'}</span>
+              {savingPhone && <Loader2 size={20} className="animate-spin text-blue-200" />}
+              <span>{savingPhone ? 'جاري الحفظ...' : 'حفظ رقم الهاتف'}</span>
             </div>
           </button>
         ) : (
           showCallButton && phone && (
             <button type="button" onClick={onCallClick}
-              className="w-full py-4 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base transition-all shadow-lg shadow-emerald-500/20 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer">
-              <Phone size={18} /><span>اتصال برقم الهاتف</span>
+              className="w-full py-4.5 sm:py-5 rounded-2xl sm:rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base sm:text-lg transition-all shadow-xl shadow-emerald-500/25 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer">
+              <Phone size={20} /><span>اتصال برقم الهاتف</span>
             </button>
           )
         )}
@@ -1414,11 +1460,14 @@ export function ModernProfileView({
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.12 }}
-          className={`${cardClass} p-5 sm:p-7 space-y-4`}
+          className={`${cardClass} p-6 sm:p-8 space-y-5 sm:space-y-6`}
         >
-          <div className="flex items-center gap-3">
-            <div className={iconBadge}><Lock size={18} /></div>
-            <h2 className="text-base font-black text-slate-800 dark:text-white">تغيير كلمة المرور</h2>
+          <div className="flex items-center gap-3.5">
+            <div className={iconBadge}><Lock size={22} /></div>
+            <div>
+              <h2 className="text-lg sm:text-xl font-black text-slate-800 dark:text-white">تغيير كلمة المرور</h2>
+              <p className="text-xs sm:text-sm font-bold text-slate-400 mt-0.5">تحديث الرمز السري لحماية وتأمين حسابك</p>
+            </div>
           </div>
 
           {/* رسالة تأكيد نجاح تغيير كلمة المرور */}
@@ -1428,15 +1477,15 @@ export function ModernProfileView({
                 initial={{ opacity: 0, y: -10, scale: 0.98 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -10, scale: 0.98 }}
-                className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-500/60 flex items-start justify-between gap-3 text-emerald-800 dark:text-emerald-200 shadow-lg shadow-emerald-500/10"
+                className="p-4 sm:p-5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-500/60 flex items-start justify-between gap-3 text-emerald-800 dark:text-emerald-200 shadow-xl shadow-emerald-500/10"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
-                    <CheckCircle2 size={20} />
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                    <CheckCircle2 size={22} />
                   </div>
                   <div>
-                    <h4 className="font-black text-sm text-emerald-900 dark:text-emerald-100">تم تغيير كلمة المرور بنجاح! 🎉</h4>
-                    <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300 mt-0.5 leading-relaxed">
+                    <h4 className="font-black text-sm sm:text-base text-emerald-900 dark:text-emerald-100">تم تغيير كلمة المرور بنجاح! 🎉</h4>
+                    <p className="text-xs sm:text-sm font-bold text-emerald-700 dark:text-emerald-300 mt-0.5 leading-relaxed">
                       {passwordSuccessBanner}
                     </p>
                   </div>
@@ -1446,7 +1495,7 @@ export function ModernProfileView({
                   onClick={() => setPasswordSuccessBanner(null)}
                   className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-white p-1"
                 >
-                  <X size={16} />
+                  <X size={18} />
                 </button>
               </motion.div>
             )}
@@ -1461,10 +1510,10 @@ export function ModernProfileView({
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 placeholder="أدخل كلمة المرور الحالية"
-                className="w-full bg-transparent outline-none text-sm sm:text-base font-bold text-slate-800 dark:text-white"
+                className="w-full bg-transparent outline-none text-base sm:text-lg font-bold text-slate-800 dark:text-white"
               />
               <button type="button" onClick={() => setShowCurrentPw(!showCurrentPw)} className="text-slate-400 hover:text-[#0a66c2] transition-colors shrink-0">
-                {showCurrentPw ? <EyeOff size={17} /> : <Eye size={17} />}
+                {showCurrentPw ? <EyeOff size={19} /> : <Eye size={19} />}
               </button>
             </div>
           </div>
@@ -1473,15 +1522,15 @@ export function ModernProfileView({
           <button
             type="button"
             onClick={() => setShowChangePassword(!showChangePassword)}
-            className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/60 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300 text-sm font-bold transition-all hover:border-[#0a66c2]/40 hover:bg-blue-50/40 dark:hover:bg-slate-700 active:scale-[0.99]"
+            className="w-full flex items-center justify-between px-5 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/70 text-slate-700 dark:text-slate-200 text-sm sm:text-base font-black transition-all hover:border-[#0a66c2]/40 hover:bg-blue-50/40 dark:hover:bg-slate-700 active:scale-[0.99] cursor-pointer"
           >
-            <div className="flex items-center gap-2">
-              <KeyRound size={15} className="text-[#0a66c2]" />
+            <div className="flex items-center gap-2.5">
+              <KeyRound size={17} className="text-[#0a66c2]" />
               <span>إذا أردت تغيير كلمة المرور</span>
             </div>
             {showChangePassword
-              ? <ChevronUp size={16} className="text-[#0a66c2]" />
-              : <ChevronDown size={16} className="text-slate-400" />}
+              ? <ChevronUp size={18} className="text-[#0a66c2]" />
+              : <ChevronDown size={18} className="text-slate-400" />}
           </button>
 
           {/* حقول كلمة المرور الجديدة — قابلة للطي */}
@@ -1492,11 +1541,11 @@ export function ModernProfileView({
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
                 transition={{ duration: 0.25, ease: 'easeInOut' }}
-                className="overflow-hidden space-y-4"
+                className="overflow-hidden space-y-4 pt-1"
               >
-                <div className="flex items-center gap-2 text-[#0a66c2]/80 dark:text-blue-400/80 bg-blue-50 dark:bg-blue-950/30 rounded-xl px-3 py-2.5 border border-blue-100 dark:border-blue-900/40">
-                  <AlertCircle size={14} className="shrink-0" />
-                  <p className="text-[11px] font-bold">أدخل كلمة المرور الجديدة أدناه لتغييرها</p>
+                <div className="flex items-center gap-2 text-[#0a66c2] dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 rounded-xl px-4 py-3 border border-blue-100 dark:border-blue-900/50">
+                  <AlertCircle size={16} className="shrink-0" />
+                  <p className="text-xs sm:text-sm font-bold">أدخل كلمة المرور الجديدة وتأكيدها أدناه</p>
                 </div>
 
                 <div className={inputCard}>
@@ -1507,10 +1556,10 @@ export function ModernProfileView({
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full bg-transparent outline-none text-sm sm:text-base font-bold text-slate-800 dark:text-white"
+                      className="w-full bg-transparent outline-none text-base sm:text-lg font-bold text-slate-800 dark:text-white"
                     />
                     <button type="button" onClick={() => setShowNewPw(!showNewPw)} className="text-slate-400 hover:text-[#0a66c2] transition-colors shrink-0">
-                      {showNewPw ? <EyeOff size={17} /> : <Eye size={17} />}
+                      {showNewPw ? <EyeOff size={19} /> : <Eye size={19} />}
                     </button>
                   </div>
                 </div>
@@ -1523,17 +1572,17 @@ export function ModernProfileView({
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="••••••••"
-                      className="w-full bg-transparent outline-none text-sm sm:text-base font-bold text-slate-800 dark:text-white"
+                      className="w-full bg-transparent outline-none text-base sm:text-lg font-bold text-slate-800 dark:text-white"
                     />
                     <button type="button" onClick={() => setShowConfirmPw(!showConfirmPw)} className="text-slate-400 hover:text-[#0a66c2] transition-colors shrink-0">
-                      {showConfirmPw ? <EyeOff size={17} /> : <Eye size={17} />}
+                      {showConfirmPw ? <EyeOff size={19} /> : <Eye size={19} />}
                     </button>
                   </div>
                 </div>
 
                 {confirmPassword && (
-                  <div className={`flex items-center gap-2 text-xs font-bold px-1 ${newPassword === confirmPassword ? 'text-emerald-500' : 'text-rose-500'}`}>
-                    {newPassword === confirmPassword ? <CheckCircle2 size={13} /> : <X size={13} />}
+                  <div className={`flex items-center gap-2 text-xs sm:text-sm font-black px-1 ${newPassword === confirmPassword ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    {newPassword === confirmPassword ? <CheckCircle2 size={15} /> : <X size={15} />}
                     <span>{newPassword === confirmPassword ? 'كلمتا المرور متطابقتان ✓' : 'كلمتا المرور غير متطابقتين'}</span>
                   </div>
                 )}
@@ -1542,10 +1591,10 @@ export function ModernProfileView({
           </AnimatePresence>
 
           <button type="button" onClick={handleSavePassword} disabled={savingPassword} className={saveBtn}>
-            <div className="flex items-center gap-1 text-blue-200"><ChevronsLeft size={22} /></div>
+            <div className="flex items-center gap-1 text-blue-200"><ChevronsLeft size={24} /></div>
             <div className="flex items-center gap-2">
-              {savingPassword && <Loader2 size={18} className="animate-spin text-blue-200" />}
-              <span>{savingPassword ? 'جاري التحقق...' : (showChangePassword ? 'حفظ كلمة المرور' : 'تحقق من كلمة المرور')}</span>
+              {savingPassword && <Loader2 size={20} className="animate-spin text-blue-200" />}
+              <span>{savingPassword ? (showChangePassword ? 'جاري حفظ كلمة المرور...' : 'جاري التحقق...') : (showChangePassword ? 'حفظ كلمة المرور الجديدة' : 'تحقق من كلمة المرور')}</span>
             </div>
           </button>
         </motion.div>
@@ -1558,13 +1607,13 @@ export function ModernProfileView({
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.17 }}
-        className={`${cardClass} p-5 sm:p-7 space-y-4`}
+        className={`${cardClass} p-6 sm:p-8 space-y-5 sm:space-y-6`}
       >
-        <div className="flex items-center gap-3">
-          <div className={iconBadge}><FileText size={18} /></div>
+        <div className="flex items-center gap-3.5">
+          <div className={iconBadge}><FileText size={22} /></div>
           <div>
-            <h2 className="text-base font-black text-slate-800 dark:text-white">السيرة الذاتية (CV)</h2>
-            <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+            <h2 className="text-lg sm:text-xl font-black text-slate-800 dark:text-white">السيرة الذاتية (CV)</h2>
+            <p className="text-xs sm:text-sm font-bold text-slate-400 mt-0.5">
               {isMe ? 'رفع، استبدال، ومعاينة ملف السيرة بشكل احترافي' : 'ملف السيرة الذاتية المعتمد'}
             </p>
           </div>

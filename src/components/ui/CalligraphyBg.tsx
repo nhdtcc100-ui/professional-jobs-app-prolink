@@ -16,3 +16,4 @@ export interface CalligraphyBgProps {
 export const CalligraphyBg: React.FC<CalligraphyBgProps> = () => null;
 
 export default CalligraphyBg;
+
