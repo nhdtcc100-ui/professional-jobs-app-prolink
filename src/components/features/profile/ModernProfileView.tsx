@@ -147,6 +147,8 @@ export function ModernProfileView({
   const [showCurrentPw, setShowCurrentPw] = useState(false);
   const [showNewPw, setShowNewPw] = useState(false);
   const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [passwordSuccessBanner, setPasswordSuccessBanner] = useState<string | null>(null);
+  const [passwordSuccessModal, setPasswordSuccessModal] = useState(false);
 
   // ─── Loading States ──────────────────────────────────────────────────────────
   const [savingInfo, setSavingInfo] = useState(false);
@@ -171,7 +173,11 @@ export function ModernProfileView({
 
   // ─── Profile Tabs & Posts State ──────────────────────────────────────────────
   const [activeProfileTab, setActiveProfileTab] = useState<'info' | 'posts'>('info');
-  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab } = useAppContext();
+  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast } = useAppContext();
+  const notify = useCallback((msg: string, type: any = 'success') => {
+    if (typeof addToast === 'function') addToast(msg, type);
+    else if (typeof contextAddToast === 'function') contextAddToast(msg, type);
+  }, [addToast, contextAddToast]);
   const [profilePosts, setProfilePosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
 
@@ -952,11 +958,11 @@ export function ModernProfileView({
 
   // ─── 6. Change Password (سريع وفوري دون تعليق أو إعادة تحميل الجلسة) ─────────────
   const handleSavePassword = async () => {
-    if (!currentPassword) { addToast('يرجى إدخال كلمة المرور الحالية', 'error'); return; }
+    if (!currentPassword) { notify('يرجى إدخال كلمة المرور الحالية', 'error'); return; }
     if (showChangePassword) {
-      if (!newPassword) { addToast('يرجى إدخال كلمة المرور الجديدة', 'error'); return; }
-      if (newPassword.length < 8) { addToast('كلمة المرور يجب أن لا تقل عن 8 أحرف', 'error'); return; }
-      if (newPassword !== confirmPassword) { addToast('كلمتا المرور غير متطابقتين', 'error'); return; }
+      if (!newPassword) { notify('يرجى إدخال كلمة المرور الجديدة', 'error'); return; }
+      if (newPassword.length < 8) { notify('كلمة المرور يجب أن لا تقل عن 8 أحرف', 'error'); return; }
+      if (newPassword !== confirmPassword) { notify('كلمتا المرور غير متطابقتين', 'error'); return; }
     }
     try {
       setSavingPassword(true);
@@ -982,7 +988,7 @@ export function ModernProfileView({
         });
 
         if (!verifyRes.ok) {
-          addToast('كلمة المرور الحالية غير صحيحة ❌', 'error');
+          notify('كلمة المرور الحالية غير صحيحة ❌', 'error');
           return;
         }
       }
@@ -997,14 +1003,17 @@ export function ModernProfileView({
         setNewPassword('');
         setConfirmPassword('');
         setShowChangePassword(false);
-        addToast('✅ تم تحديث كلمة المرور بنجاح!', 'success');
+        setPasswordSuccessBanner('تم تغيير كلمة المرور وتفعيل الرمز السري الجديد بنجاح! يمكنك الآن استخدامه لتسجيل الدخول.');
+        setPasswordSuccessModal(true);
+        notify('✅ تم تحديث كلمة المرور بنجاح!', 'success');
+        try { navigator.vibrate?.([60, 40, 60]); } catch (_) {}
       } else {
-        addToast('✅ تم التحقق من كلمة المرور الحالية بنجاح!', 'success');
+        notify('✅ تم التحقق من كلمة المرور الحالية بنجاح!', 'success');
       }
       setCurrentPassword('');
     } catch (err: any) {
       console.error('Password change error:', err);
-      addToast('تعذر تغيير كلمة المرور: ' + (err?.message || 'خطأ في الاتصال'), 'error');
+      notify('تعذر تغيير كلمة المرور: ' + (err?.message || 'خطأ في الاتصال'), 'error');
     } finally {
       setSavingPassword(false);
     }
@@ -1381,6 +1390,37 @@ export function ModernProfileView({
             <h2 className="text-base font-black text-slate-800 dark:text-white">تغيير كلمة المرور</h2>
           </div>
 
+          {/* رسالة تأكيد نجاح تغيير كلمة المرور */}
+          <AnimatePresence>
+            {passwordSuccessBanner && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -10, scale: 0.98 }}
+                className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border-2 border-emerald-500/60 flex items-start justify-between gap-3 text-emerald-800 dark:text-emerald-200 shadow-lg shadow-emerald-500/10"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
+                    <CheckCircle2 size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-sm text-emerald-900 dark:text-emerald-100">تم تغيير كلمة المرور بنجاح! 🎉</h4>
+                    <p className="text-xs font-bold text-emerald-700 dark:text-emerald-300 mt-0.5 leading-relaxed">
+                      {passwordSuccessBanner}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPasswordSuccessBanner(null)}
+                  className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-800 dark:hover:text-white p-1"
+                >
+                  <X size={16} />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* كلمة المرور الحالية — دائماً ظاهرة */}
           <div className={inputCard}>
             <span className={floatLabel}>كلمة المرور الحالية</span>
@@ -1686,6 +1726,37 @@ export function ModernProfileView({
           </button>
         </div>
       )}
+
+      {/* ── Modal تأكيد تغيير كلمة المرور ── */}
+      <AnimatePresence>
+        {passwordSuccessModal && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" dir="rtl">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl text-center space-y-4"
+            >
+              <div className="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+                <CheckCircle2 size={36} />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-800 dark:text-white">تم تغيير كلمة المرور بنجاح!</h3>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                  تم تحديث وحفظ الرمز السري الجديد لحسابك بنجاح. يمكنك استخدامه لتسجيل الدخول في المرات القادمة.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPasswordSuccessModal(false)}
+                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-2xl shadow-lg shadow-emerald-600/30 active:scale-95 transition-all cursor-pointer"
+              >
+                حسناً، فهمت
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

@@ -185,9 +185,6 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchTitle, searchLocation]);
 
-  // اقتراحات مسميات وظيفية شائعة
-  const popularTitles = ['كهربائي', 'سباك', 'نجار', 'حلاق', 'مطبخ', 'دهان', 'ميكانيكي', 'تكييف', 'حداد', 'بناء'];
-
   const fetchProviders = useCallback(async (currentPage: number, reset = false) => {
     const cacheKey = `${debouncedTitle.trim()}_${debouncedLocation.trim()}_${currentPage}`;
 
@@ -376,38 +373,6 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
           </div>
         </div>
       </motion.div>
-
-      {/* مسميات شائعة مع نقر فوري 0ms واستجابة حركية */}
-      <div className="flex flex-wrap gap-2 px-1">
-        {popularTitles.map((t) => {
-          const isSelected = searchTitle === t;
-          return (
-            <button
-              key={t}
-              type="button"
-              onPointerDown={() => {
-                try { navigator.vibrate?.([6]); } catch (_) {}
-              }}
-              onClick={() => {
-                const nextVal = isSelected ? '' : t;
-                if (debounceRef.current) clearTimeout(debounceRef.current);
-                setSearchTitle(nextVal);
-                startTransition(() => {
-                  setDebouncedTitle(nextVal);
-                  setPage(0);
-                });
-              }}
-              className={`px-3 py-1.5 rounded-full text-[10px] font-black border transition-all active:scale-95 cursor-pointer ${
-                isSelected
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/25'
-                  : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-100 dark:border-slate-700 hover:border-blue-300 hover:text-blue-600'
-              }`}
-            >
-              {t}
-            </button>
-          );
-        })}
-      </div>
 
       {/* ── بطاقات تصنيفات الخدمات ── */}
       <div className="overflow-x-auto pb-1 -mx-0.5 px-0.5 scrollbar-none" dir="rtl">
