@@ -168,8 +168,16 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
           </span>
         </div>
 
-        {/* موازن محاذاة فارغ بدون أزرار تنقل إضافية */}
-        <div className="w-16" />
+        {/* زر العودة للرئيسية الثابت دائماً في الشريط العلوي */}
+        <button
+          onClick={handleGoHome}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-black transition-all active:scale-95 shadow-xs cursor-pointer"
+          title="العودة للرئيسية"
+        >
+          <Home size={15} className="text-blue-600 dark:text-blue-400" />
+          <span className="hidden sm:inline">العودة للرئيسية</span>
+          <span className="sm:hidden">الرئيسية</span>
+        </button>
       </div>
 
       {/* ── Main Viewport: Professional Card Deck Motion Switcher ── */}
@@ -364,56 +372,59 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                       </div>
                     </div>
                   )}
+                  <div className="h-2" />
+                </div>
 
-                  {/* Apply & Navigation Buttons */}
-                  <div className="pt-2 space-y-2.5 pb-8">
-                    {(() => {
-                      const isPublisher = !!(appUser && !appUser.isAdmin && (appUser.id === currentItem.employerId || appUser.id === currentItem.employer_id || appUser.id === currentItem.authorId || appUser.id === currentItem.author_id));
-                      const isEmployer = !!(appUser && !appUser.isAdmin && appUser.role === 'employer');
-                      const isActive = currentItem.is_active !== false;
+                {/* ── 3. FIXED BOTTOM ACTION BAR: ثابت أسفل الكارد لا يتحرك مع السكرول ── */}
+                <div className="shrink-0 p-3 sm:px-5 sm:py-3.5 border-t border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md space-y-2 z-20 rounded-b-3xl">
+                  {(() => {
+                    const isPublisher = !!(appUser && !appUser.isAdmin && (appUser.id === currentItem.employerId || appUser.id === currentItem.employer_id || appUser.id === currentItem.authorId || appUser.id === currentItem.author_id));
+                    const isEmployer = !!(appUser && !appUser.isAdmin && appUser.role === 'employer');
+                    const isActive = currentItem.is_active !== false;
 
-                      return (
-                        <button
-                          onClick={() => onApplyJob?.(currentItem)}
-                          disabled={!isActive || isPublisher || isEmployer}
-                          className={`w-full py-3.5 rounded-2xl font-black text-sm flex items-center justify-center gap-2.5 transition-all active:scale-[0.98] shadow-lg cursor-pointer ${
-                            isPublisher
-                              ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-400/30 cursor-not-allowed shadow-none'
-                              : isActive
-                              ? 'bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 hover:brightness-110 text-white shadow-blue-200 dark:shadow-blue-900/40'
-                              : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none'
-                          }`}
-                        >
-                          {isPublisher ? (
-                            <span>أنت ناشر هذه الوظيفة 🏢 (لا يمكنك التقديم)</span>
-                          ) : isEmployer ? (
-                            <span>أصحاب العمل لا يمكنهم التقديم (للباحثين عن عمل فقط) 💼</span>
-                          ) : (
-                            <>
-                              <Send size={16} />
-                              <span>التقديم المهني على الوظيفة 🚀</span>
-                            </>
-                          )}
-                        </button>
-                      );
-                    })()}
-
-                    <div className="grid grid-cols-2 gap-2">
+                    return (
                       <button
-                        onClick={handleGoHome}
-                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                        onClick={() => onApplyJob?.(currentItem)}
+                        disabled={!isActive || isPublisher || isEmployer}
+                        className={`w-full py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-md cursor-pointer ${
+                          isPublisher
+                            ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-400/30 cursor-not-allowed shadow-none'
+                            : isActive
+                            ? 'bg-gradient-to-r from-blue-600 via-blue-500 to-indigo-600 hover:brightness-110 text-white shadow-blue-200 dark:shadow-blue-900/40'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none'
+                        }`}
                       >
-                        <Home size={14} className="text-blue-500" />
-                        <span>العودة للرئيسية</span>
+                        {isPublisher ? (
+                          <span>أنت ناشر هذه الوظيفة 🏢 (لا يمكنك التقديم)</span>
+                        ) : isEmployer ? (
+                          <span>أصحاب العمل لا يمكنهم التقديم (للباحثين عن عمل فقط) 💼</span>
+                        ) : (
+                          <>
+                            <Send size={15} />
+                            <span>التقديم المهني على الوظيفة 🚀</span>
+                          </>
+                        )}
                       </button>
-                      <button
-                        onClick={handleGoSection}
-                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer"
-                      >
-                        <Briefcase size={14} className="text-indigo-500" />
-                        <span>العودة للوظائف</span>
-                      </button>
-                    </div>
+                    );
+                  })()}
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={handleGoHome}
+                      className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                      title="العودة للرئيسية"
+                    >
+                      <Home size={14} className="text-blue-500" />
+                      <span>العودة للرئيسية</span>
+                    </button>
+                    <button
+                      onClick={handleGoSection}
+                      className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                      title="العودة للوظائف"
+                    >
+                      <Briefcase size={14} className="text-indigo-500" />
+                      <span>العودة للوظائف</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -458,18 +469,23 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                       <p className="text-slate-400 italic">لا يوجد نص إضافي.</p>
                     )}
                   </div>
+                </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-2 pb-6">
+                {/* ── Fixed Post Bottom Bar: ثابت أسفل كارد المنشور ── */}
+                <div className="shrink-0 p-3 sm:px-5 sm:py-3.5 border-t border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-b-3xl z-20">
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={handleGoHome}
-                      className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                      title="العودة للرئيسية"
                     >
                       <Home size={14} className="text-blue-500" />
                       <span>العودة للرئيسية</span>
                     </button>
                     <button
                       onClick={handleGoSection}
-                      className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                      title="الوظائف"
                     >
                       <Briefcase size={14} className="text-indigo-500" />
                       <span>الوظائف</span>
@@ -525,18 +541,23 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                       </a>
                     </div>
                   )}
+                </div>
 
-                  <div className="grid grid-cols-2 gap-2 pt-2 pb-6">
+                {/* ── Fixed News Bottom Bar: ثابت أسفل كارد الأخبار ── */}
+                <div className="shrink-0 p-3 sm:px-5 sm:py-3.5 border-t border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-b-3xl z-20">
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={handleGoHome}
-                      className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                      title="العودة للرئيسية"
                     >
                       <Home size={14} className="text-blue-500" />
                       <span>العودة للرئيسية</span>
                     </button>
                     <button
                       onClick={handleGoSection}
-                      className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                      className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                      title="العودة للأخبار"
                     >
                       <Newspaper size={14} className="text-emerald-500" />
                       <span>العودة للأخبار</span>
