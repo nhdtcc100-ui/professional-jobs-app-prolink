@@ -209,7 +209,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
         finalVideoUrl = await imageService.uploadVideo(postSelectedFile, appUser.id);
       }
 
-      const { data: newPost, error } = await withTimeout(
+      const { data: newPost, error }: any = await withTimeout<any>(
         db.from('posts').insert([{
           author_id:     appUser.id,
           author_name:   appUser.name   || 'مستخدم Elevate عراق',
