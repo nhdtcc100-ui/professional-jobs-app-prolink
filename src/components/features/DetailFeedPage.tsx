@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion } from 'motion/react';
 import { 
-  ArrowRight, ChevronRight, ChevronLeft, Briefcase, MapPin, DollarSign, 
+  ArrowRight, Briefcase, MapPin, DollarSign, 
   Tag, Clock, Send, Calendar, ExternalLink, Sparkles,
   FileText, Home, Newspaper, Phone, MessageCircle
 } from 'lucide-react';
@@ -46,20 +46,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
     Math.max(0, Math.min(initialIndex, (items?.length || 1) - 1))
   );
   const horizontalScrollRef = useRef<HTMLDivElement>(null);
-
-  // Smooth scroll to target item in horizontal slider
-  const scrollToItem = (idx: number, smooth: boolean = true) => {
-    if (idx < 0 || idx >= items.length) return;
-    setCurrentIndex(idx);
-    const targetEl = document.getElementById(`detail-feed-item-${idx}`);
-    if (targetEl) {
-      targetEl.scrollIntoView({
-        behavior: smooth ? 'smooth' : 'auto',
-        inline: 'center',
-        block: 'nearest',
-      });
-    }
-  };
 
   // Initial centering on initialIndex
   useEffect(() => {
@@ -107,18 +93,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
     return () => observer.disconnect();
   }, [items.length]);
 
-  const goToNext = () => {
-    if (currentIndex < items.length - 1) {
-      scrollToItem(currentIndex + 1, true);
-    }
-  };
-
-  const goToPrev = () => {
-    if (currentIndex > 0) {
-      scrollToItem(currentIndex - 1, true);
-    }
-  };
-
   const timeAgo = (dateStr: any) => safeTimeAgo(dateStr);
 
   const handleGoHome = () => {
@@ -145,10 +119,10 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 30 }}
       transition={{ type: 'spring', damping: 26, stiffness: 280 }}
-      className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[220] bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-white flex flex-col overflow-hidden"
+      className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[220] bg-slate-100/90 dark:bg-slate-950 text-slate-800 dark:text-white flex flex-col overflow-hidden"
       dir="rtl"
     >
-      {/* ── Top Bar with Counter, Back & Direct Navigation Buttons ── */}
+      {/* ── Top Bar: Back, Home, Section & Counter (No Next/Prev buttons) ── */}
       <div
         className="relative z-30 flex items-center justify-between px-3 md:px-6 py-2.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800/80 shrink-0 shadow-sm gap-2"
         style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)' }}
@@ -205,7 +179,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
           )}
         </div>
 
-        {/* Counter Badge */}
+        {/* Dynamic Item Counter Badge */}
         <div className="flex items-center justify-center min-w-0">
           {(() => {
             const cur = items[currentIndex];
@@ -213,68 +187,28 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
             const isCurNews = type === 'news' || cur?.feedType === 'news';
             const itemLabel = isCurJob ? 'وظيفة' : isCurNews ? 'خبر' : 'منشور / مقال';
             return (
-              <span className="text-[11px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 px-3 py-1 rounded-full truncate">
+              <span className="text-[11px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 px-3 py-1 rounded-full truncate shadow-xs">
                 {itemLabel} {currentIndex + 1} من {items.length}
               </span>
             );
           })()}
         </div>
 
-        {/* Quick Nav arrows in RTL: Right is Prev, Left is Next */}
-        {items.length > 1 && (
-          <div className="flex items-center gap-1 shrink-0">
-            <button
-              onClick={goToPrev}
-              disabled={currentIndex === 0}
-              className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white transition-all active:scale-90 cursor-pointer"
-              title="السابق"
-            >
-              <ChevronRight size={16} />
-            </button>
-            <button
-              onClick={goToNext}
-              disabled={currentIndex === items.length - 1}
-              className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white transition-all active:scale-90 cursor-pointer"
-              title="التالي"
-            >
-              <ChevronLeft size={16} />
-            </button>
-          </div>
-        )}
+        {/* Small Visual Swipe Hint */}
+        <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 shrink-0">
+          <span className="hidden sm:inline">اسحب للتنقل</span>
+          <span className="text-xs">↔</span>
+        </div>
       </div>
 
-      {/* ── Floating Lateral Quick Nav Buttons (Visible on larger screens) ── */}
-      {items.length > 1 && (
-        <>
-          {currentIndex > 0 && (
-            <button
-              onClick={goToPrev}
-              className="hidden md:flex fixed right-4 top-1/2 -translate-y-1/2 z-40 w-11 h-11 items-center justify-center rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-700 dark:text-white shadow-2xl border border-slate-200 dark:border-slate-700 hover:scale-110 active:scale-95 transition-all cursor-pointer backdrop-blur-md"
-              title="الوظيفة السابقة"
-            >
-              <ChevronRight size={22} />
-            </button>
-          )}
-
-          {currentIndex < items.length - 1 && (
-            <button
-              onClick={goToNext}
-              className="hidden md:flex fixed left-4 top-1/2 -translate-y-1/2 z-40 w-11 h-11 items-center justify-center rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-700 dark:text-white shadow-2xl border border-slate-200 dark:border-slate-700 hover:scale-110 active:scale-95 transition-all cursor-pointer backdrop-blur-md"
-              title="الوظيفة التالية"
-            >
-              <ChevronLeft size={22} />
-            </button>
-          )}
-        </>
-      )}
-
-      {/* ── Horizontal Snap Feed Container: Native Smooth Horizontal Scrolling ── */}
+      {/* ── Horizontal Snap Feed Container: Native Smooth Horizontal Scrolling + Fully Scrollable Vertical Cards ── */}
       <div
         ref={horizontalScrollRef}
-        className="flex-1 flex flex-row items-stretch gap-3 sm:gap-5 px-3 sm:px-6 py-2.5 overflow-x-auto overflow-y-hidden snap-x snap-mandatory no-scrollbar bg-slate-100/70 dark:bg-slate-950 overscroll-x-contain"
+        className="flex-1 min-h-0 w-full flex flex-row items-stretch gap-3 sm:gap-5 px-3 sm:px-6 pt-2 pb-3 overflow-x-auto overflow-y-hidden snap-x snap-mandatory no-scrollbar bg-slate-100/70 dark:bg-slate-950 overscroll-x-contain"
         style={{
           scrollSnapType: 'x mandatory',
           WebkitOverflowScrolling: 'touch' as any,
+          touchAction: 'pan-x pan-y',
         }}
       >
         {items.map((item, index) => {
@@ -287,15 +221,17 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
               key={item.id || index}
               id={`detail-feed-item-${index}`}
               data-item-index={index}
-              className="w-[92vw] sm:w-[94vw] md:w-[820px] max-w-[820px] h-full shrink-0 snap-center snap-always flex flex-col overflow-y-auto no-scrollbar overscroll-y-contain rounded-3xl border border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-slate-900 shadow-xl diwani-neon-card relative transition-all"
+              className="w-[90vw] sm:w-[92vw] md:w-[800px] max-w-[800px] h-full min-h-0 max-h-full shrink-0 snap-center snap-always flex flex-col overflow-y-auto overscroll-y-contain rounded-3xl border border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-slate-900 shadow-xl diwani-neon-card relative transition-all"
               style={{
                 scrollSnapAlign: 'center',
                 scrollSnapStop: 'always',
+                WebkitOverflowScrolling: 'touch' as any,
+                touchAction: 'pan-y pan-x',
               }}
             >
               {isItemJob ? (
                 /* ── Job Item Full Page ── */
-                <div className="max-w-3xl mx-auto w-full flex flex-col pb-6">
+                <div className="max-w-3xl mx-auto w-full flex flex-col pb-16 sm:pb-24">
                   
                   {/* Job Hero Header with cover & publisher avatar */}
                   {(() => {
@@ -418,7 +354,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   )}
 
                   {/* Apply & Navigation Buttons */}
-                  <div className="px-4 md:px-6 pt-5 space-y-2.5" style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 80px), 96px)' }}>
+                  <div className="px-4 md:px-6 pt-6 space-y-3">
                     {(() => {
                       const isPublisher = !!(appUser && !appUser.isAdmin && (appUser.id === item.employerId || appUser.id === item.employer_id || appUser.id === item.authorId || appUser.id === item.author_id));
                       const isEmployer = !!(appUser && !appUser.isAdmin && appUser.role === 'employer');
@@ -469,7 +405,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                 </div>
               ) : !isItemNews ? (
                 /* ── Post Item Full Page ── */
-                <div className="max-w-3xl mx-auto w-full flex flex-col pb-6">
+                <div className="max-w-3xl mx-auto w-full flex flex-col pb-16 sm:pb-24">
                   {/* Post Author Bar */}
                   <div className="flex items-center justify-between px-5 md:px-8 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800">
                     <div className="flex items-center gap-3">
@@ -516,7 +452,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   </div>
 
                   {/* Quick Interaction Footer */}
-                  <div className="px-5 md:px-8 pt-4 space-y-3" style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 72px), 88px)' }}>
+                  <div className="px-5 md:px-8 pt-6 space-y-3">
                     <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
                       <span className="text-xs font-black text-slate-400">توجيه مهني رسمي</span>
                     </div>
@@ -541,7 +477,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                 </div>
               ) : (
                 /* ── News Item Full Page ── */
-                <div className="max-w-3xl mx-auto w-full flex flex-col pb-6">
+                <div className="max-w-3xl mx-auto w-full flex flex-col pb-16 sm:pb-24">
 
                   {/* News Image / Header */}
                   <div className="relative h-52 md:h-72 shrink-0 overflow-hidden">
@@ -581,7 +517,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   </div>
 
                   {/* Source Link & Quick Return */}
-                  <div className="px-5 md:px-8 pt-4 space-y-2.5" style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 72px), 88px)' }}>
+                  <div className="px-5 md:px-8 pt-6 space-y-3">
                     {item.link && item.link !== '#' && (
                       <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
                         <span className="text-xs font-bold text-slate-400">المصدر الأصلي</span>
@@ -620,40 +556,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
           );
         })}
       </div>
-
-      {/* ── Fixed Floating Bottom Navigation Bar: Lateral Next & Prev with Touch Feedback ── */}
-      {items.length > 1 && (
-        <div 
-          className="relative z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between gap-3 shadow-xl shrink-0"
-          style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 8px), 12px)' }}
-        >
-          {/* In RTL: Right button is Previous */}
-          <button
-            onClick={goToPrev}
-            disabled={currentIndex === 0}
-            className="flex-1 py-2.5 px-4 bg-slate-100 dark:bg-slate-800 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer shadow-xs"
-          >
-            <ChevronRight size={16} />
-            <span>{type === 'job' ? 'الوظيفة السابقة' : type === 'news' ? 'الخبر السابق' : 'السابق'}</span>
-          </button>
-          
-          <div className="flex flex-col items-center justify-center px-3">
-            <span className="text-[11px] font-black text-blue-600 dark:text-blue-400 font-mono">
-              {currentIndex + 1} / {items.length}
-            </span>
-          </div>
-
-          {/* In RTL: Left button is Next */}
-          <button
-            onClick={goToNext}
-            disabled={currentIndex === items.length - 1}
-            className="flex-1 py-2.5 px-4 bg-blue-600 disabled:opacity-30 hover:bg-blue-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer"
-          >
-            <span>{type === 'job' ? 'الوظيفة التالية' : type === 'news' ? 'الخبر التالي' : 'التالي'}</span>
-            <ChevronLeft size={16} />
-          </button>
-        </div>
-      )}
     </motion.div>
   );
 };
