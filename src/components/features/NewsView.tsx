@@ -237,7 +237,15 @@ const Skeleton = () => (
 );
 
 // ── NewsCarousel (for feed sidebar & home view) ──────────────────────────────
-export function NewsCarousel({ appUser, onViewAll }: { appUser: any, onViewAll?: () => void }) {
+export function NewsCarousel({ 
+  appUser, 
+  onViewAll,
+  onViewNews 
+}: { 
+  appUser: any; 
+  onViewAll?: () => void;
+  onViewNews?: (item: NewsItem, list: NewsItem[]) => void;
+}) {
   const [items, setItems] = useState<NewsItem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
@@ -335,7 +343,13 @@ export function NewsCarousel({ appUser, onViewAll }: { appUser: any, onViewAll?:
             dragConstraints={{ left: 0, right: 0 }}
             dragElastic={0.2}
             onDragEnd={handleDragEnd}
-            onClick={() => setSelectedNews(currentItem)}
+            onClick={() => {
+              if (onViewNews) {
+                onViewNews(currentItem, items);
+              } else {
+                setSelectedNews(currentItem);
+              }
+            }}
             className="flex items-center gap-3.5 cursor-pointer bg-slate-50/60 dark:bg-slate-800/60 p-3 rounded-[1.5rem] hover:bg-blue-50/50 dark:hover:bg-blue-900/20 transition-colors border border-slate-100/60 dark:border-slate-700/60"
           >
             <img 
@@ -415,7 +429,13 @@ const getInitialNews = (): NewsItem[] => {
 };
 
 // ── Main NewsView ─────────────────────────────────────────────────────────────
-export function NewsView({ appUser }: { appUser: any }) {
+export function NewsView({ 
+  appUser,
+  onViewNews 
+}: { 
+  appUser: any;
+  onViewNews?: (item: NewsItem, list: NewsItem[]) => void;
+}) {
   const { addToast, setActiveTab } = useAppContext();
   const [news, setNews] = useState<NewsItem[]>(getInitialNews);
   const [loading, setLoading] = useState(false);
@@ -649,6 +669,15 @@ export function NewsView({ appUser }: { appUser: any }) {
   const featured = filtered[0];
   const rest = filtered.slice(1);
 
+  const handleSelectNews = (item: NewsItem) => {
+    const list = filtered.length > 0 ? filtered : news;
+    if (onViewNews) {
+      onViewNews(item, list);
+    } else {
+      setSelectedNews(item);
+    }
+  };
+
   return (
     <div className="space-y-5 pb-36 text-slate-800 dark:text-slate-100" dir="rtl">
       {/* ── Top Header & Filters Card — Dark themed in dark mode ── */}
@@ -856,10 +885,10 @@ export function NewsView({ appUser }: { appUser: any }) {
           </motion.div>
         ) : (
           <motion.div key="content" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
-            {featured && <NewsCard item={featured} featured onSelect={setSelectedNews} />}
+            {featured && <NewsCard item={featured} featured onSelect={handleSelectNews} />}
             {rest.map((n, i) => (
               <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
-                <NewsCard item={n} onSelect={setSelectedNews} />
+                <NewsCard item={n} onSelect={handleSelectNews} />
               </motion.div>
             ))}
           </motion.div>
@@ -873,6 +902,14 @@ export function NewsView({ appUser }: { appUser: any }) {
             items={filtered.length > 0 ? filtered : [selectedNews]}
             initialIndex={filtered.findIndex(n => n.id === selectedNews.id) >= 0 ? filtered.findIndex(n => n.id === selectedNews.id) : 0}
             onClose={() => setSelectedNews(null)}
+            onNavigateHome={() => {
+              setSelectedNews(null);
+              if (setActiveTab) setActiveTab('home');
+            }}
+            onNavigateTab={(tab) => {
+              setSelectedNews(null);
+              if (setActiveTab) setActiveTab(tab);
+            }}
             appUser={appUser}
           />
         )}

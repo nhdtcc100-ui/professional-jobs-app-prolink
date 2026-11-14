@@ -1003,7 +1003,19 @@ function App() {
                 aria-hidden={activeTab !== 'home'}
               >
                 <>
-                  <NewsCarousel appUser={appUser} onViewAll={() => setActiveTab('news')} />
+                  <NewsCarousel
+                    appUser={appUser}
+                    onViewAll={() => setActiveTab('news')}
+                    onViewNews={(newsItem, list) => {
+                      const newsList = list && list.length > 0 ? list : [newsItem];
+                      const idx = Math.max(0, newsList.findIndex((n: any) => n.id === newsItem.id));
+                      setDetailFeed({
+                        type: 'news',
+                        items: newsList,
+                        initialIndex: idx,
+                      });
+                    }}
+                  />
 
                   {/* 💼 Job Categories Card (أسفل الكاروسيل مباشرة وفق متطلبات التصميم) */}
                   <JobCategoriesCard
@@ -1102,10 +1114,12 @@ function App() {
                               post={item}
                               delay={Math.min(idx * 0.03, 0.3)}
                               onClick={() => {
+                                const feedPosts = memoizedCombinedFeed.filter((it: any) => it.feedType === 'post');
+                                const postIdx = Math.max(0, feedPosts.findIndex((p: any) => p.id === item.id));
                                 setDetailFeed({
                                   type: 'post',
-                                  items: memoizedCombinedFeed,
-                                  initialIndex: idx
+                                  items: feedPosts,
+                                  initialIndex: postIdx
                                 });
                               }}
                               onAuthorClick={() => {
@@ -1120,10 +1134,12 @@ function App() {
                               <JobCard 
                                 job={item} 
                                 onClick={() => {
+                                  const feedJobs = memoizedCombinedFeed.filter((it: any) => it.feedType !== 'post');
+                                  const jobIdx = Math.max(0, feedJobs.findIndex((j: any) => j.id === item.id));
                                   setDetailFeed({
                                     type: 'job',
-                                    items: memoizedCombinedFeed,
-                                    initialIndex: idx
+                                    items: feedJobs,
+                                    initialIndex: jobIdx
                                   });
                                 }}
                                 delay={Math.min(idx * 0.03, 0.3)}
@@ -1359,7 +1375,18 @@ function App() {
                   aria-hidden={activeTab !== 'news'}
                 >
                   <Suspense fallback={<TabSkeleton />}>
-                    <NewsView appUser={appUser} />
+                    <NewsView
+                      appUser={appUser}
+                      onViewNews={(newsItem, list) => {
+                        const newsList = list && list.length > 0 ? list : [newsItem];
+                        const idx = Math.max(0, newsList.findIndex((n: any) => n.id === newsItem.id));
+                        setDetailFeed({
+                          type: 'news',
+                          items: newsList,
+                          initialIndex: idx,
+                        });
+                      }}
+                    />
                   </Suspense>
                 </div>
               )}

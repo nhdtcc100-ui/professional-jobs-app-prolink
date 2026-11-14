@@ -104,35 +104,47 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
   const isCurNews = type === 'news' || currentItem?.feedType === 'news';
   const itemLabel = isCurJob ? 'وظيفة' : isCurNews ? 'خبر' : 'منشور';
 
-  // Professional Card Stack Motion Variants
+  // Memoized user data & cover lookup to eliminate CPU bottlenecks during animation
+  const pubUser = useMemo(() => {
+    if (!currentItem) return null;
+    const targetId = currentItem.employer_id || currentItem.employerId || currentItem.author_id || currentItem.authorId;
+    return allUsersList.find(u => u.id === targetId) ||
+      (appUser && (appUser.id === currentItem.employerId || appUser.id === currentItem.authorId) ? appUser : null);
+  }, [currentItem?.id, allUsersList, appUser]);
+
+  const pubAvatar = useMemo(() => {
+    return pubUser?.avatar || currentItem?.employer_avatar || currentItem?.employerAvatar || currentItem?.authorAvatar;
+  }, [pubUser, currentItem]);
+
+  const heroCover = useMemo(() => {
+    if (!currentItem) return DEFAULT_NEWS_PLACEHOLDER;
+    let cover = currentItem.image_url || currentItem.imageUrl || pubUser?.coverUrl || (pubUser as any)?.cover_url || DEFAULT_NEWS_PLACEHOLDER;
+    if (cover && pubAvatar && cover === pubAvatar) {
+      cover = pubUser?.coverUrl || (pubUser as any)?.cover_url || DEFAULT_NEWS_PLACEHOLDER;
+    }
+    return cover;
+  }, [currentItem?.id, pubUser, pubAvatar]);
+
+  // Ultra-Fast 60-120FPS GPU-Accelerated 2D Slide Variants (Zero 3D rotateY to prevent lag/freezing)
   const cardVariants = {
     enter: (dir: number) => ({
-      x: dir > 0 ? -160 : dir < 0 ? 160 : 0,
-      opacity: 0.25,
-      scale: 0.92,
-      rotateY: dir > 0 ? -5 : dir < 0 ? 5 : 0,
+      x: dir > 0 ? -140 : dir < 0 ? 140 : 0,
+      opacity: 0,
     }),
     center: {
       x: 0,
       opacity: 1,
-      scale: 1,
-      rotateY: 0,
       transition: {
-        type: 'spring',
-        stiffness: 350,
-        damping: 30,
-        mass: 0.9,
+        x: { type: 'spring', stiffness: 420, damping: 38, mass: 0.7 },
+        opacity: { duration: 0.15 },
       },
     },
     exit: (dir: number) => ({
-      x: dir > 0 ? 160 : -160,
+      x: dir > 0 ? 140 : -140,
       opacity: 0,
-      scale: 0.92,
-      rotateY: dir > 0 ? 5 : -5,
       transition: {
-        type: 'spring',
-        stiffness: 350,
-        damping: 30,
+        duration: 0.15,
+        ease: 'easeOut',
       },
     }),
   };
@@ -180,20 +192,19 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
         </button>
       </div>
 
-      {/* ── Main Viewport: Professional Card Deck Motion Switcher ── */}
+      {/* ── Main Viewport: Ultra-Smooth GPU-Accelerated Viewport ── */}
       <div
         className="flex-1 min-h-0 w-full flex items-center justify-center relative overflow-hidden px-2 sm:px-4 py-2 bg-slate-100/70 dark:bg-slate-950"
-        style={{ perspective: 1200 }}
       >
         {/* Peek Card: Next Card on Left (In RTL, Left is Next) */}
         {currentIndex < items.length - 1 && (
           <div
             onClick={goToNext}
             className="hidden sm:flex absolute left-2 md:left-6 w-16 md:w-28 h-[88%] rounded-3xl opacity-35 hover:opacity-60 dark:opacity-20 dark:hover:opacity-40 scale-90 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer shadow-lg overflow-hidden transition-all z-0 items-center justify-center p-2 text-center"
-            title="الوظيفة التالية"
+            title={isCurJob ? 'الوظيفة التالية' : isCurNews ? 'الخبر التالي' : 'المنشور التالي'}
           >
             <span className="text-[10px] font-black text-slate-500 line-clamp-3 leading-tight select-none pointer-events-none">
-              {items[currentIndex + 1]?.title || 'الوظيفة التالية'}
+              {items[currentIndex + 1]?.title || (isCurJob ? 'الوظيفة التالية' : isCurNews ? 'الخبر التالي' : 'التالي')}
             </span>
           </div>
         )}
@@ -203,16 +214,16 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
           <div
             onClick={goToPrev}
             className="hidden sm:flex absolute right-2 md:right-6 w-16 md:w-28 h-[88%] rounded-3xl opacity-35 hover:opacity-60 dark:opacity-20 dark:hover:opacity-40 scale-90 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer shadow-lg overflow-hidden transition-all z-0 items-center justify-center p-2 text-center"
-            title="الوظيفة السابقة"
+            title={isCurJob ? 'الوظيفة السابقة' : isCurNews ? 'الخبر السابق' : 'المنشور السابق'}
           >
             <span className="text-[10px] font-black text-slate-500 line-clamp-3 leading-tight select-none pointer-events-none">
-              {items[currentIndex - 1]?.title || 'الوظيفة السابقة'}
+              {items[currentIndex - 1]?.title || (isCurJob ? 'الوظيفة السابقة' : isCurNews ? 'الخبر السابق' : 'السابق')}
             </span>
           </div>
         )}
 
-        {/* ── Active Card with Cinematic Framer Motion Transition ── */}
-        <AnimatePresence mode="popLayout" custom={direction}>
+        {/* ── Active Card with Ultra-Fast 60-120FPS GPU Transition ── */}
+        <AnimatePresence mode="popLayout" initial={false} custom={direction}>
           <motion.div
             key={currentItem.id || currentIndex}
             custom={direction}
@@ -223,18 +234,18 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
             drag="x"
             dragDirectionLock
             dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.25}
+            dragElastic={0.15}
             onDragEnd={(e, { offset, velocity }) => {
               const swipe = offset.x;
-              if (swipe < -45 || velocity.x < -300) {
+              if (swipe < -40 || velocity.x < -250) {
                 // In RTL: swipe left goes to next job
                 goToNext();
-              } else if (swipe > 45 || velocity.x > 300) {
+              } else if (swipe > 40 || velocity.x > 250) {
                 // In RTL: swipe right goes to previous job
                 goToPrev();
               }
             }}
-            className="w-full sm:w-[92vw] md:w-[780px] max-w-[780px] h-full flex flex-col rounded-3xl border border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-slate-900 shadow-2xl relative overflow-hidden z-10 diwani-neon-card"
+            className="w-full sm:w-[92vw] md:w-[780px] max-w-[780px] h-full flex flex-col rounded-3xl border border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-slate-900 shadow-xl relative overflow-hidden z-10 diwani-neon-card will-change-transform transform-gpu"
           >
             {isCurJob ? (
               /* ── Job View: الكارد العلوي (الغلاف والعنوان والناشر) ثابت 100%، والتفاصيل سكرول داخلي ── */
@@ -242,13 +253,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                 
                 {/* ── 1. FIXED TOP HERO CARD: ثابت رغم السكرول ── */}
                 {(() => {
-                  const pubUser = allUsersList.find(u => u.id === (currentItem.employer_id || currentItem.employerId || currentItem.author_id || currentItem.authorId)) ||
-                    (appUser && (appUser.id === currentItem.employerId || appUser.id === currentItem.authorId) ? appUser : null);
-                  const pubAvatar = pubUser?.avatar || currentItem.employer_avatar || currentItem.employerAvatar || currentItem.authorAvatar;
-                  let heroCover = currentItem.image_url || currentItem.imageUrl || pubUser?.coverUrl || (pubUser as any)?.cover_url || DEFAULT_NEWS_PLACEHOLDER;
-                  if (heroCover && pubAvatar && heroCover === pubAvatar) {
-                    heroCover = pubUser?.coverUrl || (pubUser as any)?.cover_url || DEFAULT_NEWS_PLACEHOLDER;
-                  }
                   const isActive = currentItem.is_active !== false;
 
                   const handleOpenPublisher = () => {
@@ -494,61 +498,78 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                 </div>
               </div>
             ) : (
-              /* ── News View: الجزء العلوي ثابت والتفاصيل سكرول ── */
+              /* ── News View: مطابق لتفاصيل الوظائف تماماً (رأس ثابت + سكرول داخلي + شريط سفلي ثابت) ── */
               <div className="flex flex-col h-full w-full overflow-hidden">
-                {/* Fixed News Hero */}
-                <div className="shrink-0 relative h-48 sm:h-56 overflow-hidden rounded-t-3xl bg-slate-950 border-b border-slate-200/80 dark:border-slate-800 z-10">
-                  <img
-                    src={currentItem.thumbnail || currentItem.imageUrl || DEFAULT_NEWS_PLACEHOLDER}
-                    alt={currentItem.title}
-                    className="w-full h-full object-cover"
-                    onError={handleImageError}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
-                  <div className="absolute bottom-4 right-4 left-4 z-10">
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black bg-blue-500/20 border border-blue-400/30 text-blue-300">
-                        {currentItem.category || currentItem.source || 'أخبار'}
-                      </span>
-                      <span className="text-[10px] font-bold text-white/70 flex items-center gap-1">
-                        <Calendar size={11} />
-                        {currentItem.pubDate ? new Date(currentItem.pubDate).toLocaleDateString('ar-EG') : 'اليوم'}
-                      </span>
+                {/* Fixed News Hero: رأس الكارد ثابت 100% */}
+                <div className="shrink-0 relative overflow-hidden rounded-t-3xl border-b border-slate-200/80 dark:border-slate-800 z-10 bg-slate-950">
+                  <div className={`relative overflow-hidden ${heroCover ? 'h-48 sm:h-56' : 'h-40 sm:h-48'} shrink-0`}>
+                    <img
+                      src={currentItem.thumbnail || currentItem.imageUrl || heroCover}
+                      alt={currentItem.title}
+                      className="w-full h-full object-cover"
+                      onError={(e) => handleImageError(e, DEFAULT_NEWS_PLACEHOLDER)}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/45 to-transparent" />
+                    
+                    {/* Source shortcut pill */}
+                    <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/45 backdrop-blur-md text-white text-[10px] font-black border border-white/20 shadow-md">
+                      <Newspaper size={12} className="text-emerald-400" />
+                      <span>{currentItem.source || currentItem.category || 'أخبار المهنيين'}</span>
                     </div>
-                    <h1 className="text-base sm:text-lg md:text-xl font-black text-white leading-tight line-clamp-2">
-                      {currentItem.title}
-                    </h1>
+
+                    <div className="absolute bottom-4 right-4 left-4 z-10">
+                      <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-md border mb-1.5 bg-blue-500/20 border-blue-400/30 text-blue-300">
+                        <Calendar size={11} />
+                        <span>{currentItem.pubDate ? new Date(currentItem.pubDate).toLocaleDateString('ar-EG') : 'اليوم'}</span>
+                      </div>
+                      
+                      <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md line-clamp-2">
+                        {currentItem.title}
+                      </h1>
+                      
+                      <div className="flex items-center gap-2 mt-2">
+                        <div className="w-6 h-6 rounded-lg bg-emerald-600/80 border border-white/20 flex items-center justify-center text-white text-[10px] font-black shadow-md">
+                          <Newspaper size={12} />
+                        </div>
+                        <p className="text-xs sm:text-sm text-white/95 font-black">{currentItem.source || currentItem.category || 'أخبار ProLink'}</p>
+                        <span className="text-[10px] font-bold text-white/60">• {timeAgo(currentItem.pubDate || currentItem.date)}</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
 
                 {/* Scrollable News Content */}
-                <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-5 py-4 space-y-4">
+                <div 
+                  className="flex-1 min-h-0 overflow-y-auto no-scrollbar overscroll-y-contain px-4 md:px-6 py-4 space-y-4"
+                  style={{
+                    WebkitOverflowScrolling: 'touch',
+                    touchAction: 'pan-y',
+                  }}
+                >
                   <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
                     <BilingualSmartText text={currentItem.content || currentItem.description || ''} className="space-y-3" />
                   </div>
-
-                  {currentItem.link && currentItem.link !== '#' && (
-                    <div className="flex items-center justify-between p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
-                      <span className="text-xs font-bold text-slate-400">المصدر الأصلي</span>
-                      <a
-                        href={currentItem.link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition-all shadow-md cursor-pointer"
-                      >
-                        المقال الكامل
-                        <ExternalLink size={13} />
-                      </a>
-                    </div>
-                  )}
+                  <div className="h-2" />
                 </div>
 
-                {/* ── Fixed News Bottom Bar: ثابت أسفل كارد الأخبار ── */}
-                <div className="shrink-0 p-3 sm:px-5 sm:py-3.5 border-t border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-b-3xl z-20">
+                {/* ── Fixed News Bottom Bar: مطابق لشريط الوظائف تماماً مع زر المصدر الأصلي والعودة للرئيسية ── */}
+                <div className="shrink-0 p-3 sm:px-5 sm:py-3.5 border-t border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md space-y-2 z-20 rounded-b-3xl">
+                  {currentItem.link && currentItem.link !== '#' && (
+                    <a
+                      href={currentItem.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:brightness-110 text-white shadow-md cursor-pointer transition-all active:scale-[0.98]"
+                    >
+                      <ExternalLink size={15} />
+                      <span>قراءة المقال بالكامل من المصدر الأصلي 🌐</span>
+                    </a>
+                  )}
+
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={handleGoHome}
-                      className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                      className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
                       title="العودة للرئيسية"
                     >
                       <Home size={14} className="text-blue-500" />
@@ -556,7 +577,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     </button>
                     <button
                       onClick={handleGoSection}
-                      className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                      className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
                       title="العودة للأخبار"
                     >
                       <Newspaper size={14} className="text-emerald-500" />
