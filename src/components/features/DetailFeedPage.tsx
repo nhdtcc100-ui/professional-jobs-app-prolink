@@ -1,5 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence, type Variants } from 'motion/react';
 import { 
   ArrowRight, Briefcase, MapPin, DollarSign, 
   Tag, Clock, Send, Calendar, ExternalLink, Sparkles,
@@ -126,7 +126,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
   }, [currentItem?.id, pubUser, pubAvatar]);
 
   // Ultra-Fast 60-120FPS GPU-Accelerated 2D Slide Variants (Zero 3D rotateY to prevent lag/freezing)
-  const cardVariants = {
+  const cardVariants: Variants = {
     enter: (dir: number) => ({
       x: dir > 0 ? -140 : dir < 0 ? 140 : 0,
       opacity: 0,
@@ -135,7 +135,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
       x: 0,
       opacity: 1,
       transition: {
-        x: { type: 'spring', stiffness: 420, damping: 38, mass: 0.7 },
+        x: { type: 'spring' as const, stiffness: 420, damping: 38, mass: 0.7 },
         opacity: { duration: 0.15 },
       },
     },
