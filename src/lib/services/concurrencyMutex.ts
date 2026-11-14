@@ -72,6 +72,14 @@ class KeyedAsyncMutex {
   }
 
   /**
+   * Forcibly clears any active lock or queue for a key (used for recovering from stuck/failed operations).
+   */
+  clearKey(key: string): void {
+    this.activeLocks.delete(key);
+    this.queue.delete(key);
+  }
+
+  /**
    * Executes an asynchronous task inside a critical section locked by key.
    * Guarantees the lock is released even if the task throws.
    */

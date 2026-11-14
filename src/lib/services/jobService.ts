@@ -168,73 +168,135 @@ export const jobService = {
 
     const mutexKey = `job_app_${applicantId}_${data.jobId}`;
     const idempotencyKey = idempotencyEngine.generateKey('job_apps', applicantId, { jobId: data.jobId });
+    const coverLetterText = sanitizeInput(data.coverLetter || data.notes || '', 3000);
+    const cvUrlText = data.cvUrl || '';
 
-    return withMutex(mutexKey, () =>
-      withIdempotency(
-        idempotencyKey,
-        async () => {
-          const coverLetterText = sanitizeInput(data.coverLetter || data.notes || '', 3000);
-          const cvUrlText = data.cvUrl || '';
+    // ── 1. Fast Check & Upsert: If application already exists, update it cleanly ──
+    try {
+      const { data: existingApp } = await (supabase.from('job_applications') as any)
+        .select('id, status')
+        .eq('applicant_id', applicantId)
+        .eq('job_id', data.jobId)
+        .maybeSingle();
 
-          return withCollisionRetry(async (_attempt, freshId) => {
-            // 1. Try full insert (all fields including extended metadata)
-            const fullPayload = {
-              id: freshId,
-              applicant_id: applicantId,
-              employer_id: employerId,
-              job_id: data.jobId,
-              cover_letter: coverLetterText,
-              cv_url: cvUrlText,
-              experience: sanitizeInput(data.experience || '', 2000),
-              education: sanitizeInput(data.education || '', 2000),
-              skills: Array.isArray(data.skills) ? data.skills.slice(0, 50) : [],
-              applicant_data: data.applicantData || {},
-              status: 'pending'
-            };
+      if (existingApp?.id) {
+        console.log("ℹ️ [applyToJob] Application already exists, updating existing record:", existingApp.id);
+        const updatePayload: any = {
+          cover_letter: coverLetterText,
+          cv_url: cvUrlText,
+          experience: sanitizeInput(data.experience || '', 2000),
+          education: sanitizeInput(data.education || '', 2000),
+          skills: Array.isArray(data.skills) ? data.skills.slice(0, 50) : [],
+          applicant_data: data.applicantData || {},
+          status: 'pending',
+        };
 
-            try {
-              const res: any = await withTimeout((supabase.from('job_applications') as any).insert([fullPayload]).select(), 20000, 'apply.insert1');
-              if (!res.error) return { data: res.data, error: null };
+        const resUpdate: any = await (supabase.from('job_applications') as any)
+          .update(updatePayload)
+          .eq('id', existingApp.id)
+          .select();
 
-              console.warn("⚠️ [applyToJob] Full payload insert returned error, attempting standard fallback:", res.error);
-              
-              // 2. Fallback level 1: Standard columns without extended schema
-              const standardPayload = {
+        if (!resUpdate.error) {
+          return { data: resUpdate.data, error: null, isUpdated: true };
+        }
+
+        // Fallback update if extended columns are not present
+        const resMinUpdate: any = await (supabase.from('job_applications') as any)
+          .update({
+            cover_letter: coverLetterText,
+            cv_url: cvUrlText,
+            status: 'pending',
+          })
+          .eq('id', existingApp.id)
+          .select();
+
+        return { data: resMinUpdate.data, error: resMinUpdate.error, isUpdated: true };
+      }
+    } catch (checkErr) {
+      console.warn("⚠️ [applyToJob] Non-fatal check error, proceeding to insert:", checkErr);
+    }
+
+    try {
+      return await withMutex(mutexKey, () =>
+        withIdempotency(
+          idempotencyKey,
+          async () => {
+            return withCollisionRetry(async (_attempt, freshId) => {
+              // 1. Try full insert (all fields including extended metadata)
+              const fullPayload = {
                 id: freshId,
                 applicant_id: applicantId,
                 employer_id: employerId,
                 job_id: data.jobId,
                 cover_letter: coverLetterText,
                 cv_url: cvUrlText,
+                experience: sanitizeInput(data.experience || '', 2000),
+                education: sanitizeInput(data.education || '', 2000),
+                skills: Array.isArray(data.skills) ? data.skills.slice(0, 50) : [],
+                applicant_data: data.applicantData || {},
                 status: 'pending'
               };
 
-              const res2: any = await withTimeout((supabase.from('job_applications') as any).insert([standardPayload]).select(), 20000, 'apply.insert2');
-              if (!res2.error) return { data: res2.data, error: null };
+              try {
+                const res: any = await withTimeout((supabase.from('job_applications') as any).insert([fullPayload]).select(), 10000, 'apply.insert1');
+                if (!res.error) return { data: res.data, error: null };
 
-              console.warn("⚠️ [applyToJob] Standard payload insert returned error, attempting minimal fallback:", res2.error);
+                // If error is duplicate application, try update immediately
+                if (res.error?.code === '23505') {
+                  const resUp: any = await (supabase.from('job_applications') as any)
+                    .update({ cover_letter: coverLetterText, cv_url: cvUrlText, status: 'pending' })
+                    .eq('applicant_id', applicantId)
+                    .eq('job_id', data.jobId)
+                    .select();
+                  if (!resUp.error) return { data: resUp.data, error: null, isUpdated: true };
+                }
 
-              // 3. Fallback level 2: Minimal essential columns
-              const minPayload = {
-                id: freshId,
-                applicant_id: applicantId,
-                job_id: data.jobId,
-                cover_letter: coverLetterText,
-                status: 'pending'
-              };
+                console.warn("⚠️ [applyToJob] Full payload insert returned error, attempting standard fallback:", res.error);
+                
+                // 2. Fallback level 1: Standard columns without extended schema
+                const standardPayload = {
+                  id: freshId,
+                  applicant_id: applicantId,
+                  employer_id: employerId,
+                  job_id: data.jobId,
+                  cover_letter: coverLetterText,
+                  cv_url: cvUrlText,
+                  status: 'pending'
+                };
 
-              const res3: any = await withTimeout((supabase.from('job_applications') as any).insert([minPayload]).select(), 20000, 'apply.insert3');
-              return { data: res3.data, error: res3.error };
+                const res2: any = await withTimeout((supabase.from('job_applications') as any).insert([standardPayload]).select(), 10000, 'apply.insert2');
+                if (!res2.error) return { data: res2.data, error: null };
 
-            } catch (err: any) {
-              console.error("❌ [applyToJob] exception:", err);
-              return { data: null, error: err };
-            }
-          }, { scope: 'applyToJob' });
-        },
-        { ttlMs: 60000, scope: 'job_applications' }
-      )
-    );
+                console.warn("⚠️ [applyToJob] Standard payload insert returned error, attempting minimal fallback:", res2.error);
+
+                // 3. Fallback level 2: Minimal essential columns
+                const minPayload = {
+                  id: freshId,
+                  applicant_id: applicantId,
+                  job_id: data.jobId,
+                  cover_letter: coverLetterText,
+                  status: 'pending'
+                };
+
+                const res3: any = await withTimeout((supabase.from('job_applications') as any).insert([minPayload]).select(), 10000, 'apply.insert3');
+                return { data: res3.data, error: res3.error };
+
+              } catch (err: any) {
+                console.error("❌ [applyToJob] exception:", err);
+                return { data: null, error: err };
+              }
+            }, { scope: 'applyToJob' });
+          },
+          { ttlMs: 30000, scope: 'job_applications' }
+        )
+      );
+    } catch (e: any) {
+      // Invalidate lock and idempotency on failure so user can retry immediately without refreshing
+      idempotencyEngine.invalidate(idempotencyKey);
+      concurrencyMutex.clearKey(mutexKey);
+      console.error("❌ [applyToJob] Outer catch error:", e);
+      return { data: null, error: e };
+    }
   },
 
   async uploadJobImage(userId: string, file: File) {

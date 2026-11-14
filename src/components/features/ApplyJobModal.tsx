@@ -46,6 +46,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
   isUploadingCv, setIsUploadingCv, addToast
 }) => {
   const [prevWorks, setPrevWorks] = useState<PrevWork[]>([]);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   if (!applyingJob || !appUser) return null;
 
@@ -88,6 +89,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
     }
 
     setIsApplying(true);
+    setSubmitError(null);
     let succeeded = false;
 
     // Safety timeout to prevent infinite loading (35s for mobile file uploads)
@@ -95,7 +97,8 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
       if (!succeeded) {
         setIsApplying(false);
         setIsUploadingCv(false);
-        addToast('انتهت مهلة التقديم. يرجى التأكد من اتصال الإنترنت والمحاولة مجدداً.', 'error');
+        setSubmitError('انتهت مهلة التقديم، يرجى التحقق من اتصال الإنترنت والنقر على إعادة المحاولة.');
+        addToast('انتهت مهلة التقديم. يمكنك النقر على إعادة المحاولة مباشرة دون تحديث الصفحة.', 'error');
       }
     }, 35000);
 
@@ -131,7 +134,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
       const fullExperience = cvExperience + (formattedPrevWorks ? `\n\n--- خبرات سابقة ---\n${formattedPrevWorks}` : '');
 
       console.log("💎 [UI_STEP_3] Calling service.applyToJob...");
-      const { error } = await jobService.applyToJob(appUser.id, applyingJob.employer_id!, {
+      const applyResult = await jobService.applyToJob(appUser.id, applyingJob.employer_id!, {
         jobId: applyingJob.id,
         coverLetter: cvCoverLetter,
         cvUrl,
@@ -149,11 +152,16 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
         }
       });
       
-      if (error) throw error;
+      if (applyResult.error) throw applyResult.error;
 
       clearTimeout(timeoutId);
       succeeded = true;
       setApplySuccess(true);
+      setSubmitError(null);
+
+      if ((applyResult as any).isUpdated) {
+        addToast('تم تحديث طلب التقديم الخاص بك بنجاح! 🚀');
+      }
       
       try { if (window.refreshApplications) window.refreshApplications(); } catch (_) {}
 
@@ -171,9 +179,14 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
     } catch (e: any) {
       clearTimeout(timeoutId);
       console.error('Apply error:', e);
-      addToast('فشل التقديم: ' + (e.message || 'خطأ غير معروف'), 'error');
-      setIsApplying(false);
-      setIsUploadingCv(false);
+      const errText = e.message || 'خطأ غير معروف أثناء الإرسال';
+      setSubmitError(errText);
+      addToast('تعذر إرسال طلب التقديم: ' + errText + ' — يمكنك إعادة المحاولة الآن.', 'error');
+    } finally {
+      if (!succeeded) {
+        setIsApplying(false);
+        setIsUploadingCv(false);
+      }
     }
   };
 
@@ -492,6 +505,20 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
           className="sticky bottom-0 shrink-0 z-30 p-4 md:p-5 border-t border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-[0_-8px_25px_rgba(0,0,0,0.06)]"
           style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)' }}
         >
+          {submitError && (
+            <div className="mb-2.5 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in">
+              <span className="truncate flex-1 text-[11px]">{submitError}</span>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={isApplying || isUploadingCv}
+                className="shrink-0 px-2.5 py-1 bg-red-600 hover:bg-red-700 active:scale-95 text-white rounded-lg text-[10px] font-black transition-all"
+              >
+                إعادة المحاولة 🔄
+              </button>
+            </div>
+          )}
+
           <button
             onClick={handleSubmit}
             disabled={isApplying || isUploadingCv}

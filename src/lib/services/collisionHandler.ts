@@ -33,6 +33,26 @@ export function isUniqueViolation(error: any): boolean {
 }
 
 /**
+ * Checks if an error is specifically an ID / primary key collision that can be resolved
+ * by regenerating a new random ID (as opposed to composite domain keys like job_id + applicant_id).
+ */
+export function isPrimaryKeyCollision(error: any): boolean {
+  if (!isUniqueViolation(error)) return false;
+  const msg = (error?.message || error?.details || '').toLowerCase();
+  // If the violation is on specific business columns, regenerating an ID will NOT fix it
+  if (
+    msg.includes('job_id') ||
+    msg.includes('applicant_id') ||
+    msg.includes('user_id') ||
+    msg.includes('email') ||
+    msg.includes('phone')
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
  * Wraps a database insert/upsert task with collision-detection and automatic ID re-generation.
  *
  * @param task Callback receiving the current attempt index and a newly generated UUID
@@ -56,7 +76,7 @@ export async function withCollisionRetry<T>(
       const result: any = await task(attempt, currentId);
 
       // Check if the result is a Supabase response with an error
-      if (result && result.error && isUniqueViolation(result.error)) {
+      if (result && result.error && isPrimaryKeyCollision(result.error)) {
         if (attempt >= maxRetries) {
           console.error(`[${scope}] Max collision retries (${maxRetries}) exhausted:`, result.error);
           return result;
@@ -73,7 +93,7 @@ export async function withCollisionRetry<T>(
 
       return result;
     } catch (err: any) {
-      if (isUniqueViolation(err) && attempt < maxRetries) {
+      if (isPrimaryKeyCollision(err) && attempt < maxRetries) {
         attempt++;
         const jitter = Math.random() * 40;
         const delay = Math.min(baseDelayMs * Math.pow(2, attempt) + jitter, maxDelayMs);

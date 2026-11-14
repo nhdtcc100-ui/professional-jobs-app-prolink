@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   Globe, Globe2, RefreshCw, ExternalLink, Clock,
   ChevronLeft, ChevronRight, ArrowLeft, ArrowUpRight, Search, Eye, Filter, Bookmark, Send, Building2, CheckCircle2, ShieldAlert, Award,
-  Flag, Wifi, WifiOff, Info, Home
+  Flag, Wifi, WifiOff, Info, Home, Trophy, Briefcase, Cpu, TrendingUp, Scale, BookOpen, Sparkles
 } from 'lucide-react';
 import { newsService } from '../../lib/services/newsService';
 import { DetailFeedPage } from './DetailFeedPage';
@@ -427,8 +427,7 @@ export function NewsView({ appUser }: { appUser: any }) {
   });
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
-  const [region, setRegion] = useState<'all' | 'iraq' | 'arab' | 'global'>('all');
-  const [topic, setTopic] = useState('الكل');
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
   const [tgInput, setTgInput] = useState('');
   const [showSources, setShowSources] = useState(false);
@@ -573,22 +572,79 @@ export function NewsView({ appUser }: { appUser: any }) {
     }
   };
 
-  const REGIONS = [
-    { id: 'all', label: 'الكل', icon: Globe2, cls: 'bg-slate-900 dark:bg-blue-600' },
-    { id: 'iraq', label: '🇮🇶 عراق', icon: Flag, cls: 'bg-emerald-600' },
-    { id: 'arab', label: '🌙 عربي', icon: Globe2, cls: 'bg-blue-600' },
-    { id: 'global', label: '🌐 عالمي', icon: Globe2, cls: 'bg-slate-700' },
-  ] as const;
-
-  const TOPICS = ['الكل', 'وظائف', 'سياسة', 'رياضة', 'تقنية', 'اقتصاد', 'مقالات'];
+  const NEWS_CATEGORIES = [
+    {
+      id: 'iraq',
+      label: 'أخبار العراق',
+      icon: Flag,
+      grad: ['#059669', '#047857'],
+      deco: ['🇮🇶', '🏛️'],
+      matches: (n: NewsItem) => n.region === 'iraq' || /عراق|بغداد|أربيل|البصرة|الموصل|كركوك|النجف|كربلاء|السليمانية|سومر|دجلة|الرافدين/i.test(n.title + ' ' + (n.description || ''))
+    },
+    {
+      id: 'sports',
+      label: 'أخبار الرياضة',
+      icon: Trophy,
+      grad: ['#EA580C', '#DC2626'],
+      deco: ['⚽', '🏆'],
+      matches: (n: NewsItem) => n.topic === 'رياضة' || /رياضة|كرة|دوري|منتخب|مباراة|بطولة|كأس|نادي|ريال|برشلونة|فيفا|هدف/i.test(n.title + ' ' + (n.description || ''))
+    },
+    {
+      id: 'jobs',
+      label: 'وظائف وأعمال',
+      icon: Briefcase,
+      grad: ['#2563EB', '#1D4ED8'],
+      deco: ['💼', '📈'],
+      matches: (n: NewsItem) => n.topic === 'وظائف' || /وظيفة|وظائف|تعيين|شاغر|توظيف|فرصة عمل|مسار مهني|سوق العمل/i.test(n.title + ' ' + (n.description || ''))
+    },
+    {
+      id: 'tech',
+      label: 'تقنية وتكنولوجيا',
+      icon: Cpu,
+      grad: ['#7C3AED', '#6D28D9'],
+      deco: ['⚡', '🤖'],
+      matches: (n: NewsItem) => n.topic === 'تقنية' || /تقنية|تكنولوجيا|ذكاء|برمجة|حاسوب|هاتف|تطبيق|آبل|جوجل|مايكروسوفت|أندرويد/i.test(n.title + ' ' + (n.description || ''))
+    },
+    {
+      id: 'economy',
+      label: 'مال واقتصاد',
+      icon: TrendingUp,
+      grad: ['#0D9488', '#0F766E'],
+      deco: ['📊', '💰'],
+      matches: (n: NewsItem) => n.topic === 'اقتصاد' || /اقتصاد|نفط|دولار|دينار|بورصة|مركزي|استثمار|أسواق|تجارة|مالي|أرباح/i.test(n.title + ' ' + (n.description || ''))
+    },
+    {
+      id: 'politics',
+      label: 'أخبار سياسية',
+      icon: Scale,
+      grad: ['#475569', '#334155'],
+      deco: ['⚖️', '🏛️'],
+      matches: (n: NewsItem) => n.topic === 'سياسة' || /سياسة|حكومة|برلمان|وزير|رئاسة|دبلوماسي|قمة|اتفاقية|مجلس النواب/i.test(n.title + ' ' + (n.description || ''))
+    },
+    {
+      id: 'articles',
+      label: 'مقالات وتحليلات',
+      icon: BookOpen,
+      grad: ['#E11D48', '#BE123C'],
+      deco: ['✍️', '📰'],
+      matches: (n: NewsItem) => n.topic === 'مقالات' || /مقال|تحليل|رأي|دراسة|تقرير|افتتاحية/i.test(n.title + ' ' + (n.description || ''))
+    },
+    {
+      id: 'global',
+      label: 'أخبار دولية',
+      icon: Globe2,
+      grad: ['#0284C7', '#0369A1'],
+      deco: ['🌍', '✈️'],
+      matches: (n: NewsItem) => n.region === 'global' || n.region === 'arab' || /دولي|عالمي|واشنطن|أوروبا|الأمم المتحدة|العالم/i.test(n.title + ' ' + (n.description || ''))
+    },
+  ];
 
   const filtered = React.useMemo(() => {
-    return news.filter(n => {
-      const rOk = region === 'all' || n.region === region;
-      const tOk = topic === 'الكل' || n.topic === topic;
-      return rOk && tOk;
-    });
-  }, [news, region, topic]);
+    if (!selectedCategory) return news;
+    const cat = NEWS_CATEGORIES.find(c => c.id === selectedCategory);
+    if (!cat) return news;
+    return news.filter(n => cat.matches(n));
+  }, [news, selectedCategory]);
 
   const featured = filtered[0];
   const rest = filtered.slice(1);
@@ -715,33 +771,75 @@ export function NewsView({ appUser }: { appUser: any }) {
           </div>
         </div>
 
-        {/* Region filter pills */}
-        <div className="flex gap-2 overflow-x-auto no-scrollbar py-1" style={{ scrollbarWidth: 'none' }}>
-          {REGIONS.map(r => (
-            <button key={r.id} onClick={() => setRegion(r.id as any)}
-              className={`shrink-0 px-4 py-2 rounded-xl text-[10px] font-black transition-all border ${
-                region === r.id 
-                  ? `${r.cls} text-white border-transparent shadow-md` 
-                  : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-sm'
-              }`}>
-              {r.label}
-            </button>
-          ))}
+        {/* ── بطاقات تصنيفات الأخبار المربعة الأنيقة بنفس تصميم سوق المهن ── */}
+        <div className="overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none" dir="rtl" style={{ scrollbarWidth: 'none' }}>
+          <div className="flex gap-2.5 w-max py-1">
+            {NEWS_CATEGORIES.map((cat) => {
+              const isSelected = selectedCategory === cat.id;
+              const count = news.filter(cat.matches).length;
+              const IconComp = cat.icon;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setSelectedCategory(isSelected ? null : cat.id)}
+                  className={`relative flex-shrink-0 w-[92px] h-[86px] sm:w-[102px] sm:h-[94px] rounded-2xl overflow-hidden transition-all duration-200 active:scale-95 group ${
+                    isSelected
+                      ? 'ring-2 ring-blue-500 dark:ring-white/90 shadow-xl shadow-blue-500/20 scale-105'
+                      : 'opacity-85 hover:opacity-100 hover:scale-[1.03] shadow-sm'
+                  }`}
+                  style={{
+                    background: `linear-gradient(135deg, ${cat.grad[0]}, ${cat.grad[1]})`,
+                  }}
+                >
+                  {/* أيقونات زخرفية صغيرة بالزوايا */}
+                  <span className="absolute top-1.5 right-2 text-[9px] opacity-40 select-none pointer-events-none" aria-hidden="true">{cat.deco[0]}</span>
+                  <span className="absolute top-1.5 left-2 text-[9px] opacity-40 select-none pointer-events-none" aria-hidden="true">{cat.deco[1]}</span>
+
+                  {/* المحتوى الرئيسي للكارد */}
+                  <div className="relative z-10 flex flex-col items-center justify-end h-full pb-2 px-1 gap-1">
+                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
+                      <IconComp size={18} className="text-white drop-shadow-sm" />
+                    </div>
+                    <span className="text-white font-black text-[10px] sm:text-[11px] drop-shadow text-center leading-tight truncate w-full">
+                      {cat.label}
+                    </span>
+                    {count > 0 && (
+                      <span className="text-[8.5px] font-black text-white/90 bg-black/30 px-1.5 py-0.5 rounded-full leading-none">
+                        {count} خبر
+                      </span>
+                    )}
+                  </div>
+
+                  {/* طبقة توهج عند التحديد */}
+                  {isSelected && (
+                    <div className="absolute inset-0 bg-white/20 backdrop-blur-[0.5px] border-2 border-white/70 rounded-2xl pointer-events-none" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Topic filter */}
-        <div className="flex gap-2 p-1.5 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 overflow-x-auto no-scrollbar" style={{ scrollbarWidth: 'none' }}>
-          {TOPICS.map(t => (
-            <button key={t} onClick={() => setTopic(t)}
-              className={`shrink-0 px-4 py-2 rounded-xl text-[10px] font-black transition-all whitespace-nowrap ${
-                topic === t 
-                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
-                  : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
-              }`}>
-              {t}
+        {/* مؤشر الفلتر النشط وزر مسح الفلتر */}
+        {selectedCategory && (
+          <div className="flex items-center justify-between px-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-1.5 text-xs font-black text-slate-700 dark:text-slate-300">
+              <span className="text-slate-400">القسم المختار:</span>
+              <span className="text-blue-600 dark:text-blue-400 font-black">
+                {NEWS_CATEGORIES.find(c => c.id === selectedCategory)?.label}
+              </span>
+              <span className="text-slate-400 text-[10px]">({filtered.length} خبر)</span>
+            </div>
+            <button
+              onClick={() => setSelectedCategory(null)}
+              className="text-[10px] font-black text-red-500 hover:text-red-600 transition-colors flex items-center gap-1 bg-red-50 dark:bg-red-950/40 px-2.5 py-1 rounded-lg border border-red-100 dark:border-red-900/40"
+            >
+              <span>عرض كل الأخبار</span>
+              <span>✕</span>
             </button>
-          ))}
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Content */}
