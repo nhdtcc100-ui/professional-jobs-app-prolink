@@ -1220,7 +1220,17 @@ export function MessagingView({
             onBack={() => setSelectedGroup(null)}
           />
         ) : selectedChat ? (
-          <div className="flex-1 flex flex-col relative z-10 bg-white/95 overflow-hidden">
+          <motion.div
+            key={selectedChat.id}
+            initial={{ opacity: 0, x: -28, scale: 0.99 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 28, scale: 0.99 }}
+            transition={{
+              x: { type: 'spring', stiffness: 440, damping: 38, mass: 0.7 },
+              opacity: { duration: 0.15 },
+            }}
+            className="flex-1 flex flex-col relative z-10 bg-white/95 overflow-hidden will-change-transform transform-gpu"
+          >
             {/* Chat Header */}
             <div className="flex items-center justify-between p-3 px-4 bg-white/80 dark:bg-slate-900/90 backdrop-blur-md border-b border-slate-50 dark:border-slate-800 z-20 shrink-0">
               <div className="flex items-center gap-3">
@@ -1506,7 +1516,7 @@ export function MessagingView({
                 </div>
               )}
             </div>
-          </div>
+          </motion.div>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center gap-6 relative z-10 p-8">
             <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}>

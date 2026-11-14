@@ -151,11 +151,15 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 30 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 30 }}
-      transition={{ type: 'spring', damping: 26, stiffness: 280 }}
-      className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[220] bg-slate-100/95 dark:bg-slate-950 text-slate-800 dark:text-white flex flex-col overflow-hidden"
+      initial={{ opacity: 0, x: -36, scale: 0.98 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, x: 36, scale: 0.98 }}
+      transition={{
+        x: { type: 'spring', stiffness: 440, damping: 38, mass: 0.7 },
+        opacity: { duration: 0.16 },
+        scale: { duration: 0.16 },
+      }}
+      className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[220] bg-slate-100/95 dark:bg-slate-950 text-slate-800 dark:text-white flex flex-col overflow-hidden will-change-transform transform-gpu"
       dir="rtl"
     >
       {/* ── Top Bar: زر الرجوع + عدد الوظائف فقط (مطابق لطلب المستخدم) ── */}

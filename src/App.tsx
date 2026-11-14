@@ -1347,10 +1347,10 @@ function App() {
 
               {activeTab === 'groups' && (
                 <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  transition={{ duration: 0.13, ease: 'easeOut' }}
                   className="pb-safe-bottom px-1 md:px-0"
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1393,10 +1393,10 @@ function App() {
 
               {activeTab === 'services' && (
                 <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  transition={{ duration: 0.13, ease: 'easeOut' }}
                   className="pb-safe-bottom px-1 md:px-0"
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1414,10 +1414,10 @@ function App() {
 
               {activeTab === 'erp' && (
                 <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  transition={{ duration: 0.13, ease: 'easeOut' }}
                   className="pb-safe-bottom px-1 md:px-0"
                 >
                   {appUser?.isAdmin ? (
@@ -1461,11 +1461,15 @@ function App() {
 
               {activeTab === 'profile' && (selectedProfile || appUser) && (
                 <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18, ease: 'easeOut' }}
-                  className="pb-safe-bottom px-1 md:px-0"
+                  initial={{ opacity: 0, x: -32, scale: 0.98 }}
+                  animate={{ opacity: 1, x: 0, scale: 1 }}
+                  exit={{ opacity: 0, x: 32, scale: 0.98 }}
+                  transition={{
+                    x: { type: 'spring', stiffness: 440, damping: 38, mass: 0.7 },
+                    opacity: { duration: 0.15 },
+                    scale: { duration: 0.15 },
+                  }}
+                  className="pb-safe-bottom px-1 md:px-0 will-change-transform transform-gpu"
                 >
                   <Suspense fallback={<TabSkeleton />}>
                     <ProfilePage
