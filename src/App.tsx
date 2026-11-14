@@ -1152,7 +1152,7 @@ function App() {
               {visitedTabs.jobs && (
                 <div
                   key="keepalive-tab-jobs"
-                  className={activeTab === 'jobs' ? 'pb-safe-bottom px-1 md:px-0' : 'hidden'}
+                  className={activeTab === 'jobs' ? 'pb-safe-bottom px-1 md:px-0 animate-in fade-in duration-150' : 'hidden'}
                   aria-hidden={activeTab !== 'jobs'}
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1238,7 +1238,7 @@ function App() {
               {visitedTabs.network && (
                 <div
                   key="keepalive-tab-network"
-                  className={activeTab === 'network' ? 'pb-safe-bottom px-1 md:px-0' : 'hidden'}
+                  className={activeTab === 'network' ? 'pb-safe-bottom px-1 md:px-0 animate-in fade-in duration-150' : 'hidden'}
                   aria-hidden={activeTab !== 'network'}
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1355,7 +1355,7 @@ function App() {
               {visitedTabs.news && (
                 <div
                   key="keepalive-tab-news"
-                  className={activeTab === 'news' ? 'pb-safe-bottom px-1 md:px-0' : 'hidden'}
+                  className={activeTab === 'news' ? 'pb-safe-bottom px-1 md:px-0 animate-in fade-in duration-150' : 'hidden'}
                   aria-hidden={activeTab !== 'news'}
                 >
                   <Suspense fallback={<TabSkeleton />}>

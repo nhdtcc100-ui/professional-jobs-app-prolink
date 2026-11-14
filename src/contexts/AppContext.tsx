@@ -1,3 +1,4 @@
+import { revealTheme } from '../lib/motion/transitions';
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { AppUser, Post, Job, AppConnection, AppNotification } from '../types';
@@ -695,8 +696,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     document.documentElement.classList.add(theme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  const toggleTheme = (e?: any) => {
+    const x = e && typeof e.clientX === 'number' && e.clientX > 0 ? e.clientX : (typeof window !== 'undefined' ? window.innerWidth / 2 : 200);
+    const y = e && typeof e.clientY === 'number' && e.clientY > 0 ? e.clientY : 40;
+    revealTheme(x, y, () => {
+      setTheme(prev => prev === 'light' ? 'dark' : 'light');
+    });
   };
 
   const isFetchingAllData = useRef(false);

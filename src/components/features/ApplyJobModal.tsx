@@ -188,14 +188,23 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 30 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 30 }}
-      transition={{ type: 'spring', damping: 26, stiffness: 280 }}
+      initial={{ y: '100%' }}
+      animate={{ y: 0 }}
+      exit={{ y: '100%' }}
+      transition={{ type: 'spring', stiffness: 380, damping: 38 }}
+      drag="y"
+      dragConstraints={{ top: 0, bottom: 0 }}
+      dragElastic={{ top: 0, bottom: 0.6 }}
+      onDragEnd={(_, info) => {
+        if (info.offset.y > 120 || info.velocity.y > 600) {
+          handleClose();
+        }
+      }}
       className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[250] bg-white dark:bg-slate-900 flex flex-col overflow-hidden"
       dir="rtl"
     >
-      <div className="flex flex-col w-full h-full max-w-lg mx-auto relative overflow-hidden">
+      <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0 cursor-grab active:cursor-grabbing" />
+      <div className="flex flex-col w-full flex-1 min-h-0 max-w-lg mx-auto relative overflow-hidden">
         {/* ── Success overlay ── */}
         <AnimatePresence>
           {applySuccess && (
