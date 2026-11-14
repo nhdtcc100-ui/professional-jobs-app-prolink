@@ -582,7 +582,6 @@ button, a, input, select, textarea {
 .metal-watermark,
 .diwani-neon-card {
   position: relative;
-  overflow: hidden;
 }
 
 .metal-watermark::before,

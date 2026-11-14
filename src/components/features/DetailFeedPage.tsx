@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { 
   ArrowRight, Briefcase, MapPin, DollarSign, 
   Tag, Clock, Send, Calendar, ExternalLink, Sparkles,
-  FileText, Home, Newspaper, Phone, MessageCircle
+  FileText, Home, Newspaper
 } from 'lucide-react';
 import { Job, AppUser } from '../../types';
 import { safeTimeAgo } from '../../lib/utils/formatDate';
@@ -113,101 +113,55 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
 
   if (!items || items.length === 0) return null;
 
+  const cur = items[currentIndex];
+  const isCurJob = cur?.feedType === 'job' || cur?.company !== undefined || (type === 'job' && !cur?.content);
+  const isCurNews = type === 'news' || cur?.feedType === 'news';
+  const itemLabel = isCurJob ? 'وظيفة' : isCurNews ? 'خبر' : 'منشور';
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 30 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 30 }}
       transition={{ type: 'spring', damping: 26, stiffness: 280 }}
-      className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[220] bg-slate-100/90 dark:bg-slate-950 text-slate-800 dark:text-white flex flex-col overflow-hidden"
+      className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[220] bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-white flex flex-col overflow-hidden"
       dir="rtl"
     >
-      {/* ── Top Bar: Back, Home, Section & Counter (No Next/Prev buttons) ── */}
+      {/* ── Top Bar: Simple & Clean (زر الرجوع + عدد الوظائف فقط — لا أزرار تنقل) ── */}
       <div
-        className="relative z-30 flex items-center justify-between px-3 md:px-6 py-2.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800/80 shrink-0 shadow-sm gap-2"
+        className="relative z-30 flex items-center justify-between px-4 py-2.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 shrink-0 shadow-xs gap-3"
         style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)' }}
       >
-        {/* Navigation Action Buttons */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {type === 'news' ? (
-            <button
-              onClick={onClose}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-black transition-all active:scale-95 shadow-sm cursor-pointer"
-              title="الرجوع للأخبار"
-            >
-              <ArrowRight size={15} />
-              <span>الرجوع للأخبار</span>
-            </button>
-          ) : (
-            <>
-              <button
-                onClick={onClose}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-black transition-all active:scale-95 shadow-sm cursor-pointer"
-                title="رجوع للمكان السابق"
-              >
-                <ArrowRight size={15} />
-                <span>رجوع</span>
-              </button>
+        {/* زر الرجوع */}
+        <button
+          onClick={onClose}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-black transition-all active:scale-95 shadow-xs cursor-pointer"
+          title="رجوع"
+        >
+          <ArrowRight size={16} />
+          <span>رجوع</span>
+        </button>
 
-              <button
-                onClick={handleGoHome}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all active:scale-95 cursor-pointer"
-                title="العودة للرئيسية"
-              >
-                <Home size={14} className="text-blue-600 dark:text-blue-400" />
-                <span className="hidden sm:inline">الرئيسية</span>
-              </button>
-
-              <button
-                onClick={handleGoSection}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all active:scale-95 cursor-pointer"
-                title={type === 'job' ? 'الرجوع لقسم الوظائف' : 'الرئيسية'}
-              >
-                {type === 'job' ? (
-                  <>
-                    <Briefcase size={14} className="text-indigo-600 dark:text-indigo-400" />
-                    <span className="hidden sm:inline">الوظائف</span>
-                  </>
-                ) : (
-                  <>
-                    <Home size={14} className="text-blue-600 dark:text-blue-400" />
-                    <span className="hidden sm:inline">المنشورات</span>
-                  </>
-                )}
-              </button>
-            </>
-          )}
+        {/* عدد الوظائف (كما في تفاصيل الرئيسية) */}
+        <div className="flex items-center justify-center">
+          <span className="text-xs font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 px-3.5 py-1 rounded-full shadow-xs">
+            {itemLabel} {currentIndex + 1} من {items.length}
+          </span>
         </div>
 
-        {/* Dynamic Item Counter Badge */}
-        <div className="flex items-center justify-center min-w-0">
-          {(() => {
-            const cur = items[currentIndex];
-            const isCurJob = cur?.feedType === 'job' || cur?.company !== undefined || (type === 'job' && !cur?.content);
-            const isCurNews = type === 'news' || cur?.feedType === 'news';
-            const itemLabel = isCurJob ? 'وظيفة' : isCurNews ? 'خبر' : 'منشور / مقال';
-            return (
-              <span className="text-[11px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 px-3 py-1 rounded-full truncate shadow-xs">
-                {itemLabel} {currentIndex + 1} من {items.length}
-              </span>
-            );
-          })()}
-        </div>
-
-        {/* Small Visual Swipe Hint */}
-        <div className="flex items-center gap-1 text-[10px] font-bold text-slate-400 shrink-0">
-          <span className="hidden sm:inline">اسحب للتنقل</span>
-          <span className="text-xs">↔</span>
-        </div>
+        {/* موازن المحاذاة */}
+        <div className="w-16" />
       </div>
 
       {/* ── Horizontal Snap Feed Container: Native Smooth Horizontal Scrolling + Fully Scrollable Vertical Cards ── */}
       <div
         ref={horizontalScrollRef}
-        className="flex-1 min-h-0 w-full flex flex-row items-stretch gap-3 sm:gap-5 px-3 sm:px-6 pt-2 pb-3 overflow-x-auto overflow-y-hidden snap-x snap-mandatory no-scrollbar bg-slate-100/70 dark:bg-slate-950 overscroll-x-contain"
+        className="w-full flex flex-row items-stretch gap-3 sm:gap-4 px-3 sm:px-6 pt-2 pb-3 overflow-x-auto snap-x snap-mandatory no-scrollbar bg-slate-100/70 dark:bg-slate-950"
         style={{
+          height: 'calc(100dvh - 58px)',
+          maxHeight: 'calc(100dvh - 58px)',
           scrollSnapType: 'x mandatory',
-          WebkitOverflowScrolling: 'touch' as any,
+          WebkitOverflowScrolling: 'touch',
           touchAction: 'pan-x pan-y',
         }}
       >
@@ -221,17 +175,19 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
               key={item.id || index}
               id={`detail-feed-item-${index}`}
               data-item-index={index}
-              className="w-[90vw] sm:w-[92vw] md:w-[800px] max-w-[800px] h-full min-h-0 max-h-full shrink-0 snap-center snap-always flex flex-col overflow-y-auto overscroll-y-contain rounded-3xl border border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-slate-900 shadow-xl diwani-neon-card relative transition-all"
+              className="w-[90vw] sm:w-[92vw] md:w-[780px] max-w-[780px] h-full shrink-0 snap-center snap-always flex flex-col rounded-3xl border border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-slate-900 shadow-xl diwani-neon-card relative"
               style={{
                 scrollSnapAlign: 'center',
                 scrollSnapStop: 'always',
-                WebkitOverflowScrolling: 'touch' as any,
+                overflowY: 'scroll',
+                overflowX: 'hidden',
+                WebkitOverflowScrolling: 'touch',
                 touchAction: 'pan-y pan-x',
               }}
             >
               {isItemJob ? (
-                /* ── Job Item Full Page ── */
-                <div className="max-w-3xl mx-auto w-full flex flex-col pb-16 sm:pb-24">
+                /* ── Job Item Full Page: سكرول داخلي ينزل لجميع تفاصيل الوظيفة ── */
+                <div className="max-w-3xl mx-auto w-full flex flex-col pb-28">
                   
                   {/* Job Hero Header with cover & publisher avatar */}
                   {(() => {
@@ -264,7 +220,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     return (
                       <div 
                         onClick={handleOpenPublisher}
-                        className={`relative overflow-hidden ${heroCover ? 'h-52 md:h-64' : 'h-44 md:h-52'} shrink-0 cursor-pointer group/hero`}
+                        className={`relative overflow-hidden ${heroCover ? 'h-52 md:h-64' : 'h-44 md:h-52'} shrink-0 cursor-pointer group/hero rounded-t-3xl`}
                         title="النقر هنا يفتح الملف المهني للناشر"
                       >
                         <img 
@@ -405,7 +361,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                 </div>
               ) : !isItemNews ? (
                 /* ── Post Item Full Page ── */
-                <div className="max-w-3xl mx-auto w-full flex flex-col pb-16 sm:pb-24">
+                <div className="max-w-3xl mx-auto w-full flex flex-col pb-28">
                   {/* Post Author Bar */}
                   <div className="flex items-center justify-between px-5 md:px-8 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800">
                     <div className="flex items-center gap-3">
@@ -477,10 +433,10 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                 </div>
               ) : (
                 /* ── News Item Full Page ── */
-                <div className="max-w-3xl mx-auto w-full flex flex-col pb-16 sm:pb-24">
+                <div className="max-w-3xl mx-auto w-full flex flex-col pb-28">
 
                   {/* News Image / Header */}
-                  <div className="relative h-52 md:h-72 shrink-0 overflow-hidden">
+                  <div className="relative h-52 md:h-72 shrink-0 overflow-hidden rounded-t-3xl">
                     <img
                       src={item.thumbnail || item.imageUrl || DEFAULT_NEWS_PLACEHOLDER}
                       alt={item.title}
