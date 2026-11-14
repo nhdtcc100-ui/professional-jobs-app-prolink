@@ -194,7 +194,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const isGuest = localStorage.getItem('prolink_guest_mode') === 'true';
       if (isGuest) return null;
       const cached = localStorage.getItem('prolink_cached_user');
-      return cached ? JSON.parse(cached) : null;
+      if (!cached) return null;
+      const parsed = JSON.parse(cached);
+      // ✅ Validate cache has required role — if role missing, discard so user gets fresh DB data
+      if (!parsed?.role || !['seeker', 'employer', 'freelancer'].includes(parsed.role)) {
+        return null;
+      }
+      return parsed;
     } catch (e) {
       return null;
     }
@@ -203,7 +209,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [loading, setLoading] = useState<boolean>(() => {
     try {
       const cached = localStorage.getItem('prolink_cached_user');
-      return cached ? false : true;
+      if (!cached) return true;
+      const parsed = JSON.parse(cached);
+      // ✅ Show loading if cached user has no valid role (need to fetch from DB)
+      return !parsed?.role || !['seeker', 'employer', 'freelancer'].includes(parsed.role);
     } catch (e) {
       return true;
     }
@@ -1524,11 +1533,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           setUser(session.user as any);
           let { data: profile } = await authService.getProfile(session.user.id);
           if (profile) {
-            // ✅ إذا كان الدور فارغاً في جدول profiles وموجوداً في بيانات الجلسة الوصفية (مثل freelancer أو seeker)، اعتماده فوراً
-            if (!profile.role && session.user.user_metadata?.role) {
-              profile.role = session.user.user_metadata.role;
-              authService.selectRole(session.user.id, profile.role, session.user.user_metadata).catch(() => {});
-            }
+            // ✅ مصدر واحد للحقيقة: role من DB فقط. لا نعتمد user_metadata كبديل
+            // إذا كان الدور فارغاً → شاشة اختيار الدور (needsRole=true)
             const mapped = mapProfile(profile);
             setAppUser(mapped);
             setAllUsers(prev => {
@@ -1641,11 +1647,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
 
           if (profile) {
-            // ✅ ضمان قراءة role من user_metadata إذا لم يكن محدداً في DB
-            if (!profile.role && u.user_metadata?.role) {
-              profile.role = u.user_metadata.role;
-              authService.selectRole(u.id, profile.role, u.user_metadata).catch(() => {});
-            }
+            // ✅ مصدر واحد للحقيقة: role من DB فقط. لا نعتمد user_metadata كبديل
+            // إذا كان الدور فارغاً → شاشة اختيار الدور (needsRole=true)
             const mapped = mapProfile(profile);
             setAppUser(mapped);
             setAllUsers(prev => {
@@ -2097,8 +2100,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }, 3000);
 
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
       if (document.visibilityState !== 'visible' || !user || needsRole) return;
+      try {
+        await supabase.auth.refreshSession();
+      } catch (_) {}
       const elapsed = Date.now() - lastFetchedAt.current;
       const isStale = elapsed > MIN_REFRESH_INTERVAL;
       if (isStale) {
@@ -2109,8 +2115,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       catchUpMissedMessages(user.id);
     };
 
-    const handleOnline = () => {
+    const handleOnline = async () => {
       if (!user || needsRole) return;
+      try {
+        await supabase.auth.refreshSession();
+      } catch (_) {}
       fetchAllData(true);
       catchUpMissedMessages(user.id);
     };

@@ -77,14 +77,14 @@ export const MessagingSettingsPage: React.FC<MessagingSettingsPageProps> = ({
       dir="rtl"
     >
       {/* ─── Top Breadcrumb & Navigation Bar ─── */}
-      <div className="flex items-center justify-between pt-1 pb-1">
+      <div className="flex items-center justify-between pt-2 pb-2">
         <button
           type="button"
           onClick={onBack}
-          className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 rounded-2xl text-xs sm:text-sm font-black hover:bg-slate-50 dark:hover:bg-slate-700 transition-all border border-slate-200/80 dark:border-slate-700 shadow-sm cursor-pointer active:scale-95"
+          className="flex items-center gap-2 px-5 py-3 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-2xl text-sm font-black hover:bg-slate-50 dark:hover:bg-slate-700 transition-all border border-slate-200/80 dark:border-slate-700 shadow-sm cursor-pointer active:scale-95"
         >
-          <ArrowRight size={17} />
-          <span>العودة للمراسلة</span>
+          <ArrowRight size={18} className="text-[#0a66c2]" />
+          <span>رجوع للمراسلة</span>
         </button>
 
         <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500 text-xs font-bold">

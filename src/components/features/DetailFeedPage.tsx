@@ -136,85 +136,31 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
   const [currentIndex, setCurrentIndex] = useState(
     Math.max(0, Math.min(initialIndex, items.length - 1))
   );
-  const [isFeedReady, setIsFeedReady] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const sectionRefs = useRef<(HTMLElement | null)[]>([]);
 
-  // ── Single Vertical Scroll IntersectionObserver: Tracks active job/item accurately ──
+  // Keep currentIndex updated if initialIndex changes
   useEffect(() => {
-    const rootEl = containerRef.current;
-    if (!rootEl) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const idx = Number(entry.target.getAttribute('data-index'));
-            if (!isNaN(idx)) {
-              setCurrentIndex(idx);
-            }
-          }
-        });
-      },
-      {
-        root: rootEl,
-        threshold: 0.55,
-      }
-    );
-
-    sectionRefs.current.forEach((el) => {
-      if (el) observer.observe(el);
-    });
-
-    return () => observer.disconnect();
-  }, [items]);
-
-  // Initial positioning: Instant jump without any animation or top-feed scrolling before revealing
-  useLayoutEffect(() => {
-    const root = containerRef.current;
-    if (!root) return;
-
-    // Immediately disable smooth scrolling so positioning is 0ms instant without any slide from top
-    root.style.scrollBehavior = 'auto';
-
-    const targetIdx = Math.max(0, Math.min(initialIndex, items.length - 1));
-    const el = sectionRefs.current[targetIdx];
-    if (el) {
-      root.scrollTop = el.offsetTop;
+    setCurrentIndex(Math.max(0, Math.min(initialIndex, items.length - 1)));
+    if (containerRef.current) {
+      containerRef.current.scrollTop = 0;
     }
-
-    const rId = requestAnimationFrame(() => {
-      if (el) {
-        root.scrollTop = el.offsetTop;
-      }
-      setIsFeedReady(true);
-
-      // Re-enable smooth scrolling only for subsequent user interactions (arrows/swipes)
-      setTimeout(() => {
-        if (root) {
-          root.style.scrollBehavior = 'smooth';
-        }
-      }, 150);
-    });
-
-    return () => cancelAnimationFrame(rId);
-  }, [initialIndex, items]);
-
-  const scrollToItem = (index: number) => {
-    if (index >= 0 && index < items.length) {
-      sectionRefs.current[index]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  };
+  }, [initialIndex]);
 
   const goToNext = () => {
     if (currentIndex < items.length - 1) {
-      scrollToItem(currentIndex + 1);
+      setCurrentIndex(prev => prev + 1);
+      if (containerRef.current) {
+        containerRef.current.scrollTop = 0;
+      }
     }
   };
 
   const goToPrev = () => {
     if (currentIndex > 0) {
-      scrollToItem(currentIndex - 1);
+      setCurrentIndex(prev => prev - 1);
+      if (containerRef.current) {
+        containerRef.current.scrollTop = 0;
+      }
     }
   };
 
@@ -320,10 +266,10 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
         </div>
 
         {/* Quick Nav arrows */}
-        {type !== 'job' && (
+        {items.length > 1 && (
           <div className="flex items-center gap-1 shrink-0">
             <button
-              onClick={() => scrollToItem(currentIndex - 1)}
+              onClick={goToPrev}
               disabled={currentIndex === 0}
               className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white transition-all active:scale-90"
               title="السابق"
@@ -331,7 +277,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
               <ChevronUp size={16} />
             </button>
             <button
-              onClick={() => scrollToItem(currentIndex + 1)}
+              onClick={goToNext}
               disabled={currentIndex === items.length - 1}
               className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white transition-all active:scale-90"
               title="التالي"
@@ -342,17 +288,19 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
         )}
       </div>
 
-      {/* ── Single Continuous Smooth Vertical Feed (No Snapping, Free Browsing) ── */}
+      {/* ── Single Direct Item View: Zero scrolling from top, Instant Opening ── */}
       <div
         ref={containerRef}
-        className={`flex-1 overflow-y-auto no-scrollbar overscroll-contain bg-slate-50/50 dark:bg-slate-950 transition-opacity duration-150 ${isFeedReady ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        className="flex-1 overflow-y-auto no-scrollbar overscroll-contain bg-slate-50/50 dark:bg-slate-950"
         style={{
           overscrollBehaviorY: 'contain',
           WebkitOverflowScrolling: 'touch' as any,
         }}
       >
-        {items.map((item, index) => {
+        {(() => {
+          const item = items[currentIndex];
           if (!item) return null;
+          const index = currentIndex;
           const isItemJob = item.feedType === 'job' || item.company !== undefined || (type === 'job' && !item.content);
           const isItemNews = type === 'news' || item.feedType === 'news';
           const isActive = isItemJob ? item.is_active !== false : true;
@@ -363,7 +311,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
               key={item.id || index}
               id={`detail-item-${index}`}
               data-index={index}
-              ref={(el) => { sectionRefs.current[index] = el; }}
               className="border-b-4 border-slate-200/60 dark:border-slate-800/80 last:border-b-0 w-full flex flex-col bg-white dark:bg-slate-950 py-2 sm:py-4 transition-colors"
             >
               {isItemJob ? (
@@ -697,11 +644,11 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
               )}
             </section>
           );
-        })}
+        })()}
       </div>
 
-      {/* ── Fixed Floating Bottom Navigation Bar (Hidden for jobs to match news details navigation) ── */}
-      {type !== 'job' && (
+      {/* ── Fixed Floating Bottom Navigation Bar ── */}
+      {items.length > 1 && (
         <div 
           className="relative z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between gap-3 shadow-xl shrink-0"
           style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 8px), 12px)' }}
@@ -712,14 +659,13 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
             className="flex-1 py-2.5 px-4 bg-slate-100 dark:bg-slate-800 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer shadow-xs"
           >
             <ChevronUp size={16} />
-            <span>{type === 'news' ? 'الخبر السابق' : 'السابق'}</span>
+            <span>{type === 'job' ? 'الوظيفة السابقة' : type === 'news' ? 'الخبر السابق' : 'السابق'}</span>
           </button>
           
           <div className="flex flex-col items-center justify-center px-3">
             <span className="text-[11px] font-black text-blue-600 dark:text-blue-400 font-mono">
               {currentIndex + 1} / {items.length}
             </span>
-            <span className="text-[9px] text-slate-400 font-bold hidden sm:inline">سحب عمودي سلس</span>
           </div>
 
           <button
@@ -727,7 +673,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
             disabled={currentIndex === items.length - 1}
             className="flex-1 py-2.5 px-4 bg-blue-600 disabled:opacity-30 hover:bg-blue-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer"
           >
-            <span>{type === 'news' ? 'الخبر التالي' : 'التالي'}</span>
+            <span>{type === 'job' ? 'الوظيفة التالية' : type === 'news' ? 'الخبر التالي' : 'التالي'}</span>
             <ChevronDown size={16} />
           </button>
         </div>

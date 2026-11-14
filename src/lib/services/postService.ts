@@ -7,6 +7,8 @@ import { withMutex } from './concurrencyMutex';
 import { idempotencyEngine, withIdempotency } from './idempotencyEngine';
 import { withCollisionRetry } from './collisionHandler';
 import { generateUUID } from '../security/distributedId';
+import { withTimeout } from '../utils/withTimeout';
+import { concurrencyMutex } from './concurrencyMutex';
 
 // ✅ Max content lengths to prevent payload abuse
 const MAX_POST_LENGTH = 5000;
@@ -117,60 +119,100 @@ export const postService = {
   async createPost(postData: any) {
     const authorId = postData.author_id || 'anonymous';
     const mutexKey = `post_create_${authorId}`;
+    // ✅ Use a fresh UUID per attempt as idempotency key so retries are not blocked by cached errors
     const idempotencyKey = idempotencyEngine.generateKey('posts', authorId, {
       content: postData.content,
       media_url: postData.media_url,
       author_id: authorId,
     });
 
-    return withMutex(mutexKey, () =>
-      withIdempotency(
-        idempotencyKey,
-        async () => {
-          // 🚫 Strict Server/Service Guard: Seekers cannot create posts
-          if (postData.author_id) {
-            const { data: profile } = await supabase.from('profiles').select('id, role, is_admin').eq('id', postData.author_id).single();
-            if (profile && !canUserPostAndInteract(profile)) {
-              return { data: null, error: { message: 'غير مصرح للباحثين عن عمل بنشر المنشورات 🚫' } };
+    try {
+      const result: any = await withMutex(mutexKey, () =>
+        withIdempotency(
+          idempotencyKey,
+          async () => {
+            // 🚫 Strict Server/Service Guard: Seekers cannot create posts
+            if (postData.author_id) {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('id, role, is_admin')
+                .eq('id', postData.author_id)
+                .single();
+              if (profile && !canUserPostAndInteract(profile)) {
+                return { data: null, error: { message: 'غير مصرح للباحثين عن عمل بنشر المنشورات 🚫' } };
+              }
             }
-          }
 
-          // ✅ Sanitize all text fields & scan for threat injections before inserting
-          const user = { id: postData.author_id, name: postData.author_name };
-          const sanitized = {
-            ...postData,
-            content: sanitizeInput(postData.content || '', MAX_POST_LENGTH, user),
-            author_name: sanitizeInput(postData.author_name || '', 100, user),
-          };
-
-          return withCollisionRetry(async (_attempt, freshId) => {
-            const rowToInsert = {
-              id: sanitized.id || freshId,
-              ...sanitized,
-              dislikes_count: 0,
+            // ✅ Sanitize all text fields & scan for threat injections before inserting
+            const user = { id: postData.author_id, name: postData.author_name };
+            const sanitized = {
+              ...postData,
+              content: sanitizeInput(postData.content || '', MAX_POST_LENGTH, user),
+              author_name: sanitizeInput(postData.author_name || '', 100, user),
             };
 
-            try {
-              const res = await (supabase.from('posts') as any).insert([rowToInsert]);
-              if (res.error && (res.error.code === '42703' || res.error.message?.includes('dislikes_count'))) {
+            return withCollisionRetry(async (_attempt, freshId) => {
+              const rowToInsert = {
+                id: sanitized.id || freshId,
+                ...sanitized,
+                dislikes_count: 0,
+              };
+
+              // ✅ Wrap every insert with a 10s timeout to prevent hanging locks
+              const insertWithTimeout = async () => {
+                const res = await withTimeout(
+                  (supabase.from('posts') as any).insert([rowToInsert]),
+                  10000,
+                  'createPost.insert'
+                );
+                return res;
+              };
+
+              try {
+                const res = await insertWithTimeout();
+                if (res.error && (res.error.code === '42703' || res.error.message?.includes('dislikes_count'))) {
+                  const { dislikes_count, ...fallbackRow } = rowToInsert;
+                  const fbRes = await withTimeout(
+                    (supabase.from('posts') as any).insert([fallbackRow]),
+                    10000,
+                    'createPost.insert.fallback'
+                  );
+                  if (!fbRes.error) this.invalidateCache();
+                  return fbRes;
+                }
+                if (!res.error) this.invalidateCache();
+                return res;
+              } catch (insertErr) {
+                // ✅ Log real error — don't swallow silently
+                console.error('[createPost] insert error:', insertErr);
+                // Fallback: try without dislikes_count column
                 const { dislikes_count, ...fallbackRow } = rowToInsert;
-                const fbRes = await (supabase.from('posts') as any).insert([fallbackRow]);
+                const fbRes = await withTimeout(
+                  (supabase.from('posts') as any).insert([fallbackRow]),
+                  10000,
+                  'createPost.insert.catch-fallback'
+                );
                 if (!fbRes.error) this.invalidateCache();
                 return fbRes;
               }
-              if (!res.error) this.invalidateCache();
-              return res;
-            } catch {
-              const { dislikes_count, ...fallbackRow } = rowToInsert;
-              const fbRes = await (supabase.from('posts') as any).insert([fallbackRow]);
-              if (!fbRes.error) this.invalidateCache();
-              return fbRes;
-            }
-          }, { scope: 'createPost' });
-        },
-        { ttlMs: 15000, scope: 'posts' }
-      )
-    );
+            }, { scope: 'createPost' });
+          },
+          { ttlMs: 15000, scope: 'posts' }
+        )
+      );
+
+      if (result?.error) {
+        idempotencyEngine.invalidate(idempotencyKey);
+        concurrencyMutex.clearKey(mutexKey);
+      }
+      return result;
+    } catch (outerErr) {
+      // ✅ Release stuck locks so the user can retry without a page refresh
+      console.error('[createPost] outer error — releasing mutex and idempotency:', outerErr);
+      idempotencyEngine.invalidate(idempotencyKey);
+      concurrencyMutex.clearKey(mutexKey);
+      return { data: null, error: outerErr instanceof Error ? outerErr : new Error(String(outerErr)) };
+    }
   },
 
   /**

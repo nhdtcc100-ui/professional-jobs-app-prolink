@@ -969,17 +969,10 @@ export function ModernProfileView({
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
 
-      // 1. استخراج البريد والتوكن الرسمي لجلسة Supabase الحالية
-      let targetEmail = user?.email || profile?.email || '';
-      let accessToken = '';
-
-      try {
-        const sessionRes = await supabase.auth.getSession();
-        accessToken = sessionRes?.data?.session?.access_token || '';
-        if (sessionRes?.data?.session?.user?.email) {
-          targetEmail = sessionRes.data.session.user.email;
-        }
-      } catch (_) {}
+      // 1. استخراج الجلسة والتوكن الحاليين
+      const { data: sessionData } = await supabase.auth.getSession();
+      let accessToken = sessionData?.session?.access_token || '';
+      let targetEmail = sessionData?.session?.user?.email || user?.email || profile?.email || '';
 
       // استخراج احتياطي للتوكن من التخزين المحلي في حال تأخر SDK
       if (!accessToken) {
@@ -992,7 +985,7 @@ export function ModernProfileView({
         } catch (_) {}
       }
 
-      // دعم احتياطي لأرقام هواتف المستخدمين في حال الحسابات الداخلية
+      // دعم احتياطي لأرقام هواتف المستخدمين
       if (!targetEmail || !targetEmail.includes('@')) {
         const phoneDigits = (profile?.phone || user?.phone || (user?.user_metadata as any)?.phone || '').replace(/\D/g, '');
         if (phoneDigits) {
@@ -1000,32 +993,11 @@ export function ModernProfileView({
         }
       }
 
-      // 2. التحقق من الرمز الحالي عبر REST مباشرة بهدوء وبسرعة فائقة (~200ms)
-      if (targetEmail && targetEmail.includes('@')) {
-        try {
-          const verifyRes = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-            method: 'POST',
-            headers: {
-              'apikey': supabaseAnonKey,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ email: targetEmail, password: currentPassword }),
-          });
-
-          if (!verifyRes.ok) {
-            notify('كلمة المرور الحالية غير صحيحة ❌', 'error');
-            return;
-          }
-        } catch (vErr) {
-          console.warn('REST verification warning (skipping to direct update):', vErr);
-        }
-      }
-
-      // 3. تحديث كلمة المرور عبر REST فائق السرعة دون أقفال أو تعليق SDK (~200ms)
+      // 2. تحديث كلمة المرور الفوري (~200ms) عبر REST المباشر مع جلسة المستخدم
       if (showChangePassword && newPassword) {
         let updateSuccess = false;
 
-        // المسار الأول الفائق السرعة: REST PUT /auth/v1/user
+        // المسار الأول فائق السرعة: PUT /auth/v1/user عبر REST
         if (accessToken) {
           try {
             const updateRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
@@ -1049,12 +1021,13 @@ export function ModernProfileView({
           }
         }
 
-        // المسار الثاني الاحتياطي (إذا لم يتوفر التوكن عبر REST)
+        // المسار الثاني الاحتياطي: SDK مع مهلة أمان كافية (20 ثانية لتشفير bcrypt)
         if (!updateSuccess) {
-          const { error: sdkError } = await Promise.race([
+          const { error: sdkError } = await withTimeout(
             supabase.auth.updateUser({ password: newPassword }),
-            new Promise<any>((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_PW')), 5000))
-          ]);
+            20000,
+            'updateUser.password'
+          );
           if (sdkError) throw sdkError;
           updateSuccess = true;
         }
@@ -1068,38 +1041,52 @@ export function ModernProfileView({
         notify('✅ تم حفظ وتحديث كلمة المرور بنجاح!', 'success');
         try { navigator.vibrate?.([60, 40, 60]); } catch (_) {}
       } else {
+        // التحقق من صحة الرمز الحالي
+        if (targetEmail && targetEmail.includes('@')) {
+          try {
+            const { error: verifyErr } = await supabase.auth.signInWithPassword({
+              email: targetEmail,
+              password: currentPassword,
+            });
+            if (verifyErr) {
+              // إذا فشل البريد، جرب الهاتف إن وُجد
+              const phone = profile?.phone || user?.phone;
+              if (phone) {
+                const { error: phoneErr } = await supabase.auth.signInWithPassword({
+                  phone,
+                  password: currentPassword,
+                });
+                if (phoneErr) {
+                  notify('كلمة المرور الحالية غير صحيحة ❌', 'error');
+                  return;
+                }
+              } else {
+                notify('كلمة المرور الحالية غير صحيحة ❌', 'error');
+                return;
+              }
+            }
+          } catch (_) {}
+        }
         notify('✅ تم التحقق من كلمة المرور الحالية بنجاح! يرجى إدخال كلمة المرور الجديدة', 'success');
         setShowChangePassword(true);
       }
     } catch (err: any) {
       console.error('Password change error:', err);
-      const isTimeout = err?.message === 'TIMEOUT_PW';
-      if (isTimeout) {
-        // في حال استجابة متأخرة لكن السيرفر حدث الرمز بالفعل
-        setPasswordSuccessBanner('تم إرسال طلب تغيير كلمة المرور وتحديثه بنجاح على السيرفر.');
-        setPasswordSuccessModal(true);
-        notify('✅ تم تحديث كلمة المرور بنجاح!', 'success');
-        setNewPassword('');
-        setConfirmPassword('');
-        setCurrentPassword('');
-        setShowChangePassword(false);
-      } else {
-        notify('تعذر تغيير كلمة المرور: ' + (err?.message || 'خطأ في الاتصال'), 'error');
-      }
+      notify('تعذر تغيير كلمة المرور: ' + (err?.message || 'خطأ في الاتصال'), 'error');
     } finally {
       setSavingPassword(false);
     }
   };
 
   // ─── Shared Styles — using app brand blue #0a66c2 ────────────────────────────
-  const cardClass = 'bg-white dark:bg-slate-900 rounded-[28px] sm:rounded-[32px] border border-slate-100 dark:border-slate-800 overflow-hidden shadow-[0_6px_32px_rgba(10,102,194,0.09)] dark:shadow-[0_10px_45px_rgba(0,0,0,0.6)]';
-  const inputCard = 'relative rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/70 px-5 py-4 sm:py-4.5 focus-within:border-[#0a66c2] focus-within:ring-2 focus-within:ring-[#0a66c2]/20 transition-all duration-200';
+  const cardClass = 'bg-white dark:bg-slate-900 rounded-[32px] sm:rounded-[36px] border border-slate-100 dark:border-slate-800 overflow-hidden shadow-[0_8px_36px_rgba(10,102,194,0.1)] dark:shadow-[0_12px_50px_rgba(0,0,0,0.65)]';
+  const inputCard = 'relative rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/70 px-6 py-4.5 sm:py-5 focus-within:border-[#0a66c2] focus-within:ring-2 focus-within:ring-[#0a66c2]/20 transition-all duration-200';
   const floatLabel = 'absolute -top-2.5 right-4 bg-white dark:bg-slate-900 px-2.5 text-xs sm:text-[13px] font-bold text-slate-400';
-  const saveBtn = 'w-full py-4.5 sm:py-5 rounded-2xl sm:rounded-full bg-gradient-to-l from-[#0a66c2] to-[#004182] hover:from-[#004182] hover:to-[#0a66c2] text-white font-black text-base sm:text-lg transition-all shadow-xl shadow-[#0a66c2]/30 dark:shadow-[#0a66c2]/20 active:scale-[0.98] flex items-center justify-between px-6 sm:px-8 cursor-pointer disabled:opacity-60';
-  const iconBadge = 'w-12 h-12 rounded-2xl bg-gradient-to-br from-[#0a66c2] to-[#004182] flex items-center justify-center text-white shadow-lg shadow-[#0a66c2]/30 shrink-0';
+  const saveBtn = 'w-full py-5 sm:py-5.5 rounded-2xl sm:rounded-full bg-gradient-to-l from-[#0a66c2] to-[#004182] hover:from-[#004182] hover:to-[#0a66c2] text-white font-black text-base sm:text-lg transition-all shadow-xl shadow-[#0a66c2]/30 dark:shadow-[#0a66c2]/20 active:scale-[0.98] flex items-center justify-between px-7 sm:px-9 cursor-pointer disabled:opacity-60';
+  const iconBadge = 'w-14 h-14 rounded-2xl bg-gradient-to-br from-[#0a66c2] to-[#004182] flex items-center justify-center text-white shadow-lg shadow-[#0a66c2]/30 shrink-0';
 
   return (
-    <div className="w-full max-w-2xl lg:max-w-3xl mx-auto space-y-6 pb-28 pt-2 md:pt-6 px-3 sm:px-6" dir="rtl">
+    <div className="w-full max-w-4xl lg:max-w-5xl mx-auto space-y-7 pb-28 pt-2 md:pt-6 px-3 sm:px-6" dir="rtl">
 
       {/* Return to Job Details Banner (shown when arriving from a job detail view) */}
       {returnToJob && (

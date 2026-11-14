@@ -42,85 +42,97 @@ export const jobService = {
       employer_id: employerId,
     });
 
-    return withMutex(mutexKey, () =>
-      withIdempotency(
-        idempotencyKey,
-        async () => {
-          // ✅ Comprehensive Input Defense: Validate all fields before inserting
-          const title = sanitizeInput(data.title || '', 200);
-          const company = sanitizeInput(data.company || '', 200);
-          const description = sanitizeInput(data.description || '', 5000);
-          const location = sanitizeInput(data.location || '', 200);
-          const salary = sanitizeInput(data.salary || '', 100);
-          const requirements = sanitizeInput(data.requirements || '', 3000);
+    try {
+      const result: any = await withMutex(mutexKey, () =>
+        withIdempotency(
+          idempotencyKey,
+          async () => {
+            // ✅ Comprehensive Input Defense: Validate all fields before inserting
+            const title = sanitizeInput(data.title || '', 200);
+            const company = sanitizeInput(data.company || '', 200);
+            const description = sanitizeInput(data.description || '', 5000);
+            const location = sanitizeInput(data.location || '', 200);
+            const salary = sanitizeInput(data.salary || '', 100);
+            const requirements = sanitizeInput(data.requirements || '', 3000);
 
-          // ✅ Whitelist validation for job_type (prevents injection via enum-like values)
-          const jobType = ALLOWED_JOB_TYPES.includes(data.jobType)
-            ? data.jobType
-            : 'دوام كامل';
+            // ✅ Whitelist validation for job_type (prevents injection via enum-like values)
+            const jobType = ALLOWED_JOB_TYPES.includes(data.jobType)
+              ? data.jobType
+              : 'دوام كامل';
 
-          // ✅ Validate required fields
-          if (!title || title.length < 2) {
-            return { data: null, error: { message: 'عنوان الوظيفة مطلوب ويجب أن يكون حرفين على الأقل' } };
-          }
-          if (!company || company.length < 2) {
-            return { data: null, error: { message: 'اسم الشركة مطلوب' } };
-          }
-          if (!description || description.length < 10) {
-            return { data: null, error: { message: 'وصف الوظيفة مطلوب (10 أحرف على الأقل)' } };
-          }
-
-          // 🚫 Strict Server/Service Guard: Only Employers and Admins can post jobs
-          if (data.employer_id) {
-            let profile: any = null;
-            try {
-              const r: any = await withTimeout(supabase.from('profiles').select('id, role, is_admin').eq('id', data.employer_id).maybeSingle(), 10000, 'postJob.roleCheck');
-              profile = r?.data ?? null;
-            } catch (e) {
-              logger.warn('[postJob] role check timed out; continuing (server RLS enforces role)', e);
+            // ✅ Validate required fields
+            if (!title || title.length < 2) {
+              return { data: null, error: { message: 'عنوان الوظيفة مطلوب ويجب أن يكون حرفين على الأقل' } };
             }
-            if (profile && !profile.is_admin && (profile.role === 'seeker' || profile.role === 'باحث' || profile.role !== 'employer')) {
-              return { data: null, error: { message: 'نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 🚫' } };
+            if (!company || company.length < 2) {
+              return { data: null, error: { message: 'اسم الشركة مطلوب' } };
             }
-          }
-
-          return withCollisionRetry(async (_attempt, freshId) => {
-            const workingHours = sanitizeInput(data.working_hours || '', 100);
-            const finalDescription = data.category
-              ? encodeCategoryInDescription(description, data.category)
-              : description;
-
-            let insertRes: any;
-            try {
-              insertRes = await withTimeout((supabase.from('jobs') as any).insert([{
-              id:            data.id || freshId,
-              title,
-              company,
-              description:   finalDescription,
-              location:      location || 'عن بُعد',
-              salary,
-              requirements:  requirements || null,
-              job_type:      jobType,
-              working_hours: workingHours || null,
-              image_url:     (data.imageUrl || '').trim() || null,
-              employer_id:   data.employer_id,
-              is_active:     data.is_active !== undefined ? Boolean(data.is_active) : true,
-            }]).select(), 20000, 'postJob.insert');
-            } catch (e: any) {
-              return { data: null, error: { message: 'انتهت مهلة الاتصال أثناء نشر الوظيفة. تحقق من الإنترنت وأعد المحاولة.' } };
+            if (!description || description.length < 10) {
+              return { data: null, error: { message: 'وصف الوظيفة مطلوب (10 أحرف على الأقل)' } };
             }
-            const { data: res, error } = insertRes;
 
-            if (error) {
-              console.error("[postJob] Supabase Insert Error:", error);
-              return { data: null, error };
+            // 🚫 Strict Server/Service Guard: Only Employers and Admins can post jobs
+            if (data.employer_id) {
+              let profile: any = null;
+              try {
+                const r: any = await withTimeout(supabase.from('profiles').select('id, role, is_admin').eq('id', data.employer_id).maybeSingle(), 10000, 'postJob.roleCheck');
+                profile = r?.data ?? null;
+              } catch (e) {
+                logger.warn('[postJob] role check timed out; continuing (server RLS enforces role)', e);
+              }
+              if (profile && !profile.is_admin && (profile.role === 'seeker' || profile.role === 'باحث' || profile.role !== 'employer')) {
+                return { data: null, error: { message: 'نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 🚫' } };
+              }
             }
-            return { data: res, error: null };
-          }, { scope: 'postJob' });
-        },
-        { ttlMs: 30000, scope: 'jobs' }
-      )
-    );
+
+            return withCollisionRetry(async (_attempt, freshId) => {
+              const workingHours = sanitizeInput(data.working_hours || '', 100);
+              const finalDescription = data.category
+                ? encodeCategoryInDescription(description, data.category)
+                : description;
+
+              let insertRes: any;
+              try {
+                insertRes = await withTimeout((supabase.from('jobs') as any).insert([{
+                id:            data.id || freshId,
+                title,
+                company,
+                description:   finalDescription,
+                location:      location || 'عن بُعد',
+                salary,
+                requirements:  requirements || null,
+                job_type:      jobType,
+                working_hours: workingHours || null,
+                image_url:     (data.imageUrl || '').trim() || null,
+                employer_id:   data.employer_id,
+                is_active:     data.is_active !== undefined ? Boolean(data.is_active) : true,
+              }]).select(), 20000, 'postJob.insert');
+              } catch (e: any) {
+                return { data: null, error: { message: 'انتهت مهلة الاتصال أثناء نشر الوظيفة. تحقق من الإنترنت وأعد المحاولة.' } };
+              }
+              const { data: res, error } = insertRes;
+
+              if (error) {
+                console.error("[postJob] Supabase Insert Error:", error);
+                return { data: null, error };
+              }
+              return { data: res, error: null };
+            }, { scope: 'postJob' });
+          },
+          { ttlMs: 15000, scope: 'jobs' }
+        )
+      );
+
+      if (result?.error) {
+        idempotencyEngine.invalidate(idempotencyKey);
+        concurrencyMutex.clearKey(mutexKey);
+      }
+      return result;
+    } catch (err: any) {
+      idempotencyEngine.invalidate(idempotencyKey);
+      concurrencyMutex.clearKey(mutexKey);
+      return { data: null, error: err };
+    }
   },
 
   async deleteJob(jobId: string, employerId: string) {
@@ -173,11 +185,15 @@ export const jobService = {
 
     // ── 1. Fast Check & Upsert: If application already exists, update it cleanly ──
     try {
-      const { data: existingApp } = await (supabase.from('job_applications') as any)
-        .select('id, status')
-        .eq('applicant_id', applicantId)
-        .eq('job_id', data.jobId)
-        .maybeSingle();
+      const { data: existingApp } = await withTimeout(
+        (supabase.from('job_applications') as any)
+          .select('id, status')
+          .eq('applicant_id', applicantId)
+          .eq('job_id', data.jobId)
+          .maybeSingle(),
+        6000,
+        'apply.checkExisting'
+      );
 
       if (existingApp?.id) {
         console.log("ℹ️ [applyToJob] Application already exists, updating existing record:", existingApp.id);
@@ -191,24 +207,32 @@ export const jobService = {
           status: 'pending',
         };
 
-        const resUpdate: any = await (supabase.from('job_applications') as any)
-          .update(updatePayload)
-          .eq('id', existingApp.id)
-          .select();
+        const resUpdate: any = await withTimeout(
+          (supabase.from('job_applications') as any)
+            .update(updatePayload)
+            .eq('id', existingApp.id)
+            .select(),
+          8000,
+          'apply.updateExisting'
+        );
 
         if (!resUpdate.error) {
           return { data: resUpdate.data, error: null, isUpdated: true };
         }
 
         // Fallback update if extended columns are not present
-        const resMinUpdate: any = await (supabase.from('job_applications') as any)
-          .update({
-            cover_letter: coverLetterText,
-            cv_url: cvUrlText,
-            status: 'pending',
-          })
-          .eq('id', existingApp.id)
-          .select();
+        const resMinUpdate: any = await withTimeout(
+          (supabase.from('job_applications') as any)
+            .update({
+              cover_letter: coverLetterText,
+              cv_url: cvUrlText,
+              status: 'pending',
+            })
+            .eq('id', existingApp.id)
+            .select(),
+          8000,
+          'apply.updateExistingFallback'
+        );
 
         return { data: resMinUpdate.data, error: resMinUpdate.error, isUpdated: true };
       }
@@ -217,7 +241,7 @@ export const jobService = {
     }
 
     try {
-      return await withMutex(mutexKey, () =>
+      const result: any = await withMutex(mutexKey, () =>
         withIdempotency(
           idempotencyKey,
           async () => {
@@ -290,6 +314,12 @@ export const jobService = {
           { ttlMs: 30000, scope: 'job_applications' }
         )
       );
+
+      if (result?.error) {
+        idempotencyEngine.invalidate(idempotencyKey);
+        concurrencyMutex.clearKey(mutexKey);
+      }
+      return result;
     } catch (e: any) {
       // Invalidate lock and idempotency on failure so user can retry immediately without refreshing
       idempotencyEngine.invalidate(idempotencyKey);

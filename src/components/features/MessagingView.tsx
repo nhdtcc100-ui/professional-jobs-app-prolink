@@ -164,6 +164,16 @@ export function MessagingView({
   const [showEmojis, setShowEmojis] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showMessagingSettings, setShowMessagingSettings] = useState(false);
+
+  // 🛡️ Mobile & Browser Back-Button Handling for Messaging Settings
+  useEffect(() => {
+    if (showMessagingSettings) {
+      window.history.pushState({ modal: 'messaging-settings' }, '');
+      const handlePop = () => setShowMessagingSettings(false);
+      window.addEventListener('popstate', handlePop);
+      return () => window.removeEventListener('popstate', handlePop);
+    }
+  }, [showMessagingSettings]);
   const [chatSettings, setChatSettings] = useState<ChatSettings>(() => {
     try {
       const saved = localStorage.getItem('prolink_chat_settings');
@@ -991,7 +1001,7 @@ export function MessagingView({
   // ─── Messaging Settings Full Page ───
   if (showMessagingSettings) {
     return (
-      <div className="fixed inset-0 top-[60px] md:top-[68px] bottom-[80px] md:bottom-0 left-0 right-0 z-40 overflow-y-auto bg-slate-50 dark:bg-slate-950 px-2 sm:px-4 py-4 overscroll-contain">
+      <div className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[220] overflow-y-auto bg-slate-50 dark:bg-slate-950 px-2 sm:px-6 py-4 overscroll-contain flex flex-col" dir="rtl">
         <MessagingSettingsPage
           settings={chatSettings}
           onUpdate={updateChatSetting}

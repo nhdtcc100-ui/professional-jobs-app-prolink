@@ -15,10 +15,12 @@ import {
   JobPostForm 
 } from './missions/JobPostForm';
 import { jobService } from '../../lib/services/jobService';
+import { postService } from '../../lib/services/postService';
 import { supabase } from '../../lib/supabase';
 import { imageService } from '../../lib/services/imageService';
 import { GlassButton } from '../ui';
 import { useAppContext } from '../../contexts/AppContext';
+import { withTimeout } from '../../lib/utils/withTimeout';
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -207,24 +209,30 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
         finalVideoUrl = await imageService.uploadVideo(postSelectedFile, appUser.id);
       }
 
-      const { data: newPost, error } = await db.from('posts').insert([{
-        author_id:     appUser.id,
-        author_name:   appUser.name   || 'مستخدم Elevate عراق',
-        author_avatar: appUser.avatar || null,
-        author_title:  appUser.role === 'employer'
-                         ? (appUser.companyName || 'صاحب عمل')
-                         : 'باحث عن عمل',
-        content:       postContent,
-        image_url:     (postType === 'photo' || postType === 'article')
-                         ? (finalImageUrl || postAttachment)
-                         : null,
-        video_url:     postType === 'video'
-                         ? (finalVideoUrl || null)
-                         : (postVideoUrl || null),
-        likes_count:   0,
-      }]).select('id').single();
+      const { data: newPost, error } = await withTimeout(
+        db.from('posts').insert([{
+          author_id:     appUser.id,
+          author_name:   appUser.name   || 'مستخدم Elevate عراق',
+          author_avatar: appUser.avatar || null,
+          author_title:  appUser.role === 'employer'
+                           ? (appUser.companyName || 'صاحب عمل')
+                           : 'باحث عن عمل',
+          content:       postContent,
+          image_url:     (postType === 'photo' || postType === 'article')
+                           ? (finalImageUrl || postAttachment)
+                           : null,
+          video_url:     postType === 'video'
+                           ? (finalVideoUrl || null)
+                           : (postVideoUrl || null),
+          likes_count:   0,
+        }]).select('id').single(),
+        15000,
+        'postBox.insert'
+      );
 
       if (error) throw error;
+
+      postService.invalidateCache();
 
       if (newPost?.id) {
         setPosts(prev => prev.map(p => p.id === tempId ? { ...p, id: newPost.id } : p));
