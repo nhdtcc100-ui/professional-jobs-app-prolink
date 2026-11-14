@@ -1165,6 +1165,15 @@ function App() {
                       setActiveTab={setActiveTab}
                       initialSelectedJob={initialJobForMissions}
                       onClearInitialJob={() => setInitialJobForMissions(null)}
+                      onViewJob={(job, list) => {
+                        const jobsList = list && list.length > 0 ? list : jobs;
+                        const idx = Math.max(0, jobsList.findIndex((j: any) => j.id === job.id));
+                        setDetailFeed({
+                          type: 'job',
+                          items: jobsList,
+                          initialIndex: idx,
+                        });
+                      }}
                       onPublisherClick={(user, job) => {
                         setSelectedProfile(user);
                         if (job) setReturnToJob(job);

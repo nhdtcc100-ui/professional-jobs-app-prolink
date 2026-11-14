@@ -38,6 +38,7 @@ interface MissionsViewProps {
   onPublisherClick?: (user: any, job?: any) => void;
   initialSelectedJob?: Job | null;
   onClearInitialJob?: () => void;
+  onViewJob?: (job: Job, jobsList?: Job[]) => void;
 }
 
 const EMPTY_JOB_FORM = {
@@ -62,7 +63,7 @@ type JobSubTab = 'discover' | 'my-posts' | 'requests' | 'analytics';
 
 export function MissionsView({ 
   jobs, appUser, allUsers, addToast, messages, onApplyJob, setActiveTab, onPublisherClick,
-  initialSelectedJob, onClearInitialJob
+  initialSelectedJob, onClearInitialJob, onViewJob
 }: MissionsViewProps) {
   const { refreshData, markJobApplicationNotificationsAsRead } = useAppContext();
   const isAdmin = isUserAdmin(appUser);
@@ -81,9 +82,18 @@ export function MissionsView({
   const [showPostCourse, setShowPostCourse] = useState(false);
   const [selectedJobDetails, setSelectedJobDetails] = useState<Job | null>(null);
 
+  const handleOpenJobDetail = (job: Job) => {
+    const jobsList = filteredJobs.length > 0 ? filteredJobs.map(r => r.job) : jobs;
+    if (onViewJob) {
+      onViewJob(job, jobsList);
+    } else {
+      setSelectedJobDetails(job);
+    }
+  };
+
   useEffect(() => {
     if (initialSelectedJob) {
-      setSelectedJobDetails(initialSelectedJob);
+      handleOpenJobDetail(initialSelectedJob);
       onClearInitialJob?.();
     }
   }, [initialSelectedJob]);
@@ -663,7 +673,7 @@ export function MissionsView({
                     <JobCard 
                       key={job.id} 
                       job={job} 
-                      onClick={setSelectedJobDetails} 
+                      onClick={handleOpenJobDetail} 
                       delay={i * 0.04} 
                       compact={filteredJobs.length >= 3}
                       matchScore={score > 0 ? score : calculateMatchScore(job.requirements || job.description || '')}
@@ -696,7 +706,7 @@ export function MissionsView({
                   myPostedJobs={myPostedJobs} 
                   onDeleteJob={setJobToDelete} 
                   onEditJob={handleEditJob} 
-                  onViewJob={setSelectedJobDetails} 
+                  onViewJob={handleOpenJobDetail} 
                   allUsers={allUsers}
                   onUserClick={(userId: string) => {
                     const u = allUsers.find((x: AppUser) => x.id === userId);
