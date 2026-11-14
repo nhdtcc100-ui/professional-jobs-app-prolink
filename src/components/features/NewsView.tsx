@@ -200,7 +200,7 @@ const NewsCard = ({ item, featured = false, onSelect }: { item: NewsItem; featur
     <motion.div
       onClick={() => onSelect ? onSelect(item) : openLink(item.link)}
       whileHover={{ x: -4 }}
-      className={`flex flex-col md:flex-row items-stretch gap-4 p-4 bg-white dark:bg-[#0f172a] rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-blue-500/50 shadow-sm hover:shadow-md transition-all group ${hasLink ? 'cursor-pointer' : 'cursor-default'}`}>
+      className={`flex flex-col md:flex-row items-stretch gap-4 p-4 bg-white dark:bg-[#0f172a] rounded-2xl border border-slate-100 dark:border-slate-800 hover:border-blue-500/50 shadow-sm hover:shadow-md transition-all group diwani-neon-card ${hasLink ? 'cursor-pointer' : 'cursor-default'}`}>
       <div className="relative shrink-0 w-full md:w-32 h-40 md:h-24">
         <img src={img} className="w-full h-full rounded-xl object-cover border border-slate-100 dark:border-slate-800 shadow-inner"
           onError={(e) => handleImageError(e, REGION_IMGS[item.region])} alt="" />
@@ -301,7 +301,7 @@ export function NewsCarousel({ appUser, onViewAll }: { appUser: any, onViewAll?:
   if (!currentItem) return null;
 
   return (
-    <div className="bg-white dark:bg-[#0f172a] rounded-[2rem] p-5 border border-slate-100 dark:border-slate-800 shadow-sm mb-4 relative overflow-hidden group min-h-[190px]">
+    <div className="bg-white dark:bg-[#0f172a] rounded-[2rem] p-5 border border-slate-100 dark:border-slate-800 shadow-sm mb-4 relative overflow-hidden group min-h-[190px] diwani-neon-card">
       <div className="flex justify-between items-center mb-4">
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center border border-blue-100 dark:border-blue-800/40">

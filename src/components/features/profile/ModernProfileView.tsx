@@ -128,6 +128,43 @@ export function ModernProfileView({
     (profile?.role as any) || ((profile as any)?.account_type as any) || 'seeker'
   );
   const [savingRole, setSavingRole] = useState(false);
+  const [isAvailable, setIsAvailable] = useState<boolean>(
+    Boolean((profile as any)?.is_available || (profile as any)?.isAvailable || (profile as any)?.open_to === 'work')
+  );
+  const [isUpdatingAvailability, setIsUpdatingAvailability] = useState(false);
+
+  React.useEffect(() => {
+    const avail = Boolean((profile as any)?.is_available || (profile as any)?.isAvailable || (profile as any)?.open_to === 'work');
+    setIsAvailable(avail);
+  }, [(profile as any)?.is_available, (profile as any)?.isAvailable, (profile as any)?.open_to]);
+
+  const handleToggleAvailability = async () => {
+    if (!isMe || isUpdatingAvailability) return;
+    const nextVal = !isAvailable;
+    setIsAvailable(nextVal);
+    setIsUpdatingAvailability(true);
+    try {
+      await profileService.updateProfile(effectiveUserId, {
+        is_available: nextVal,
+        isAvailable: nextVal,
+        open_to: nextVal ? 'work' : 'none'
+      } as any);
+      if (setAppUser) {
+        setAppUser((prev: any) => ({
+          ...prev,
+          is_available: nextVal,
+          isAvailable: nextVal,
+          open_to: nextVal ? 'work' : 'none'
+        }));
+      }
+      addToast(nextVal ? 'أنت الآن متاح للعمل ومستعد لتلقي العروض 🟢' : 'تم تعيين حالتك إلى: غير متاح حالياً ⚪');
+    } catch (err: any) {
+      setIsAvailable(!nextVal);
+      addToast('فشل تحديث حالة التوفر: ' + (err.message || 'خطأ غير معروف'), 'error');
+    } finally {
+      setIsUpdatingAvailability(false);
+    }
+  };
 
   // Keep state in sync with profile prop changes (prevents Mobile State loss)
   React.useEffect(() => {
@@ -1128,20 +1165,13 @@ export function ModernProfileView({
           className="relative h-56 sm:h-64 w-full overflow-hidden group"
           style={{ background: 'linear-gradient(135deg, #0a66c2 0%, #004182 60%, #001e3c 100%)' }}
         >
-          {coverUrl ? (
-            <img src={coverUrl} alt="cover" className="w-full h-full object-cover object-center" />
-          ) : (
-            <div className="absolute inset-0 overflow-hidden">
-              {/* Professional decorative pattern */}
-              <div className="absolute -top-10 -right-10 w-64 h-64 rounded-full bg-white/5" />
-              <div className="absolute -bottom-16 -left-10 w-56 h-56 rounded-full bg-white/5" />
-              <div className="absolute top-1/2 left-1/2 w-32 h-32 rounded-full bg-white/5 -translate-x-1/2 -translate-y-1/2" />
-              <div
-                className="absolute inset-0 opacity-[0.07]"
-                style={{ backgroundImage: 'radial-gradient(circle, white 1.5px, transparent 1.5px)', backgroundSize: '28px 28px' }}
-              />
-            </div>
-          )}
+          <img
+            src={coverUrl || DEFAULT_NEWS_PLACEHOLDER}
+            alt="cover"
+            className="w-full h-full object-cover object-center transition-transform duration-700 group-hover:scale-105"
+            onError={(e) => handleImageError(e, DEFAULT_NEWS_PLACEHOLDER)}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-transparent pointer-events-none" />
           {/* Upload overlay on hover */}
           {isMe && !isUploadingCover && (
             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/35 transition-all duration-300 flex items-center justify-center">
@@ -1256,6 +1286,61 @@ export function ModernProfileView({
               })}
             </div>
           </div>
+
+          {/* ── Seeker Availability Toggle Card ── */}
+          {role === 'seeker' && (
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/20 dark:border-emerald-500/30 mb-6 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
+                  isAvailable 
+                    ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30' 
+                    : 'bg-slate-200 dark:bg-slate-800 text-slate-400'
+                }`}>
+                  <Sparkles size={18} />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                      حالة التوفر للعمل
+                    </h4>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+                      isAvailable
+                        ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40'
+                        : 'bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${isAvailable ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                      {isAvailable ? 'متاح للعمل الآن 🟢' : 'غير متاح حالياً ⚪'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mt-0.5">
+                    {isMe
+                      ? (isAvailable 
+                          ? 'ملفك يظهر لأصحاب العمل كباحث نشط ومستعد لتلقي عروض الوظائف' 
+                          : 'ملفك لا يظهر في قائمة المتاحين للعمل حتى تعيد تفعيلها')
+                      : (isAvailable ? 'هذا الباحث متاح حالياً للتوظيف وتلقي عروض العمل' : 'هذا الباحث غير متاح حالياً للعمل')}
+                  </p>
+                </div>
+              </div>
+
+              {isMe && (
+                <button
+                  type="button"
+                  disabled={isUpdatingAvailability}
+                  onClick={handleToggleAvailability}
+                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden active:scale-95 ${
+                    isAvailable ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+                  }`}
+                  title={isAvailable ? 'تعطيل التوفر' : 'تفعيل التوفر للعمل'}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                      isAvailable ? '-translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              )}
+            </div>
+          )}
 
           {/* عنوان "المعلومات الشخصية" — منفصل بمسافة واضحة وبطاقة أنيقة */}
           <div className="flex items-center gap-2.5 pt-2 pb-2 mb-6 border-b border-slate-100 dark:border-slate-800/80">

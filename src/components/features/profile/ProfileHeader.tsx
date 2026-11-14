@@ -1,3 +1,4 @@
+import { DEFAULT_NEWS_PLACEHOLDER, handleImageError } from '../../../lib/utils/placeholders';
 import React, { useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
@@ -104,8 +105,9 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
       <div className="h-24 md:h-36 bg-slate-200 dark:bg-slate-800 relative group overflow-hidden">
         <img
           key={formData.coverUrl}
-          src={formData.coverUrl || 'https://images.unsplash.com/photo-1579546753319-4d9904917482?w=1200&h=400&fit=crop'}
+          src={formData.coverUrl || DEFAULT_NEWS_PLACEHOLDER}
           className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-700"
+          onError={(e) => handleImageError(e, DEFAULT_NEWS_PLACEHOLDER)}
           alt="Cover"
         />
         {/* Gradient overlay at bottom for readability */}

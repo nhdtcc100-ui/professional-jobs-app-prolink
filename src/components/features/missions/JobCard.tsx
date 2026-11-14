@@ -136,7 +136,7 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: Math.min(delay, 0.3), duration: 0.3 }}
         onClick={() => onClick(job)}
-        className={`group bg-white dark:bg-slate-800/90 border rounded-[1.5rem] overflow-hidden cursor-pointer transition-all duration-300 active:scale-[0.99] flex items-center p-3 gap-4 border-slate-100 dark:border-slate-700 hover:shadow-md hover:border-blue-100 dark:hover:border-blue-900 metal-watermark ${!isActive && 'opacity-70'}`}
+        className={`group bg-white dark:bg-slate-800/90 border rounded-[1.5rem] overflow-hidden cursor-pointer transition-all duration-300 active:scale-[0.99] flex items-center p-3 gap-4 border-slate-100 dark:border-slate-700 hover:shadow-md hover:border-blue-100 dark:hover:border-blue-900 diwani-neon-card ${!isActive && 'opacity-70'}`}
       >        <div className="w-12 h-12 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden bg-slate-50 dark:bg-slate-900 shrink-0">
           <img src={avatarUrl} alt={job.company} className="w-full h-full object-cover" />
         </div>
@@ -186,7 +186,7 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: Math.min(delay, 0.4), duration: 0.4 }}
       onClick={() => onClick(job)}
-      className={`group rounded-[2.5rem] overflow-hidden cursor-pointer transition-all duration-700 active:scale-[0.98] flex flex-col h-full bg-white dark:bg-[#0f172a] border border-slate-100 dark:border-slate-800 metal-watermark
+      className={`group rounded-[2.5rem] overflow-hidden cursor-pointer transition-all duration-700 active:scale-[0.98] flex flex-col h-full bg-white dark:bg-[#0f172a] border border-slate-100 dark:border-slate-800 diwani-neon-card
         ${isActive 
           ? 'shadow-[0_15px_40px_rgba(0,0,0,0.03)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] hover:shadow-[0_40px_80px_rgba(10,102,194,0.15)] hover:-translate-y-2' 
           : 'opacity-75 hover:opacity-100 shadow-sm'
@@ -277,7 +277,7 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
             {/* Edit & Delete Buttons — Next to Job Title */}
             {isPublisherOrAdmin && (
               <div
-                className="flex items-center gap-1.5 shrink-0 bg-white/95 dark:bg-slate-800/95 p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm"
+                className="flex items-center gap-1 shrink-0 bg-white/90 dark:bg-slate-800/90 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-xs"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
@@ -289,21 +289,20 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
                       handleInlineEditOpen(e);
                     }
                   }}
-                  className="p-2 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm active:scale-95 border border-blue-100 dark:border-blue-800/40 cursor-pointer"
+                  className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white rounded-lg transition-all shadow-xs active:scale-95 border border-blue-100 dark:border-blue-800/40 cursor-pointer"
                   title="تعديل الوظيفة"
                 >
-                  <Edit2 size={16} />
+                  <Edit2 size={13} />
                 </button>
                 <button
                   onClick={handleDeleteJobCard}
-                  className="p-2 bg-red-50 dark:bg-red-900/40 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-sm active:scale-95 border border-red-100 dark:border-red-800/40 cursor-pointer"
+                  className="p-1.5 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white rounded-lg transition-all shadow-xs active:scale-95 border border-red-100 dark:border-red-800/40 cursor-pointer"
                   title="حذف الوظيفة"
                 >
-                  <Trash2 size={16} />
+                  <Trash2 size={13} />
                 </button>
               </div>
-            )}
-          </div>
+            )}          </div>
         </div>
 
         {/* ── Inline Edit Overlay ── */}

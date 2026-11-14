@@ -12,7 +12,7 @@ interface GroupCardProps {
 export const GroupCard: React.FC<GroupCardProps> = ({ group, onClick, variant = 'discover', onJoin }) => {
   if (variant === 'my') {
     return (
-      <GlassCard className="rounded-3xl overflow-hidden cursor-pointer hover:shadow-2xl transition-all border border-slate-100 group" onClick={onClick}>
+      <GlassCard className="rounded-3xl overflow-hidden cursor-pointer hover:shadow-2xl transition-all border border-slate-100 group diwani-neon-card" onClick={onClick}>
         <div className="h-24 relative">
           <img 
             src={group.cover_url || `https://images.unsplash.com/photo-1497366216548-37526070297c?w=600&h=200&fit=crop&auto=format`} 

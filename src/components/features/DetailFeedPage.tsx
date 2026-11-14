@@ -1,104 +1,16 @@
-import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { motion } from 'motion/react';
+import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
-  ArrowRight, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Briefcase, MapPin, DollarSign, 
+  ArrowRight, ChevronRight, ChevronLeft, Briefcase, MapPin, DollarSign, 
   Tag, Clock, Send, Calendar, ExternalLink, Sparkles,
   FileText, Home, Newspaper, Phone, MessageCircle
 } from 'lucide-react';
 import { Job, AppUser } from '../../types';
-import { formatNewsText, RECOGNIZED_LOCATIONS, WORKING_HOURS_KEYWORDS } from '../../lib/utils/formatNews';
 import { safeTimeAgo } from '../../lib/utils/formatDate';
 import { BilingualSmartText } from '../../lib/utils/bilingualText';
-import { JobCandidatesPanel } from './missions/JobCandidatesPanel';
 import { useAppContext } from '../../contexts/AppContext';
 import { getJobCategory, cleanJobDescription } from '../../lib/utils/jobCategoryUtils';
 import { DEFAULT_NEWS_PLACEHOLDER, handleImageError } from '../../lib/utils/placeholders';
-
-// ── Smart text renderer: detects phone numbers, URLs, emails, salaries, locations, and working hours ──
-const SmartText: React.FC<{ text: string; className?: string }> = ({ text, className }) => {
-  if (!text) return null;
-  const urlPattern = /(https?:\/\/[^\s]+)/g;
-  const phonePattern = /((?:\+?964|0)7[0-9]{9})/g;
-  const emailPattern = /([\w.-]+@[\w.-]+\.[a-z]{2,})/gi;
-  // Regex to detect salaries and amounts in Arabic and English (e.g. 500,000, 500 الف, 750$, مليون دينار, 1000$)
-  const salaryPattern = /((?:راتب|الراتب|أجر|اجر|مكافأة)?\s*(?:[\d٠-٩,.]+|\d+)\s*(?:ألف|الف|مليون|دولار|دينار|\$|IQD|USD|k)?)/gi;
-
-  const combined = /(https?:\/\/[^\s]+|(?:\+?964|0)7[0-9]{9}|[\w.-]+@[\w.-]+\.[a-z]{2,})/g;
-
-  return (
-    <p className={className}>
-      {text.split(combined).map((part, i) => {
-        if (!part) return null;
-        if (urlPattern.test(part)) {
-          urlPattern.lastIndex = 0;
-          const url = part;
-          let label = 'رابط';
-          let colorClass = 'text-blue-600 bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/30';
-          let Icon = ExternalLink;
-          if (url.includes('wa.me') || url.includes('whatsapp')) { label = 'WhatsApp'; colorClass = 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800/30'; Icon = MessageCircle; }
-          else if (url.includes('t.me')) { label = 'Telegram'; colorClass = 'text-sky-600 bg-sky-50 dark:bg-sky-900/20 border-sky-200 dark:border-sky-800/30'; Icon = Send; }
-          else if (url.includes('linkedin.com')) { label = 'LinkedIn'; colorClass = 'text-[#0a66c2] bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800/30'; }
-          return (
-            <a key={i} href={url} target="_blank" rel="noopener noreferrer"
-              className={`inline-flex items-center gap-1.5 font-black ${colorClass} px-2.5 py-1 rounded-xl border text-[11px] mx-0.5 shadow-sm hover:scale-105 transition-all my-0.5`}>
-              <Icon size={11} /> {label}
-            </a>
-          );
-        }
-        if (phonePattern.test(part)) {
-          phonePattern.lastIndex = 0;
-          const clean = part.replace(/\s/g, '');
-          return (
-            <span key={i}
-              onClick={() => window.open(`tel:${clean}`)}
-              className="inline-flex items-center gap-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 px-2.5 py-1 rounded-xl border border-blue-200 dark:border-blue-800/30 font-black text-[11px] mx-0.5 shadow-sm hover:scale-105 transition-all cursor-pointer my-0.5">
-              <Phone size={11} /> {part}
-            </span>
-          );
-        }
-        if (emailPattern.test(part)) {
-          emailPattern.lastIndex = 0;
-          return (
-            <a key={i} href={`mailto:${part}`}
-              className="inline-flex items-center gap-1.5 bg-slate-50 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-700 font-black text-[11px] mx-0.5 shadow-sm hover:scale-105 transition-all my-0.5">
-              <Send size={11} /> {part}
-            </a>
-          );
-        }
-
-        // Sub-split words to highlight locations and working hours
-        const words = part.split(' ');
-        return (
-          <span key={i}>
-            {words.map((word, wIdx) => {
-              const cleanWord = word.replace(/[،؛:.!?]/g, '').trim();
-              const isLocation = RECOGNIZED_LOCATIONS.includes(cleanWord);
-              const isWorkingHour = WORKING_HOURS_KEYWORDS.some(kw => word.includes(kw));
-
-              if (isLocation) {
-                return (
-                  <span key={wIdx} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-black text-xs border border-blue-200/50 dark:border-blue-800/50">
-                    <MapPin size={10} className="text-blue-500" />
-                    {word}{' '}
-                  </span>
-                );
-              }
-              if (isWorkingHour) {
-                return (
-                  <span key={wIdx} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 mx-0.5 rounded-lg bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 font-black text-xs border border-amber-200/50 dark:border-amber-800/50">
-                    <Clock size={10} className="text-amber-500" />
-                    {word}{' '}
-                  </span>
-                );
-              }
-              return word + ' ';
-            })}
-          </span>
-        );
-      })}
-    </p>
-  );
-};
 
 interface DetailFeedPageProps {
   type: 'job' | 'news' | 'post';
@@ -125,42 +37,85 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
   onNavigateHome,
   onNavigateTab,
   appUser,
-  onLike,
-  onDislike,
-  onAddComment,
   allUsers = [],
   onPublisherClick,
 }) => {
   const { setSelectedProfile, allUsers: contextAllUsers } = useAppContext();
   const allUsersList = allUsers.length > 0 ? allUsers : contextAllUsers;
   const [currentIndex, setCurrentIndex] = useState(
-    Math.max(0, Math.min(initialIndex, items.length - 1))
+    Math.max(0, Math.min(initialIndex, (items?.length || 1) - 1))
   );
-  const containerRef = useRef<HTMLDivElement>(null);
+  const horizontalScrollRef = useRef<HTMLDivElement>(null);
 
-  // Keep currentIndex updated if initialIndex changes
-  useEffect(() => {
-    setCurrentIndex(Math.max(0, Math.min(initialIndex, items.length - 1)));
-    if (containerRef.current) {
-      containerRef.current.scrollTop = 0;
+  // Smooth scroll to target item in horizontal slider
+  const scrollToItem = (idx: number, smooth: boolean = true) => {
+    if (idx < 0 || idx >= items.length) return;
+    setCurrentIndex(idx);
+    const targetEl = document.getElementById(`detail-feed-item-${idx}`);
+    if (targetEl) {
+      targetEl.scrollIntoView({
+        behavior: smooth ? 'smooth' : 'auto',
+        inline: 'center',
+        block: 'nearest',
+      });
     }
+  };
+
+  // Initial centering on initialIndex
+  useEffect(() => {
+    const target = Math.max(0, Math.min(initialIndex, (items?.length || 1) - 1));
+    setCurrentIndex(target);
+    const timer = setTimeout(() => {
+      const el = document.getElementById(`detail-feed-item-${target}`);
+      if (el) {
+        el.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'auto' });
+      }
+    }, 60);
+    return () => clearTimeout(timer);
   }, [initialIndex]);
+
+  // IntersectionObserver to auto-update currentIndex when user scrolls horizontally
+  useEffect(() => {
+    const container = horizontalScrollRef.current;
+    if (!container || typeof window.IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const idxStr = entry.target.getAttribute('data-item-index');
+            if (idxStr !== null) {
+              const idx = parseInt(idxStr, 10);
+              if (!isNaN(idx)) {
+                setCurrentIndex(idx);
+              }
+            }
+          }
+        });
+      },
+      {
+        root: container,
+        threshold: 0.55,
+      }
+    );
+
+    items.forEach((_, idx) => {
+      const el = document.getElementById(`detail-feed-item-${idx}`);
+      if (el) observer.observe(el);
+    });
+
+    return () => observer.disconnect();
+  }, [items.length]);
 
   const goToNext = () => {
     if (currentIndex < items.length - 1) {
-      setCurrentIndex(prev => prev + 1);
-      if (containerRef.current) {
-        containerRef.current.scrollTop = 0;
-      }
+      scrollToItem(currentIndex + 1, true);
     }
   };
 
   const goToPrev = () => {
     if (currentIndex > 0) {
-      setCurrentIndex(prev => prev - 1);
-      if (containerRef.current) {
-        containerRef.current.scrollTop = 0;
-      }
+      scrollToItem(currentIndex - 1, true);
     }
   };
 
@@ -190,7 +145,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 30 }}
       transition={{ type: 'spring', damping: 26, stiffness: 280 }}
-      className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[220] bg-white dark:bg-slate-950 text-slate-800 dark:text-white flex flex-col overflow-hidden"
+      className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[220] bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-white flex flex-col overflow-hidden"
       dir="rtl"
     >
       {/* ── Top Bar with Counter, Back & Direct Navigation Buttons ── */}
@@ -203,7 +158,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
           {type === 'news' ? (
             <button
               onClick={onClose}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-black transition-all active:scale-95 shadow-sm"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-black transition-all active:scale-95 shadow-sm cursor-pointer"
               title="الرجوع للأخبار"
             >
               <ArrowRight size={15} />
@@ -213,7 +168,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
             <>
               <button
                 onClick={onClose}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-black transition-all active:scale-95 shadow-sm"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-black transition-all active:scale-95 shadow-sm cursor-pointer"
                 title="رجوع للمكان السابق"
               >
                 <ArrowRight size={15} />
@@ -222,7 +177,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
 
               <button
                 onClick={handleGoHome}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all active:scale-95"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all active:scale-95 cursor-pointer"
                 title="العودة للرئيسية"
               >
                 <Home size={14} className="text-blue-600 dark:text-blue-400" />
@@ -231,7 +186,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
 
               <button
                 onClick={handleGoSection}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all active:scale-95"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all active:scale-95 cursor-pointer"
                 title={type === 'job' ? 'الرجوع لقسم الوظائف' : 'الرئيسية'}
               >
                 {type === 'job' ? (
@@ -265,53 +220,78 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
           })()}
         </div>
 
-        {/* Quick Nav arrows */}
+        {/* Quick Nav arrows in RTL: Right is Prev, Left is Next */}
         {items.length > 1 && (
           <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={goToPrev}
               disabled={currentIndex === 0}
-              className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white transition-all active:scale-90"
+              className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white transition-all active:scale-90 cursor-pointer"
               title="السابق"
             >
-              <ChevronUp size={16} />
+              <ChevronRight size={16} />
             </button>
             <button
               onClick={goToNext}
               disabled={currentIndex === items.length - 1}
-              className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white transition-all active:scale-90"
+              className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-white transition-all active:scale-90 cursor-pointer"
               title="التالي"
             >
-              <ChevronDown size={16} />
+              <ChevronLeft size={16} />
             </button>
           </div>
         )}
       </div>
 
-      {/* ── Single Direct Item View: Zero scrolling from top, Instant Opening ── */}
+      {/* ── Floating Lateral Quick Nav Buttons (Visible on larger screens) ── */}
+      {items.length > 1 && (
+        <>
+          {currentIndex > 0 && (
+            <button
+              onClick={goToPrev}
+              className="hidden md:flex fixed right-4 top-1/2 -translate-y-1/2 z-40 w-11 h-11 items-center justify-center rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-700 dark:text-white shadow-2xl border border-slate-200 dark:border-slate-700 hover:scale-110 active:scale-95 transition-all cursor-pointer backdrop-blur-md"
+              title="الوظيفة السابقة"
+            >
+              <ChevronRight size={22} />
+            </button>
+          )}
+
+          {currentIndex < items.length - 1 && (
+            <button
+              onClick={goToNext}
+              className="hidden md:flex fixed left-4 top-1/2 -translate-y-1/2 z-40 w-11 h-11 items-center justify-center rounded-full bg-white/90 dark:bg-slate-900/90 text-slate-700 dark:text-white shadow-2xl border border-slate-200 dark:border-slate-700 hover:scale-110 active:scale-95 transition-all cursor-pointer backdrop-blur-md"
+              title="الوظيفة التالية"
+            >
+              <ChevronLeft size={22} />
+            </button>
+          )}
+        </>
+      )}
+
+      {/* ── Horizontal Snap Feed Container: Native Smooth Horizontal Scrolling ── */}
       <div
-        ref={containerRef}
-        className="flex-1 overflow-y-auto no-scrollbar overscroll-contain bg-slate-50/50 dark:bg-slate-950"
+        ref={horizontalScrollRef}
+        className="flex-1 flex flex-row items-stretch gap-3 sm:gap-5 px-3 sm:px-6 py-2.5 overflow-x-auto overflow-y-hidden snap-x snap-mandatory no-scrollbar bg-slate-100/70 dark:bg-slate-950 overscroll-x-contain"
         style={{
-          overscrollBehaviorY: 'contain',
+          scrollSnapType: 'x mandatory',
           WebkitOverflowScrolling: 'touch' as any,
         }}
       >
-        {(() => {
-          const item = items[currentIndex];
-          if (!item) return null;
-          const index = currentIndex;
+        {items.map((item, index) => {
           const isItemJob = item.feedType === 'job' || item.company !== undefined || (type === 'job' && !item.content);
           const isItemNews = type === 'news' || item.feedType === 'news';
           const isActive = isItemJob ? item.is_active !== false : true;
-          const isLast = index === items.length - 1;
 
           return (
-            <section
+            <div
               key={item.id || index}
-              id={`detail-item-${index}`}
-              data-index={index}
-              className="border-b-4 border-slate-200/60 dark:border-slate-800/80 last:border-b-0 w-full flex flex-col bg-white dark:bg-slate-950 py-2 sm:py-4 transition-colors"
+              id={`detail-feed-item-${index}`}
+              data-item-index={index}
+              className="w-[92vw] sm:w-[94vw] md:w-[820px] max-w-[820px] h-full shrink-0 snap-center snap-always flex flex-col overflow-y-auto no-scrollbar overscroll-y-contain rounded-3xl border border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-slate-900 shadow-xl diwani-neon-card relative transition-all"
+              style={{
+                scrollSnapAlign: 'center',
+                scrollSnapStop: 'always',
+              }}
             >
               {isItemJob ? (
                 /* ── Job Item Full Page ── */
@@ -322,10 +302,9 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     const pubUser = allUsersList.find(u => u.id === (item.employer_id || item.employerId || item.author_id || item.authorId)) ||
                       (appUser && (appUser.id === item.employerId || appUser.id === item.authorId) ? appUser : null);
                     const pubAvatar = pubUser?.avatar || item.employer_avatar || item.employerAvatar || item.authorAvatar;
-                    // Ensure cover is distinct from personal avatar photo
-                    let heroCover = item.image_url || item.imageUrl || pubUser?.coverUrl || (pubUser as any)?.cover_url;
+                    let heroCover = item.image_url || item.imageUrl || pubUser?.coverUrl || (pubUser as any)?.cover_url || DEFAULT_NEWS_PLACEHOLDER;
                     if (heroCover && pubAvatar && heroCover === pubAvatar) {
-                      heroCover = pubUser?.coverUrl || (pubUser as any)?.cover_url || null;
+                      heroCover = pubUser?.coverUrl || (pubUser as any)?.cover_url || DEFAULT_NEWS_PLACEHOLDER;
                     }
 
                     const handleOpenPublisher = () => {
@@ -352,14 +331,12 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                         className={`relative overflow-hidden ${heroCover ? 'h-52 md:h-64' : 'h-44 md:h-52'} shrink-0 cursor-pointer group/hero`}
                         title="النقر هنا يفتح الملف المهني للناشر"
                       >
-                        {heroCover ? (
-                          <img src={heroCover} alt={item.title} className="w-full h-full object-cover transition-transform duration-700 group-hover/hero:scale-105" />
-                        ) : (
-                          <div className="w-full h-full bg-gradient-to-br from-[#0a66c2] via-[#0d5ca8] to-[#003d7a] relative overflow-hidden">
-                            <div className="absolute inset-0 opacity-10 flex items-center justify-center scale-150"><Briefcase size={100} className="text-white" /></div>
-                            <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full -translate-y-24 translate-x-24" />
-                          </div>
-                        )}
+                        <img 
+                          src={heroCover} 
+                          alt={item.title} 
+                          className="w-full h-full object-cover transition-transform duration-700 group-hover/hero:scale-105" 
+                          onError={(e) => handleImageError(e, DEFAULT_NEWS_PLACEHOLDER)}
+                        />
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/40 to-transparent" />
                         
                         {/* Publisher profile shortcut pill */}
@@ -409,7 +386,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                       { icon: <DollarSign size={13} className="text-emerald-500 dark:text-emerald-400" />, label: 'الراتب', value: item.salary || 'غير محدد' },
                       { icon: <Clock size={13} className="text-amber-500 dark:text-amber-400" />, label: 'ساعات العمل', value: item.working_hours || item.workingHours || 'دوام كامل' },
                     ].map((stat, i) => (
-                      <div key={i} className="bg-slate-50 dark:bg-slate-900 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col gap-1 shadow-sm">
+                      <div key={i} className="bg-slate-50 dark:bg-slate-800/60 p-3 rounded-2xl border border-slate-100 dark:border-slate-800 flex flex-col gap-1 shadow-xs">
                         {stat.icon}
                         <span className="text-[9px] font-bold text-slate-400">{stat.label}</span>
                         <span className="text-xs font-black text-slate-800 dark:text-white truncate">{stat.value}</span>
@@ -423,7 +400,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                       <FileText size={15} />
                       تفاصيل الوظيفة ومتطلباتها
                     </h3>
-                    <div className="bg-slate-50 dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-sm">
+                    <div className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
                       <BilingualSmartText text={cleanJobDescription(item.description) || 'لا يوجد وصف مفصل متاح.'} className="space-y-2.5" />
                     </div>
                   </div>
@@ -434,13 +411,13 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                         <Sparkles size={15} />
                         المتطلبات والمهارات المطلوبة
                       </h3>
-                      <div className="bg-slate-50 dark:bg-slate-900 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-sm">
+                      <div className="bg-slate-50 dark:bg-slate-800/60 p-5 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
                         <BilingualSmartText text={item.requirements} className="space-y-2.5" />
                       </div>
                     </div>
                   )}
 
-                  {/* Apply & Navigation Buttons — padded above MobileNav */}
+                  {/* Apply & Navigation Buttons */}
                   <div className="px-4 md:px-6 pt-5 space-y-2.5" style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 80px), 96px)' }}>
                     {(() => {
                       const isPublisher = !!(appUser && !appUser.isAdmin && (appUser.id === item.employerId || appUser.id === item.employer_id || appUser.id === item.authorId || appUser.id === item.author_id));
@@ -450,7 +427,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                         <button
                           onClick={() => onApplyJob?.(item)}
                           disabled={!isActive || isPublisher || isEmployer}
-                          className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-lg ${
+                          className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-3 transition-all active:scale-[0.98] shadow-lg cursor-pointer ${
                             isPublisher
                               ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-400/30 cursor-not-allowed shadow-none'
                               : isActive
@@ -475,14 +452,14 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={handleGoHome}
-                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all"
+                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                       >
                         <Home size={14} className="text-blue-500" />
                         <span>العودة للرئيسية</span>
                       </button>
                       <button
                         onClick={handleGoSection}
-                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all"
+                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                       >
                         <Briefcase size={14} className="text-indigo-500" />
                         <span>العودة للوظائف</span>
@@ -491,7 +468,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   </div>
                 </div>
               ) : !isItemNews ? (
-                /* ── Post Item Full Page with Snap-Scroll ── */
+                /* ── Post Item Full Page ── */
                 <div className="max-w-3xl mx-auto w-full flex flex-col pb-6">
                   {/* Post Author Bar */}
                   <div className="flex items-center justify-between px-5 md:px-8 pt-5 pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -516,7 +493,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     </span>
                   </div>
 
-                  {/* Post Media (Image or Video) */}
+                  {/* Post Media */}
                   {item.imageUrl && (
                     <div className="relative max-h-96 shrink-0 overflow-hidden bg-slate-100 dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800">
                       <img
@@ -529,7 +506,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
 
                   {/* Post Content */}
                   <div className="px-5 md:px-8 pt-5">
-                    <div className="bg-slate-50 dark:bg-slate-900 p-5 md:p-7 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+                    <div className="bg-slate-50 dark:bg-slate-800/60 p-5 md:p-7 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
                       {item.content ? (
                         <BilingualSmartText text={item.content} className="space-y-3" />
                       ) : (
@@ -540,29 +517,27 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
 
                   {/* Quick Interaction Footer */}
                   <div className="px-5 md:px-8 pt-4 space-y-3" style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 72px), 88px)' }}>
-                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+                    <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
                       <span className="text-xs font-black text-slate-400">توجيه مهني رسمي</span>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={handleGoHome}
-                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all"
+                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                       >
                         <Home size={14} className="text-blue-500" />
                         <span>العودة للرئيسية</span>
                       </button>
                       <button
                         onClick={handleGoSection}
-                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all"
+                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                       >
                         <Briefcase size={14} className="text-indigo-500" />
                         <span>الوظائف</span>
                       </button>
                     </div>
                   </div>
-
-
                 </div>
               ) : (
                 /* ── News Item Full Page ── */
@@ -598,23 +573,23 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     )}
                   </div>
 
-                  {/* News Content — with Bilingual smart alignment & link/phone detection */}
+                  {/* News Content */}
                   <div className="px-5 md:px-8 pt-4">
-                    <div className="bg-slate-50 dark:bg-slate-900 p-5 md:p-7 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+                    <div className="bg-slate-50 dark:bg-slate-800/60 p-5 md:p-7 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
                       <BilingualSmartText text={item.content || item.description || ''} className="space-y-3.5" />
                     </div>
                   </div>
 
-                  {/* Source Link & Quick Return — padded above MobileNav */}
+                  {/* Source Link & Quick Return */}
                   <div className="px-5 md:px-8 pt-4 space-y-2.5" style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 72px), 88px)' }}>
                     {item.link && item.link !== '#' && (
-                      <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
+                      <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-xs">
                         <span className="text-xs font-bold text-slate-400">المصدر الأصلي</span>
                         <a
                           href={item.link}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition-all shadow-md"
+                          className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition-all shadow-md cursor-pointer"
                         >
                           المقال الكامل
                           <ExternalLink size={14} />
@@ -625,40 +600,40 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     <div className="grid grid-cols-2 gap-2">
                       <button
                         onClick={handleGoHome}
-                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all"
+                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                       >
                         <Home size={14} className="text-blue-500" />
                         <span>العودة للرئيسية</span>
                       </button>
                       <button
                         onClick={handleGoSection}
-                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all"
+                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer"
                       >
                         <Newspaper size={14} className="text-emerald-500" />
                         <span>العودة للأخبار</span>
                       </button>
                     </div>
                   </div>
-
                 </div>
               )}
-            </section>
+            </div>
           );
-        })()}
+        })}
       </div>
 
-      {/* ── Fixed Floating Bottom Navigation Bar ── */}
+      {/* ── Fixed Floating Bottom Navigation Bar: Lateral Next & Prev with Touch Feedback ── */}
       {items.length > 1 && (
         <div 
           className="relative z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between gap-3 shadow-xl shrink-0"
           style={{ paddingBottom: 'max(calc(env(safe-area-inset-bottom, 0px) + 8px), 12px)' }}
         >
+          {/* In RTL: Right button is Previous */}
           <button
             onClick={goToPrev}
             disabled={currentIndex === 0}
             className="flex-1 py-2.5 px-4 bg-slate-100 dark:bg-slate-800 disabled:opacity-30 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-95 cursor-pointer shadow-xs"
           >
-            <ChevronUp size={16} />
+            <ChevronRight size={16} />
             <span>{type === 'job' ? 'الوظيفة السابقة' : type === 'news' ? 'الخبر السابق' : 'السابق'}</span>
           </button>
           
@@ -668,13 +643,14 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
             </span>
           </div>
 
+          {/* In RTL: Left button is Next */}
           <button
             onClick={goToNext}
             disabled={currentIndex === items.length - 1}
             className="flex-1 py-2.5 px-4 bg-blue-600 disabled:opacity-30 hover:bg-blue-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer"
           >
             <span>{type === 'job' ? 'الوظيفة التالية' : type === 'news' ? 'الخبر التالي' : 'التالي'}</span>
-            <ChevronDown size={16} />
+            <ChevronLeft size={16} />
           </button>
         </div>
       )}

@@ -485,7 +485,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                 className="!fixed fixed right-2 top-2 bottom-2 z-[110] w-[84%] max-w-[325px]
                            rounded-[28px] border border-white/40 dark:border-white/10 shadow-2xl
                            bg-white/80 dark:bg-slate-900/85 backdrop-blur-2xl
-                           flex flex-col overflow-hidden metal-watermark"
+                           flex flex-col overflow-hidden diwani-neon-card"
                 style={{
                   paddingTop: 'max(env(safe-area-inset-top, 0px), 8px)',
                   paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 8px)',
@@ -544,25 +544,6 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                         </div>
                       </div>
 
-                      {/* Stats */}
-                      <div
-                        className="mt-3 grid grid-cols-3 gap-1.5 p-2 rounded-2xl"
-                        style={{
-                          background: 'rgba(59,130,246,0.06)',
-                          border: '1px solid rgba(59,130,246,0.12)',
-                        }}
-                      >
-                        {[
-                          { label: 'المنشورات', value: myPostsCount, color: '#3b82f6' },
-                          { label: appUser?.role === 'employer' ? 'المتقدمون' : 'طلباتي', value: appUser?.role === 'employer' ? applicantsCount : '—', color: '#6366f1' },
-                          { label: 'الاتصالات', value: userConnectionsCount, color: '#8b5cf6' },
-                        ].map(stat => (
-                          <div key={stat.label} className="text-center">
-                            <p className="text-xs font-black" style={{ color: stat.color }}>{stat.value}</p>
-                            <p className="text-[8.5px] font-bold text-slate-400 dark:text-slate-500">{stat.label}</p>
-                          </div>
-                        ))}
-                      </div>
                     </>
                   ) : (
                     <div className="p-1 text-center">

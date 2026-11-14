@@ -1,3 +1,4 @@
+import { DEFAULT_NEWS_PLACEHOLDER, handleImageError } from '../../lib/utils/placeholders';
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -182,12 +183,12 @@ export function NetworkView({ users, appUser, connections, onUserClick, onSyncSi
               >
                 <div
                   onClick={() => onUserClick(u)}
-                  className="group relative flex flex-col bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 overflow-hidden h-full cursor-pointer"
+                  className="group relative flex flex-col bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-500 overflow-hidden h-full cursor-pointer diwani-neon-card"
                 >
                   {/* Cover Section */}
                   <div className="h-20 w-full relative overflow-hidden bg-slate-200 dark:bg-slate-700">
                     <img 
-                      src={u.coverUrl || `https://images.unsplash.com/photo-1557683316-973673baf926?q=80&w=400`} 
+                      src={u.coverUrl || DEFAULT_NEWS_PLACEHOLDER} onError={(e: any) => handleImageError(e, DEFAULT_NEWS_PLACEHOLDER)} 
                       className="w-full h-full object-cover opacity-60 group-hover:scale-110 transition-transform duration-700"
                       alt=""
                     />
@@ -218,9 +219,23 @@ export function NetworkView({ users, appUser, connections, onUserClick, onSyncSi
                     <h4 className="font-black text-slate-800 dark:text-white text-sm line-clamp-1 group-hover:text-blue-600 transition-colors">
                       {u.name}
                     </h4>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight line-clamp-1 mb-4">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight line-clamp-1 mb-1.5">
                       {u.role === 'employer' ? (u.companyName || 'مدير توظيف') : 'باحث مهني'}
                     </p>
+                    {u.role !== 'employer' && (
+                      <div className="mb-3">
+                        {(u.is_available || (u as any).isAvailable || (u as any).open_to === 'work') ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 shadow-xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            متاح للعمل
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200/60 dark:border-slate-700/60">
+                            غير متاح
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Compact Actions */}
                     <div className="w-full space-y-2 mt-auto pt-2 border-t border-slate-50 dark:border-slate-700/50">
