@@ -28,6 +28,67 @@
   display: none;
 }
 
+/* =========================================
+   PRO VISIBLE SCROLLBAR (الرئيسية، تفاصيل الوظائف، الأخبار)
+   مظهر عصري رشيق يدل على وجود سكرول ونسبة التقدم
+   ========================================= */
+.pro-scrollbar {
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(148, 163, 184, 0.5) transparent !important;
+  -webkit-overflow-scrolling: touch;
+}
+.pro-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.pro-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pro-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 0.2s ease;
+}
+.pro-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(59, 130, 246, 0.8);
+}
+.dark .pro-scrollbar {
+  scrollbar-color: rgba(100, 116, 139, 0.55) transparent !important;
+}
+.dark .pro-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.5);
+}
+.dark .pro-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(96, 165, 250, 0.85);
+}
+
+/* Global viewport visible sleek scrollbar for main window (الرئيسية) */
+html, body {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+html::-webkit-scrollbar, body::-webkit-scrollbar {
+  width: 6px;
+}
+html::-webkit-scrollbar-track, body::-webkit-scrollbar-track {
+  background: transparent;
+}
+html::-webkit-scrollbar-thumb, body::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 9999px;
+}
+html::-webkit-scrollbar-thumb:hover, body::-webkit-scrollbar-thumb:hover {
+  background: rgba(59, 130, 246, 0.75);
+}
+.dark html, .dark body {
+  scrollbar-color: rgba(100, 116, 139, 0.5) transparent;
+}
+.dark html::-webkit-scrollbar-thumb, .dark body::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.5);
+}
+
 body {
   font-family: 'Noto Kufi Arabic', 'Cairo', sans-serif !important;
 }

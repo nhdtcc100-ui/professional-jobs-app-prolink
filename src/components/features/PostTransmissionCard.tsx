@@ -71,7 +71,11 @@ export function PostTransmissionCard({
   onDeletePost,
   onShareToGroup 
 }: PostTransmissionCardProps) {
-  const { likedPosts, dislikedPosts, appUser } = useAppContext();
+  const { likedPosts, dislikedPosts, appUser, allUsers } = useAppContext();
+  const authorUser = allUsers?.find(u => u.id === post.authorId);
+  const isAuthorAvailable = authorUser 
+    ? Boolean(authorUser.isAvailable ?? (authorUser as any).is_available ?? authorUser.open_to === 'work')
+    : Boolean((post as any).is_available || (post as any).isAvailable);
   const isLiked = likedPosts?.has(post.id) || false;
   const isDisliked = dislikedPosts?.has(post.id) || false;
   const [showComments, setShowComments] = useState(false);
@@ -258,7 +262,12 @@ export function PostTransmissionCard({
               alt="Author"
               referrerPolicy="no-referrer"
             />
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white dark:border-slate-900 rounded-full shadow-sm" />
+            <div 
+              className={`absolute -bottom-1 -right-1 w-4 h-4 border-2 border-white dark:border-slate-900 rounded-full shadow-sm transition-colors ${
+                isAuthorAvailable ? 'bg-emerald-500' : 'bg-slate-400'
+              }`} 
+              title={isAuthorAvailable ? 'متاح للعمل 🟢' : 'غير متاح حالياً ⚪'} 
+            />
           </div>
           <div>
             <h4 className="text-sm font-black text-slate-900 dark:text-white group-hover/avatar:text-blue-600 transition-colors tracking-tight">{post.authorName}</h4>
@@ -268,6 +277,11 @@ export function PostTransmissionCard({
                <p className="text-[9px] text-slate-400 font-black uppercase tracking-widest">
                  {(post as any).post_type === 'article' || post.content.startsWith('# ') ? 'مقال مهني 📰' : 'Signal Active'}
                </p>
+               {isAuthorAvailable && (
+                 <span className="text-[8px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-1.5 py-0.5 rounded-full border border-emerald-500/30">
+                   🟢 متاح للعمل
+                 </span>
+               )}
             </div>
           </div>
         </div>

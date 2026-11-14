@@ -60,6 +60,12 @@ const CandidateCard: React.FC<{
             <Star size={9} className="text-white fill-white" />
           </div>
         )}
+        <span
+          className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-slate-800 shadow-sm ${
+            candidate.is_available ?? candidate.isAvailable ? 'bg-emerald-500' : 'bg-slate-400'
+          }`}
+          title={candidate.is_available ?? candidate.isAvailable ? 'متاح للعمل الآن' : 'غير متاح حالياً'}
+        />
       </div>
 
       {/* المعلومات */}
@@ -75,6 +81,15 @@ const CandidateCard: React.FC<{
             <CheckCircle2 size={10} className="text-emerald-500" />
             <span>مطابق للمسمى والموقع</span>
           </span>
+          {(candidate.is_available ?? candidate.isAvailable) ? (
+            <span className="text-[8px] font-black text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-500/30 shrink-0">
+              🟢 متاح للعمل
+            </span>
+          ) : (
+            <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full border border-slate-700/30 shrink-0">
+              ⚪ غير متاح
+            </span>
+          )}
         </div>
 
         <p className="text-[10px] font-bold text-blue-600 dark:text-blue-400 truncate flex items-center gap-1 mt-0.5">

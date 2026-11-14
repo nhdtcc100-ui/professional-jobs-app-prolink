@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { AppUser } from '../../../types';
+import { mockDataService } from '../../../lib/services/mockDataService';
 
 interface HomeServicesSectionProps {
   appUser: AppUser | null;
@@ -45,6 +46,33 @@ export const HomeServicesSection: React.FC<HomeServicesSectionProps> = ({
   // دالة الاستعلام المباشر من قاعدة بيانات Supabase
   const executeSearch = useCallback(async (currentPage: number, reset: boolean) => {
     setLoading(true);
+    if (mockDataService.isEnabled()) {
+      const bundle = mockDataService.getBundle();
+      let candidates = bundle.users.filter(u => u.role === 'freelancer' || u.role === 'seeker');
+      if (keyword.trim()) {
+        const k = keyword.trim().toLowerCase();
+        candidates = candidates.filter(u => 
+          u.name.toLowerCase().includes(k) ||
+          (u.title && u.title.toLowerCase().includes(k)) ||
+          (u.displayTitle && u.displayTitle.toLowerCase().includes(k)) ||
+          (u.specialty && u.specialty.toLowerCase().includes(k))
+        );
+      }
+      if (location.trim()) {
+        const l = location.trim().toLowerCase();
+        candidates = candidates.filter(u => u.location && u.location.toLowerCase().includes(l));
+      }
+      const paged = candidates.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+      if (reset) {
+        setProviders(paged);
+      } else {
+        setProviders(prev => [...prev, ...paged]);
+      }
+      setTotalCount(candidates.length);
+      setHasMore((currentPage + 1) * PAGE_SIZE < candidates.length);
+      setLoading(false);
+      return;
+    }
     try {
       let query = (supabase as any)
         .from('profiles')
@@ -88,7 +116,7 @@ export const HomeServicesSection: React.FC<HomeServicesSectionProps> = ({
         displayTitle: p.display_title || p.title || p.specialty || '',
         specialty: p.specialty || '',
         location: p.location || '',
-        isAvailable: p.is_available ?? true,
+        isAvailable: Boolean(p.is_available || p.open_to === 'work'),
         bio: p.bio || '',
       }));
 
@@ -156,7 +184,7 @@ export const HomeServicesSection: React.FC<HomeServicesSectionProps> = ({
         displayTitle: p.display_title || p.title || p.specialty || '',
         specialty: p.specialty || '',
         location: p.location || '',
-        isAvailable: p.is_available ?? true,
+        isAvailable: Boolean(p.is_available || p.open_to === 'work'),
         bio: p.bio || '',
       }));
       setProviders(mapped);
@@ -311,7 +339,7 @@ export const HomeServicesSection: React.FC<HomeServicesSectionProps> = ({
               {providers.map((p, idx) => {
                 const title = p.displayTitle || p.title || p.specialty || 'مهني حر';
                 const loc = p.location || 'غير محدد';
-                const isAvail = p.isAvailable ?? true;
+                const isAvail = Boolean(p.isAvailable ?? (p as any).is_available ?? p.open_to === 'work');
 
                 return (
                   <motion.div

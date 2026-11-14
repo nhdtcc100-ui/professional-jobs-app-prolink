@@ -3,7 +3,7 @@ import { motion, AnimatePresence, type Variants } from 'motion/react';
 import { 
   ArrowRight, Briefcase, MapPin, DollarSign, 
   Tag, Clock, Send, Calendar, ExternalLink, Sparkles,
-  FileText, Home, Newspaper
+  FileText, Home, Newspaper, ChevronDown
 } from 'lucide-react';
 import { Job, AppUser } from '../../types';
 import { safeTimeAgo } from '../../lib/utils/formatDate';
@@ -124,6 +124,37 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
     }
     return cover;
   }, [currentItem?.id, pubUser, pubAvatar]);
+
+  // ── Scroll Progress & Visual Indicator State (مؤشر التمرير ونسبة التقدم) ──
+  const [scrollProgress, setScrollProgress] = useState(0);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const checkScroll = (target: HTMLDivElement | null) => {
+    if (!target) return;
+    const { scrollTop, scrollHeight, clientHeight } = target;
+    const maxScroll = scrollHeight - clientHeight;
+    if (maxScroll <= 15) {
+      setScrollProgress(100);
+      setCanScrollDown(false);
+    } else {
+      const pct = Math.min(100, Math.max(0, Math.round((scrollTop / maxScroll) * 100)));
+      setScrollProgress(pct);
+      setCanScrollDown(scrollTop < maxScroll - 30);
+    }
+  };
+
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    checkScroll(e.currentTarget);
+  };
+
+  useEffect(() => {
+    setScrollProgress(0);
+    const timer = setTimeout(() => {
+      checkScroll(scrollContainerRef.current);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [currentIndex, isCurJob, isCurNews]);
 
   // Ultra-Fast 60-120FPS GPU-Accelerated 2D Slide Variants (Zero 3D rotateY to prevent lag/freezing)
   const cardVariants: Variants = {
@@ -333,9 +364,19 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   );
                 })()}
 
+                {/* ── Scroll progress line (مؤشر تقدم التمرير) ── */}
+                <div className="h-1 w-full bg-slate-100 dark:bg-slate-800 shrink-0 overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-400 transition-all duration-150" 
+                    style={{ width: `${Math.max(6, scrollProgress)}%` }} 
+                  />
+                </div>
+
                 {/* ── 2. INTERNAL SCROLLABLE DETAILS: ينزل بسكرول كامل مستقل ── */}
                 <div 
-                  className="flex-1 min-h-0 overflow-y-auto no-scrollbar overscroll-y-contain px-4 md:px-6 py-4 space-y-4"
+                  ref={scrollContainerRef}
+                  onScroll={onScroll}
+                  className="flex-1 min-h-0 overflow-y-auto pro-scrollbar overscroll-y-contain px-4 md:px-6 py-4 space-y-4"
                   style={{
                     WebkitOverflowScrolling: 'touch',
                     touchAction: 'pan-y',
@@ -435,6 +476,22 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {/* ── Floating scroll hint indicator (مؤشر وجود سكرول للأسفل) ── */}
+                <AnimatePresence>
+                  {canScrollDown && (
+                    <motion.button
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      onClick={() => scrollContainerRef.current?.scrollBy({ top: 180, behavior: 'smooth' })}
+                      className="absolute bottom-16 sm:bottom-20 left-1/2 -translate-x-1/2 z-20 px-3.5 py-1.5 rounded-full bg-slate-900/90 dark:bg-white/95 text-white dark:text-slate-900 text-[11px] font-black shadow-xl backdrop-blur-md flex items-center gap-1.5 cursor-pointer hover:scale-105 active:scale-95 transition-all"
+                    >
+                      <span>مرر للأسفل</span>
+                      <ChevronDown size={13} className="animate-bounce" />
+                    </motion.button>
+                  )}
+                </AnimatePresence>
               </div>
             ) : !isCurNews ? (
               /* ── Post View: الجزء العلوي ثابت والتفاصيل سكرول ── */
@@ -463,7 +520,11 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                 </div>
 
                 {/* Scrollable Post Content */}
-                <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar px-5 py-4 space-y-4">
+                <div 
+                  ref={scrollContainerRef}
+                  onScroll={onScroll}
+                  className="flex-1 min-h-0 overflow-y-auto pro-scrollbar px-5 py-4 space-y-4"
+                >
                   {currentItem.imageUrl && (
                     <div className="rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-100 dark:border-slate-800">
                       <img src={currentItem.imageUrl} alt="" className="w-full max-h-96 object-contain" />
@@ -500,6 +561,22 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {/* ── Floating scroll hint indicator (مؤشر وجود سكرول للأسفل) ── */}
+                <AnimatePresence>
+                  {canScrollDown && (
+                    <motion.button
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      onClick={() => scrollContainerRef.current?.scrollBy({ top: 180, behavior: 'smooth' })}
+                      className="absolute bottom-16 sm:bottom-20 left-1/2 -translate-x-1/2 z-20 px-3.5 py-1.5 rounded-full bg-slate-900/90 dark:bg-white/95 text-white dark:text-slate-900 text-[11px] font-black shadow-xl backdrop-blur-md flex items-center gap-1.5 cursor-pointer hover:scale-105 active:scale-95 transition-all"
+                    >
+                      <span>مرر للأسفل</span>
+                      <ChevronDown size={13} className="animate-bounce" />
+                    </motion.button>
+                  )}
+                </AnimatePresence>
               </div>
             ) : (
               /* ── News View: مطابق لتفاصيل الوظائف تماماً (رأس ثابت + سكرول داخلي + شريط سفلي ثابت) ── */
@@ -542,9 +619,19 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   </div>
                 </div>
 
+                {/* ── Scroll progress line (مؤشر تقدم التمرير) ── */}
+                <div className="h-1 w-full bg-slate-100 dark:bg-slate-800 shrink-0 overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-blue-500 via-cyan-500 to-teal-400 transition-all duration-150" 
+                    style={{ width: `${Math.max(6, scrollProgress)}%` }} 
+                  />
+                </div>
+
                 {/* Scrollable News Content */}
                 <div 
-                  className="flex-1 min-h-0 overflow-y-auto no-scrollbar overscroll-y-contain px-4 md:px-6 py-4 space-y-4"
+                  ref={scrollContainerRef}
+                  onScroll={onScroll}
+                  className="flex-1 min-h-0 overflow-y-auto pro-scrollbar overscroll-y-contain px-4 md:px-6 py-4 space-y-4"
                   style={{
                     WebkitOverflowScrolling: 'touch',
                     touchAction: 'pan-y',
@@ -589,6 +676,22 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     </button>
                   </div>
                 </div>
+
+                {/* ── Floating scroll hint indicator (مؤشر وجود سكرول للأسفل) ── */}
+                <AnimatePresence>
+                  {canScrollDown && (
+                    <motion.button
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      onClick={() => scrollContainerRef.current?.scrollBy({ top: 180, behavior: 'smooth' })}
+                      className="absolute bottom-16 sm:bottom-20 left-1/2 -translate-x-1/2 z-20 px-3.5 py-1.5 rounded-full bg-slate-900/90 dark:bg-white/95 text-white dark:text-slate-900 text-[11px] font-black shadow-xl backdrop-blur-md flex items-center gap-1.5 cursor-pointer hover:scale-105 active:scale-95 transition-all"
+                    >
+                      <span>مرر للأسفل</span>
+                      <ChevronDown size={13} className="animate-bounce" />
+                    </motion.button>
+                  )}
+                </AnimatePresence>
               </div>
             )}
           </motion.div>

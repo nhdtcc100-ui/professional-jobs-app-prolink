@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { AppUser } from '../../../types';
+import { mockDataService } from '../../../lib/services/mockDataService';
 
 interface ServicesViewProps {
   appUser: AppUser | null;
@@ -172,6 +173,29 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
   const [hasMore, setHasMore] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
+  const [availableOnly, setAvailableOnly] = useState(false);
+
+  // مزامنة حالة توفر المستخدم الحالي فور تعديلها من الملف الشخصي
+  useEffect(() => {
+    if (!appUser?.id) return;
+    const isAvail = Boolean(appUser.isAvailable ?? (appUser as any).is_available ?? appUser.open_to === 'work');
+    setProviders(prev => prev.map(p => {
+      if (p.id === appUser.id) {
+        return { ...p, isAvailable: isAvail, is_available: isAvail };
+      }
+      return p;
+    }));
+  }, [appUser?.id, appUser?.isAvailable, (appUser as any)?.is_available, appUser?.open_to]);
+
+  // الاستماع لتغييرات البيانات الوهمية من لوحة التحكم
+  useEffect(() => {
+    const handleMockChange = () => {
+      searchCacheRef.current.clear();
+      fetchProviders(0, true);
+    };
+    window.addEventListener('prolink_mock_data_change', handleMockChange);
+    return () => window.removeEventListener('prolink_mock_data_change', handleMockChange);
+  }, []);
 
   // ── Debounce: تأخير 250ms قبل تشغيل البحث اليدوي لتجنب استعلامات متتالية ────────
   useEffect(() => {
@@ -186,6 +210,45 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
   }, [searchTitle, searchLocation]);
 
   const fetchProviders = useCallback(async (currentPage: number, reset = false) => {
+    // إذا كانت البيانات الوهمية مفعلة، نقرأ محلياً 100% دون أي طلب لسوبابيس لحماية الباقة المجانية
+    if (mockDataService.isEnabled()) {
+      setLoading(true);
+      const bundle = mockDataService.getBundle();
+      let candidates = bundle.users.filter(u => u.role === 'freelancer' || u.role === 'seeker');
+      if (appUser && (appUser.role === 'freelancer' || appUser.role === 'seeker')) {
+        candidates = [appUser, ...candidates.filter(u => u.id !== appUser.id)];
+      }
+      if (debouncedTitle.trim()) {
+        const t = debouncedTitle.trim().toLowerCase();
+        candidates = candidates.filter(u =>
+          u.name.toLowerCase().includes(t) ||
+          (u.title && u.title.toLowerCase().includes(t)) ||
+          (u.displayTitle && u.displayTitle.toLowerCase().includes(t)) ||
+          (u.specialty && u.specialty.toLowerCase().includes(t))
+        );
+      }
+      if (debouncedLocation.trim()) {
+        const l = debouncedLocation.trim().toLowerCase();
+        candidates = candidates.filter(u => u.location && u.location.toLowerCase().includes(l));
+      }
+      candidates.sort((a, b) => {
+        const aAvail = Boolean(a.isAvailable ?? (a as any).is_available);
+        const bAvail = Boolean(b.isAvailable ?? (b as any).is_available);
+        if (aAvail !== bAvail) return aAvail ? -1 : 1;
+        return (b.isPro ? 1 : 0) - (a.isPro ? 1 : 0);
+      });
+
+      const paged = candidates.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
+      if (reset) {
+        setProviders(paged);
+      } else {
+        setProviders(prev => [...prev, ...paged]);
+      }
+      setTotalCount(candidates.length);
+      setHasMore((currentPage + 1) * PAGE_SIZE < candidates.length);
+      setLoading(false);
+      return;
+    }
     const cacheKey = `${debouncedTitle.trim()}_${debouncedLocation.trim()}_${currentPage}`;
 
     // إذا كانت الصفحة الأولى وموجودة في الكاش، اعرضها فوراً 0ms دون أي انتظار
@@ -246,7 +309,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
           displayTitle,
           specialty: p.specialty || '',
           location: p.location || '',
-          isAvailable: p.is_available ?? true,
+          isAvailable: Boolean(p.is_available || p.open_to === 'work'),
           bio: p.bio || '',
         };
       });
@@ -299,7 +362,12 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
     setPage(0);
   };
 
-  const hasActiveSearch = searchTitle.trim() || searchLocation.trim();
+  const hasActiveSearch = Boolean(searchTitle.trim() || searchLocation.trim() || availableOnly);
+
+  const displayedProviders = React.useMemo(() => {
+    if (!availableOnly) return providers;
+    return providers.filter(p => Boolean(p.isAvailable ?? (p as any).is_available));
+  }, [providers, availableOnly]);
 
   return (
     <div className="space-y-4 pb-safe-bottom" dir="rtl">
@@ -360,6 +428,19 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
               >
                 {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
                 بحث
+              </button>
+              <button
+                type="button"
+                onClick={() => setAvailableOnly(prev => !prev)}
+                className={`px-3 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-1.5 border ${
+                  availableOnly
+                    ? 'bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-900/30'
+                    : 'bg-white/15 text-white/90 hover:bg-white/25 border-white/20'
+                }`}
+                title="تصفية حسب المتوفرين للعمل فقط"
+              >
+                <span className={`w-2 h-2 rounded-full ${availableOnly ? 'bg-white animate-pulse' : 'bg-emerald-400'}`} />
+                <span>المتاحون فقط 🟢</span>
               </button>
               {hasActiveSearch && (
                 <button
@@ -440,7 +521,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
       {/* قائمة المزودين */}
       <div className="space-y-3">
         <AnimatePresence mode="popLayout">
-          {!loading && providers.length === 0 ? (
+          {!loading && displayedProviders.length === 0 ? (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -457,7 +538,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
               </p>
             </motion.div>
           ) : (
-            providers.map((provider, idx) => (
+            displayedProviders.map((provider, idx) => (
               <ServiceCard
                 key={provider.id}
                 provider={provider}

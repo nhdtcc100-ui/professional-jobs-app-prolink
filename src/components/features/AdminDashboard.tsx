@@ -5,11 +5,13 @@ import {
   TrendingUp, Eye, Trash2, CheckCircle, XCircle, Search,
   BarChart3, Activity, Crown, RefreshCw, Building2, Phone,
   ArrowRight, Plus, HeadphonesIcon, Send, MessageSquare, Clock, UserCheck,
-  ShieldAlert, Bell, BellRing, Globe, CheckCheck, EyeOff, Filter, ArrowLeftRight, Check, X, Copy
+  ShieldAlert, Bell, Globe, CheckCheck, Filter, ArrowLeftRight, Check, X, Copy,
+  Database, Upload, Download, ToggleLeft, ToggleRight, Sparkles
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { profileService } from '../../lib/services/profileService';
 import { telegramSupportService } from '../../lib/services/telegramSupportService';
+import { mockDataService } from '../../lib/services/mockDataService';
 import { useAppContext } from '../../contexts/AppContext';
 import { isUUID, sanitizeInput } from '../../lib/utils/sanitize';
 import { threatEngine } from '../../lib/security/threatEngine';
@@ -44,7 +46,7 @@ interface Stats {
   unreadNotifications: number;
 }
 
-type Tab = 'overview' | 'reports' | 'support' | 'notifications' | 'users' | 'posts' | 'resources' | 'settings' | 'security';
+type Tab = 'overview' | 'reports' | 'support' | 'mock_data' | 'users' | 'posts' | 'resources' | 'settings' | 'security';
 
 export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardProps) {
   const { setAllUsers: setGlobalUsers, setAppUser, appUser: currentAppUser } = useAppContext();
@@ -55,7 +57,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
     if (isSupportOnly) return 'support';
     try {
       const saved = localStorage.getItem('prolink_admin_tab') as Tab;
-      if (saved && ['overview', 'reports', 'support', 'notifications', 'users', 'posts', 'resources', 'security', 'settings'].includes(saved)) {
+      if (saved && ['overview', 'reports', 'support', 'mock_data', 'users', 'posts', 'resources', 'security', 'settings'].includes(saved)) {
         return saved;
       }
       return 'overview';
@@ -106,6 +108,53 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   const handleSearchChange = (val: string) => setSearchQuery(sanitizeInput(val));
   const [localReports, setLocalReports] = useState(reports);
   const [securityThreatCount, setSecurityThreatCount] = useState<number>(() => threatEngine.getTodayCount());
+
+  // ── Mock Data Management State ────────────────────────────────
+  const [mockEnabled, setMockEnabled] = useState(() => mockDataService.isEnabled());
+  const [mockStats, setMockStats] = useState(() => mockDataService.getStats());
+  const mockFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleToggleMock = () => {
+    const next = !mockEnabled;
+    mockDataService.setEnabled(next);
+    setMockEnabled(next);
+    addToast(
+      next
+        ? '✅ تم تفعيل البيانات والمستخدمين الوهميين (2,000 مستخدم) بنجاح!'
+        : 'تم إيقاف البيانات الوهمية، النظام الآن يعرض فقط بيانات Supabase الحقيقية.',
+      next ? 'success' : 'info'
+    );
+  };
+
+  const handleExportMockJson = () => {
+    mockDataService.exportAsJsonFile();
+    addToast('تم تصدير وتحميل ملف JSON بنجاح (2,000 مستخدم + وظائف ومنشورات) 📥', 'success');
+  };
+
+  const handleImportMockJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      const res = mockDataService.importFromJsonString(content);
+      if (res.success) {
+        setMockStats(mockDataService.getStats());
+        addToast(`✅ تم استيراد وتحديث البيانات الوهمية بنجاح (${res.count} مستخدم)!`, 'success');
+      } else {
+        addToast('فشل استيراد الملف: ' + (res.error || 'تنسيق غير متوافق'), 'error');
+      }
+    };
+    reader.readAsText(file);
+    if (mockFileInputRef.current) mockFileInputRef.current.value = '';
+  };
+
+  const handleResetMockDefault = () => {
+    if (!window.confirm('هل أنت متأكد من رغبتك في استعادة الـ 2000 مستخدم الافتراضيين؟')) return;
+    mockDataService.resetToDefault();
+    setMockStats(mockDataService.getStats());
+    addToast('تمت استعادة حزمة الـ 2,000 مستخدم الافتراضية بنجاح 🔄', 'success');
+  };
 
   // ── Telegram Support Configuration State ──────────────────
   const [telegramHandle, setTelegramHandle] = useState<string>(() => telegramSupportService.getCachedHandle());
@@ -625,62 +674,6 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
     }
   };
 
-  const handleMarkAdminNotification = async (id: string, currentRead: boolean) => {
-    const nextRead = !currentRead;
-    try {
-      const { error } = await db.from('notifications').update({ read: nextRead }).eq('id', id);
-      if (error) throw error;
-
-      setAllAdminNotifications(prev => prev.map(n => n.id === id ? { ...n, read: nextRead } : n));
-      setStats(prev => ({
-        ...prev,
-        unreadNotifications: Math.max(0, prev.unreadNotifications + (nextRead ? -1 : 1)),
-        readNotifications: Math.max(0, prev.readNotifications + (nextRead ? 1 : -1))
-      }));
-      addToast(nextRead ? 'تم تمييز التنبيه كمقروء ✓' : 'تم تمييز التنبيه كغير مقروء ↺', 'success');
-    } catch (e: any) {
-      addToast('فشل تحديث التنبيه: ' + e.message, 'error');
-    }
-  };
-
-  const handleMarkAllSystemNotificationsRead = async () => {
-    try {
-      const { error } = await db.from('notifications').update({ read: true }).eq('read', false);
-      if (error) throw error;
-
-      setAllAdminNotifications(prev => prev.map(n => ({ ...n, read: true })));
-      setStats(prev => ({
-        ...prev,
-        readNotifications: prev.totalNotifications,
-        unreadNotifications: 0
-      }));
-      addToast('تم تمييز جميع التنبيهات في النظام كمقروءة ✅', 'success');
-    } catch (e: any) {
-      addToast('فشل العملية: ' + e.message, 'error');
-    }
-  };
-
-  const handleDeleteAdminNotification = async (id: string) => {
-    try {
-      const { error } = await db.from('notifications').delete().eq('id', id);
-      if (error) throw error;
-
-      const target = allAdminNotifications.find(n => n.id === id);
-      const wasUnread = target && !target.read;
-
-      setAllAdminNotifications(prev => prev.filter(n => n.id !== id));
-      setStats(prev => ({
-        ...prev,
-        totalNotifications: Math.max(0, prev.totalNotifications - 1),
-        unreadNotifications: wasUnread ? Math.max(0, prev.unreadNotifications - 1) : prev.unreadNotifications,
-        readNotifications: !wasUnread ? Math.max(0, prev.readNotifications - 1) : prev.readNotifications
-      }));
-      addToast('تم حذف التنبيه بنجاح 🗑️', 'success');
-    } catch (e: any) {
-      addToast('فشل الحذف: ' + e.message, 'error');
-    }
-  };
-
   const handleDeletePost = async (postId: string, reportId?: string) => {
     try {
       const { error } = await db.from('posts').delete().eq('id', postId);
@@ -836,7 +829,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
     { id: 'overview',       label: 'نظرة عامة',       icon: <BarChart3 size={16} /> },
     { id: 'reports',        label: 'البلاغات',         icon: <AlertTriangle size={16} />, badge: stats.pendingReports },
     { id: 'support',        label: 'الدعم الفني',       icon: <HeadphonesIcon size={16} />, badge: totalUnreadSupport },
-    { id: 'notifications',  label: 'الإشعارات والتنبيهات', icon: <Bell size={16} />, badge: stats.unreadNotifications > 0 ? stats.unreadNotifications : undefined },
+    { id: 'mock_data',      label: 'البيانات الوهمية', icon: <Database size={16} /> },
     { id: 'users',          label: 'المستخدمون',       icon: <Users size={16} />,        badge: stats.users },
     { id: 'posts',          label: 'المنشورات',        icon: <FileText size={16} />,     badge: stats.posts },
     { id: 'resources',      label: 'إدارة المصادر',     icon: <Building2 size={16} /> },
@@ -994,12 +987,9 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                             </p>
                           </div>
                         </div>
-                        <button
-                          onClick={() => { setActiveTab('notifications'); setNotifTypeFilter('role_change_request'); }}
-                          className="px-4 py-2.5 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 text-xs font-black rounded-xl transition-all border border-amber-500/40 shrink-0 self-start sm:self-auto"
-                        >
-                          عرض الكل في الإشعارات
-                        </button>
+                        <span className="px-4 py-2.5 bg-amber-500/10 text-amber-300 text-xs font-black rounded-xl border border-amber-500/30 shrink-0 self-start sm:self-auto">
+                          {pendingRoleRequests.length} طلبات بانتظار البت
+                        </span>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2">
@@ -1965,258 +1955,149 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
               </motion.div>
             )}
 
-            {/* ══ NOTIFICATIONS TAB ══ */}
-            {activeTab === 'notifications' && (
-              <motion.div key="notifications" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-8">
-                {/* Header with Quick Actions */}
+            {/* ══ MOCK DATA ENGINE TAB (2,000 USERS) ══ */}
+            {activeTab === 'mock_data' && (
+              <motion.div key="mock_data" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="space-y-8">
+                {/* Header with Quick Actions & Main Toggle */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 bg-slate-800/40 border border-slate-700/50 rounded-[2.5rem] backdrop-blur-xl">
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-xl shadow-amber-900/30">
-                      <BellRing size={26} />
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-white shadow-xl transition-all ${
+                      mockEnabled
+                        ? 'bg-gradient-to-br from-emerald-500 to-teal-600 shadow-emerald-900/30'
+                        : 'bg-gradient-to-br from-slate-700 to-slate-800 shadow-slate-900/30 text-slate-400'
+                    }`}>
+                      <Database size={26} />
                     </div>
                     <div>
-                      <h2 className="text-lg font-black text-white">مركز إدارة وتتبع الإشعارات</h2>
+                      <div className="flex items-center gap-3">
+                        <h2 className="text-lg font-black text-white">إدارة البيانات والمستخدمين الوهميين</h2>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black border ${
+                          mockEnabled
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                            : 'bg-slate-700/40 text-slate-400 border-slate-600/40'
+                        }`}>
+                          {mockEnabled ? '🟢 مفعل بالكامل' : '⚪ معطل'}
+                        </span>
+                      </div>
                       <p className="text-xs text-slate-400 font-medium mt-0.5">
-                        مراقبة الإشعارات اللحظية في النظام، والتأكد من وصولها للمستخدمين ورؤيتها
+                        حزمة محلية لـ 2,000 مستخدم مع الوظائف والمنشورات والرسائل بنسبة استهلاك 0% لقاعدة Supabase
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* Toggle Button */}
                     <button
-                      onClick={fetchStats}
-                      disabled={loadingStats}
-                      className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-black border border-slate-700 flex items-center gap-2 transition-all active:scale-95"
+                      onClick={handleToggleMock}
+                      className={`px-5 py-2.5 rounded-2xl text-xs font-black shadow-lg flex items-center gap-2 transition-all active:scale-95 ${
+                        mockEnabled
+                          ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-900/30'
+                          : 'bg-slate-700 hover:bg-slate-600 text-slate-200 shadow-slate-900/30'
+                      }`}
                     >
-                      <RefreshCw size={14} className={loadingStats ? 'animate-spin' : ''} />
-                      تحديث فوري
+                      {mockEnabled ? <ToggleRight size={18} /> : <ToggleLeft size={18} />}
+                      <span>{mockEnabled ? 'البيانات الوهمية قيد التشغيل' : 'تفعيل البيانات الوهمية'}</span>
                     </button>
+
+                    {/* Export JSON */}
                     <button
-                      onClick={handleMarkAllSystemNotificationsRead}
-                      className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black shadow-lg shadow-emerald-900/30 flex items-center gap-2 transition-all active:scale-95"
+                      onClick={handleExportMockJson}
+                      className="px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-black shadow-lg shadow-blue-900/30 flex items-center gap-2 transition-all active:scale-95"
+                      title="تحميل البيانات كملف JSON"
                     >
-                      <CheckCheck size={15} />
-                      تمييز الكل كمقروء
+                      <Download size={15} />
+                      <span>تصدير JSON</span>
+                    </button>
+
+                    {/* Import JSON */}
+                    <input
+                      ref={mockFileInputRef}
+                      type="file"
+                      accept=".json"
+                      className="hidden"
+                      onChange={handleImportMockJson}
+                    />
+                    <button
+                      onClick={() => mockFileInputRef.current?.click()}
+                      className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-black border border-slate-700 flex items-center gap-2 transition-all active:scale-95"
+                      title="رفع ملف JSON بديل"
+                    >
+                      <Upload size={15} />
+                      <span>رفع JSON</span>
+                    </button>
+
+                    {/* Reset Button */}
+                    <button
+                      onClick={handleResetMockDefault}
+                      className="px-3 py-2.5 rounded-2xl bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-amber-400 text-xs font-black border border-slate-700/80 transition-all active:scale-95"
+                      title="استعادة الـ 2000 مستخدم الافتراضيين"
+                    >
+                      <RefreshCw size={14} />
                     </button>
                   </div>
+                </div>
+
+                {/* Free-tier Protection Notice */}
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-slate-800/60 to-teal-950/40 border border-emerald-500/30 flex items-center gap-3">
+                  <Sparkles size={20} className="text-emerald-400 shrink-0" />
+                  <p className="text-xs text-slate-300 leading-relaxed font-medium">
+                    <strong className="text-emerald-400 font-black">حماية كاملة لحساب Supabase المجاني:</strong> تعمل هذه الحزمة بنسبة 100% داخل المتصفح (Client-Side Memory). لن يتم إرسال أي استعلام أو حجز أي صفوف في Supabase، مما يحافظ على حد الذاكرة والكوتا المجانية بالكامل.
+                  </p>
                 </div>
 
                 {/* KPI Metrics */}
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="bg-slate-800/40 border border-slate-700/50 rounded-[2rem] p-5 text-center shadow-xl">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">إجمالي التنبيهات</p>
-                    <p className="text-2xl font-black text-white">{stats.totalNotifications.toLocaleString('ar-EG')}</p>
-                    <span className="text-[9px] text-blue-400 font-bold">في قاعدة البيانات</span>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">المستخدمون الوهميون</p>
+                    <p className="text-2xl font-black text-white">{mockStats.users.toLocaleString('ar-EG')}</p>
+                    <span className="text-[9px] text-emerald-400 font-bold">عراقيون وعرب بكل المحافظات</span>
                   </div>
-                  <div className="bg-slate-800/40 border border-emerald-500/30 rounded-[2rem] p-5 text-center shadow-xl">
-                    <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">تمت المشاهدة (مقروءة)</p>
-                    <p className="text-2xl font-black text-emerald-400">{stats.readNotifications.toLocaleString('ar-EG')}</p>
-                    <span className="text-[9px] text-emerald-400/80 font-bold">
-                      {stats.totalNotifications > 0 ? Math.round((stats.readNotifications / stats.totalNotifications) * 100) : 100}% نسبة المشاهدة
-                    </span>
-                  </div>
-                  <div className="bg-slate-800/40 border border-rose-500/30 rounded-[2rem] p-5 text-center shadow-xl">
-                    <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-1">لم تتم الرؤية (جديدة)</p>
-                    <p className="text-2xl font-black text-rose-400">{stats.unreadNotifications.toLocaleString('ar-EG')}</p>
-                    <span className="text-[9px] text-rose-400/80 font-bold">بحاجة لمتابعة المستخدم</span>
+                  <div className="bg-slate-800/40 border border-blue-500/30 rounded-[2rem] p-5 text-center shadow-xl">
+                    <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">منشورات ومقالات الصفحة الرئيسية</p>
+                    <p className="text-2xl font-black text-blue-400">{mockStats.posts.toLocaleString('ar-EG')}</p>
+                    <span className="text-[9px] text-blue-400/80 font-bold">مع صور وتعليقات وتفاعلات</span>
                   </div>
                   <div className="bg-slate-800/40 border border-amber-500/30 rounded-[2rem] p-5 text-center shadow-xl">
-                    <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">سجل التنبيهات المباشر</p>
-                    <p className="text-2xl font-black text-amber-400">{allAdminNotifications.length}</p>
-                    <span className="text-[9px] text-amber-400/80 font-bold">آخر التنبيهات الواردة</span>
+                    <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">الوظائف والمهام المتاحة</p>
+                    <p className="text-2xl font-black text-amber-400">{mockStats.jobs.toLocaleString('ar-EG')}</p>
+                    <span className="text-[9px] text-amber-400/80 font-bold">بمختلف التخصصات والرواتب</span>
+                  </div>
+                  <div className="bg-slate-800/40 border border-teal-500/30 rounded-[2rem] p-5 text-center shadow-xl">
+                    <p className="text-[10px] font-black text-teal-400 uppercase tracking-widest mb-1">المحادثات والأخبار</p>
+                    <p className="text-2xl font-black text-teal-400">{mockStats.messages} رسالة / {mockStats.news} خبر</p>
+                    <span className="text-[9px] text-teal-400/80 font-bold">تفاعلية بالكامل</span>
                   </div>
                 </div>
 
-                {/* Filter and Search Bar */}
-                <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
-                  {/* Status Filters */}
-                  <div className="flex gap-2 w-full md:w-auto">
-                    {[
-                      { id: 'all', label: `الكل (${allAdminNotifications.length})` },
-                      { id: 'unread', label: `لم تتم الرؤية (${allAdminNotifications.filter(n => !n.read).length})`, isUnread: true },
-                      { id: 'read', label: `تمت الرؤية (${allAdminNotifications.filter(n => n.read).length})` },
-                    ].map(f => (
-                      <button
-                        key={f.id}
-                        onClick={() => setNotifFilter(f.id as any)}
-                        className={`flex-1 md:flex-initial px-4 py-2.5 rounded-2xl text-xs font-black transition-all border ${
-                          notifFilter === f.id
-                            ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/30'
-                            : 'bg-slate-800/50 text-slate-400 hover:text-slate-200 border-slate-700/50'
-                        }`}
-                      >
-                        {f.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Type Filter */}
-                  <div className="flex items-center gap-2 w-full md:w-auto">
-                    <Filter size={15} className="text-slate-500 shrink-0" />
-                    <select
-                      value={notifTypeFilter}
-                      onChange={(e) => setNotifTypeFilter(e.target.value)}
-                      className="bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold rounded-2xl px-4 py-2.5 outline-none focus:border-blue-500"
-                    >
-                      <option value="all">جميع أنواع التنبيهات</option>
-                      <option value="role_change_request">طلبات تغيير نوع الحساب (Role Requests)</option>
-                      <option value="follow_request">طلبات التواصل (Network Sync)</option>
-                      <option value="job_application">التقديم على الوظائف</option>
-                      <option value="like">الإعجابات (Likes)</option>
-                      <option value="comment">التعليقات (Comments)</option>
-                      <option value="message">الرسائل الفورية (Messages)</option>
-                      <option value="missed_call">مكالمات فائتة (Calls)</option>
-                    </select>
-                  </div>
-                </div>
-
-                {/* Notifications Table */}
-                <div className="bg-slate-800/40 border border-slate-700/50 rounded-[2.5rem] overflow-hidden shadow-2xl backdrop-blur-xl">
-                  {allAdminNotifications.length === 0 ? (
-                    <div className="py-24 text-center text-slate-500 space-y-3">
-                      <Bell size={36} className="mx-auto text-slate-600" />
-                      <p className="text-sm font-black">لا توجد تنبيهات مسجلة حالياً</p>
+                {/* Distribution Breakdown Card */}
+                <div className="bg-slate-800/40 border border-slate-700/50 rounded-[2.5rem] p-6 backdrop-blur-xl space-y-4">
+                  <h3 className="text-sm font-black text-white flex items-center gap-2">
+                    <Users size={16} className="text-blue-400" />
+                    <span>توزيع الـ 2,000 مستخدم حسب الأدوار</span>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-slate-400 font-bold">باحثون عن عمل (Seekers)</p>
+                        <p className="text-lg font-black text-white mt-1">1,300 مستخدم</p>
+                      </div>
+                      <span className="text-xs font-black text-blue-400 bg-blue-500/10 px-3 py-1 rounded-xl">65%</span>
                     </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-right border-collapse">
-                        <thead>
-                          <tr className="border-b border-slate-700/50 bg-slate-900/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                            <th className="px-6 py-4">المرسل</th>
-                            <th className="px-6 py-4">نوع التنبيه</th>
-                            <th className="px-6 py-4">المستلم (ID)</th>
-                            <th className="px-6 py-4">التاريخ والوقت</th>
-                            <th className="px-6 py-4">حالة الرؤية</th>
-                            <th className="px-6 py-4 text-center">إجراءات</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-700/30 text-xs">
-                          {allAdminNotifications
-                            .filter(n => {
-                              if (notifFilter === 'unread') return !n.read;
-                              if (notifFilter === 'read') return n.read;
-                              return true;
-                            })
-                            .filter(n => {
-                              if (notifTypeFilter === 'all') return true;
-                              return n.type === notifTypeFilter;
-                            })
-                            .map((n) => {
-                              const isRead = !!n.read;
-                              const typeLabels: Record<string, { label: string; color: string }> = {
-                                follow_request:  { label: 'طلب تواصل', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' },
-                                sync_approval:   { label: 'قبول تواصل', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' },
-                                job_application: { label: 'تقديم وظيفة', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
-                                like:            { label: 'إعجاب منشور', color: 'bg-rose-500/10 text-rose-400 border-rose-500/30' },
-                                comment:         { label: 'تعليق منشور', color: 'bg-violet-500/10 text-violet-400 border-violet-500/30' },
-                                message:         { label: 'رسالة خاصة', color: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/30' },
-                                missed_call:     { label: 'مكالمة فائتة', color: 'bg-red-500/10 text-red-400 border-red-500/30' },
-                              };
-                              const cfg = typeLabels[n.type] || { label: n.type || 'إشعار', color: 'bg-slate-700/50 text-slate-300 border-slate-600' };
-
-                              return (
-                                <tr key={n.id} className="hover:bg-slate-800/60 transition-colors">
-                                  {/* Sender */}
-                                  <td className="px-6 py-4">
-                                    <div className="flex items-center gap-3">
-                                      <img
-                                        src={n.from_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(n.from_name || 'U')}&background=random`}
-                                        className="w-9 h-9 rounded-xl object-cover border border-slate-700 shadow-sm"
-                                        alt=""
-                                      />
-                                      <div>
-                                        <p className="font-black text-white">{n.from_name || 'مستخدم'}</p>
-                                        <p className="text-[9px] text-slate-500 font-mono truncate max-w-[120px]">{n.from_id || '-'}</p>
-                                      </div>
-                                    </div>
-                                  </td>
-
-                                  {/* Type */}
-                                  <td className="px-6 py-4">
-                                    <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black border ${cfg.color}`}>
-                                      {cfg.label}
-                                    </span>
-                                  </td>
-
-                                  {/* Recipient User ID */}
-                                  <td className="px-6 py-4">
-                                    <span className="text-[10px] text-slate-400 font-mono bg-slate-900/60 px-2 py-1 rounded-lg border border-slate-800">
-                                      {n.user_id ? `${n.user_id.slice(0, 8)}...` : 'الكل'}
-                                    </span>
-                                  </td>
-
-                                  {/* Timestamp */}
-                                  <td className="px-6 py-4 text-slate-400 font-medium text-[11px]">
-                                    <div className="flex items-center gap-1.5">
-                                      <Clock size={12} className="text-slate-500" />
-                                      <span>{new Date(n.created_at || Date.now()).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}</span>
-                                    </div>
-                                  </td>
-
-                                  {/* Seen / Unseen Status */}
-                                  <td className="px-6 py-4">
-                                    {isRead ? (
-                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-black bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                                        <CheckCheck size={12} />
-                                        تمت الرؤية
-                                      </span>
-                                    ) : (
-                                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[10px] font-black bg-rose-500/15 text-rose-400 border border-rose-500/30 animate-pulse">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400" />
-                                        لم تتم الرؤية
-                                      </span>
-                                    )}
-                                  </td>
-
-                                  {/* Actions */}
-                                  <td className="px-6 py-4">
-                                    <div className="flex items-center justify-center gap-2">
-                                      {n.type === 'role_change_request' && !isRead && (
-                                        <>
-                                          <button
-                                            onClick={() => handleApproveRoleChange(n)}
-                                            className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-[10px] flex items-center gap-1 shadow-lg shadow-emerald-900/30 transition-all active:scale-95"
-                                            title="قبول وتغيير نوع الحساب"
-                                          >
-                                            <Check size={13} />
-                                            <span>قبول</span>
-                                          </button>
-                                          <button
-                                            onClick={() => handleRejectRoleChange(n)}
-                                            className="px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 font-black text-[10px] flex items-center gap-1 transition-all active:scale-95"
-                                            title="رفض الطلب"
-                                          >
-                                            <X size={13} />
-                                            <span>رفض</span>
-                                          </button>
-                                        </>
-                                      )}
-                                      <button
-                                        onClick={() => handleMarkAdminNotification(n.id, isRead)}
-                                        className={`p-2 rounded-xl border transition-all text-xs font-bold ${
-                                          isRead
-                                            ? 'bg-slate-800 text-slate-400 hover:text-amber-400 border-slate-700'
-                                            : 'bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 hover:text-white border-emerald-500/40'
-                                        }`}
-                                        title={isRead ? 'تمييز كغير مقروء' : 'تمييز كمقروء'}
-                                      >
-                                        {isRead ? <EyeOff size={14} /> : <Eye size={14} />}
-                                      </button>
-                                      <button
-                                        onClick={() => handleDeleteAdminNotification(n.id)}
-                                        className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 border border-red-500/20 transition-all"
-                                        title="حذف التنبيه نهائياً"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                        </tbody>
-                      </table>
+                    <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-slate-400 font-bold">أصحاب أعمال وشركات (Employers)</p>
+                        <p className="text-lg font-black text-white mt-1">500 شركة وصاحب عمل</p>
+                      </div>
+                      <span className="text-xs font-black text-amber-400 bg-amber-500/10 px-3 py-1 rounded-xl">25%</span>
                     </div>
-                  )}
+                    <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs text-slate-400 font-bold">مستقلون ومحترفون (Freelancers)</p>
+                        <p className="text-lg font-black text-white mt-1">200 محترف</p>
+                      </div>
+                      <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-xl">10%</span>
+                    </div>
+                  </div>
                 </div>
               </motion.div>
             )}

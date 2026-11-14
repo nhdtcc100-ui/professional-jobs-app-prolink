@@ -7,6 +7,7 @@ import { callService } from '../lib/services/callService';
 import { sanitizeInput } from '../lib/utils/sanitize';
 import { isUserAdmin, canUserPostAndInteract } from '../lib/utils/roleUtils';
 import { getJobCategory } from '../lib/utils/jobCategoryUtils';
+import { mockDataService } from '../lib/services/mockDataService';
 
 interface AppContextType {
   // Auth State
@@ -76,6 +77,7 @@ interface AppContextType {
   theme: 'light' | 'dark';
   setTheme: (t: 'light' | 'dark') => void;
   toggleTheme: () => void;
+  isMockEnabled?: boolean;
   
   // Actions
   addToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
@@ -229,6 +231,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           localStorage.removeItem('prolink_cached_user');
         }
       } catch (e) {}
+      if (next?.id) {
+        setAllUsersRaw(users => users.map(usr => usr.id === next.id ? { ...usr, ...next } : usr));
+      }
       return next;
     });
   };
@@ -469,6 +474,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return next;
     });
   }, [setSeenConnectionIds]);
+
+  // ── Mock Data Integration (Client-Side only, 0 Supabase quota used) ──
+  const [isMockEnabled, setIsMockEnabled] = useState(() => mockDataService.isEnabled());
+
+  useEffect(() => {
+    return mockDataService.onStateChange((enabled) => {
+      setIsMockEnabled(enabled);
+    });
+  }, []);
+
+  const mockBundle = React.useMemo(() => {
+    if (!isMockEnabled) return null;
+    return mockDataService.getBundle(appUser?.id || user?.id || 'me');
+  }, [isMockEnabled, appUser?.id, user?.id]);
+
+  const effectivePosts = React.useMemo(() => {
+    if (!isMockEnabled || !mockBundle) return posts;
+    const realIds = new Set(posts.map(p => p.id));
+    return [...posts, ...mockBundle.posts.filter(p => !realIds.has(p.id))];
+  }, [posts, isMockEnabled, mockBundle]);
+
+  const effectiveJobs = React.useMemo(() => {
+    if (!isMockEnabled || !mockBundle) return jobs;
+    const realIds = new Set(jobs.map(j => j.id));
+    return [...jobs, ...mockBundle.jobs.filter(j => !realIds.has(j.id))];
+  }, [jobs, isMockEnabled, mockBundle]);
+
+  const effectiveAllUsers = React.useMemo(() => {
+    if (!isMockEnabled || !mockBundle) return allUsers;
+    const realIds = new Set(allUsers.map(u => u.id));
+    return [...allUsers, ...mockBundle.users.filter(u => !realIds.has(u.id))];
+  }, [allUsers, isMockEnabled, mockBundle]);
+
+  const effectiveMessages = React.useMemo(() => {
+    if (!isMockEnabled || !mockBundle) return messages;
+    const realIds = new Set(messages.map(m => m.id));
+    return [...messages, ...mockBundle.messages.filter(m => !realIds.has(m.id))];
+  }, [messages, isMockEnabled, mockBundle]);
 
   const markMessageAsRead = useCallback(async (msgId: string) => {
     if (!msgId) return;
@@ -1119,8 +1162,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    const post = posts.find(p => p.id === postId);
+    const post = (isMockEnabled ? effectivePosts : posts).find(p => p.id === postId);
     if (!post) return;
+
+    if (postId.startsWith('mock-')) {
+      const isLiked = likedPosts.has(postId);
+      const currentCount = typeof post.likesCount === 'number' ? post.likesCount : 0;
+      const newCount = isLiked ? Math.max(0, currentCount - 1) : currentCount + 1;
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, likesCount: newCount } : p));
+      setLikedPosts(prev => {
+        const next = new Set(prev);
+        if (isLiked) next.delete(postId);
+        else next.add(postId);
+        return next;
+      });
+      return;
+    }
 
     // Prevent self-like
     if (post.authorId === appUser.id) {
@@ -1171,8 +1228,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    const post = posts.find(p => p.id === postId);
+    const post = (isMockEnabled ? effectivePosts : posts).find(p => p.id === postId);
     if (!post) return;
+
+    if (postId.startsWith('mock-')) {
+      const isDisliked = dislikedPosts.has(postId);
+      const currentCount = typeof post.dislikesCount === 'number' ? post.dislikesCount : 0;
+      const newCount = isDisliked ? Math.max(0, currentCount - 1) : currentCount + 1;
+      setPosts(prev => prev.map(p => p.id === postId ? { ...p, dislikesCount: newCount } : p));
+      setDislikedPosts(prev => {
+        const next = new Set(prev);
+        if (isDisliked) next.delete(postId);
+        else next.add(postId);
+        return next;
+      });
+      return;
+    }
 
     if (post.authorId === appUser.id) {
       addToast("لا يمكنك تقييم منشورك الخاص 🚫", "error");
@@ -1220,6 +1291,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 🚫 Block banned users from commenting
     if (appUser.isActive === false) {
       addToast("حسابك محظور ولا يمكنك التعليق 🚫", "error");
+      return;
+    }
+    if (postId.startsWith('mock-')) {
+      setPosts(prev => prev.map(p => p.id === postId ? {
+        ...p,
+        commentsCount: (p.commentsCount || 0) + 1
+      } : p));
+      addToast("تمت إضافة التعليق ✅");
       return;
     }
     try {
@@ -1491,6 +1570,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 🚫 Block banned users from applying
     if (appUser.isActive === false) {
       addToast("حسابك محظور ولا يمكنك التقديم على وظائف 🚫", "error");
+      return;
+    }
+    if (job.id.startsWith('mock-')) {
+      addToast('✅ تم تقديم طلبك بنجاح على هذه الوظيفة!', 'success');
       return;
     }
     try {
@@ -2148,9 +2231,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     appUser: isGuestMode ? null : appUser,
     loading, needsRole, authLoading, authMode, setAuthMode,
     pendingEmailVerification, setPendingEmailVerification,
-    posts, jobs, allUsers, connections, seenConnectionIds, setSeenConnectionIds,
+    posts: effectivePosts, jobs: effectiveJobs, allUsers: effectiveAllUsers, connections, seenConnectionIds, setSeenConnectionIds,
     notifications, readNotifIds, setReadNotifIds, readNotifTimestamps,
-    messages, readMessageIds, readChatSenders, reports, myGroups,
+    messages: effectiveMessages, isMockEnabled, readMessageIds, readChatSenders, reports, myGroups,
     unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount,
     activeTab, setActiveTab, searchQuery, setSearchQuery,
     selectedProfile, setSelectedProfile, isEditingProfile, setIsEditingProfile,
@@ -2161,9 +2244,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     theme, setTheme, toggleTheme,
     addToast, handleGoogleLogin, handleEmailLogin, handleEmailSignUp, handlePhoneAuth, logout,
     refreshData: fetchAllData, handleApplyJob, 
-    setAppUser: (u: AppUser | null) => {
+    setAppUser: (u: any) => {
       setAppUser(u);
-      if (u) setAllUsers(prev => prev.map(usr => usr.id === u.id ? u : usr));
     },
     setNotifications, setAllUsers, setPosts, setMessages, setMyGroups,
     selectRole, handleSyncSignal, handleAcceptSync, handleAcceptConnection, handleRejectConnection, handleLike, likedPosts, handleDislike, dislikedPosts, handleAddComment, handleEchoPost, handleRelocateToUser, toggleProRank,

@@ -57,11 +57,11 @@ export function sanitizeInput(
   }
 
   // Preserve technical programming language terms & code snippets safely
+  // Preserve user spacing during active typing (no trailing trim)
   return raw
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
     .replace(/javascript\s*:/gi, '')
     .replace(/on\w+\s*=/gi, '')
-    .trim()
     .slice(0, maxLength);
 }
 

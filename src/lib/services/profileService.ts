@@ -13,6 +13,8 @@ export interface CandidateRow {
   is_pro: boolean;
   matchScore?: number;
   role?: string;
+  is_available?: boolean;
+  isAvailable?: boolean;
 }
 
 export const profileService = {
@@ -100,7 +102,7 @@ export const profileService = {
       // استعلام قاعدة البيانات لجلب الملفات الشخصية
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, name, avatar_url, title, location, is_pro, role, skills, bio')
+        .select('id, name, avatar_url, title, location, is_pro, role, skills, bio, is_available, open_to')
         .neq('id', employerId)
         .not('name', 'is', null)
         .limit(300);
@@ -194,10 +196,13 @@ export const profileService = {
           title: candidate.title || jobTitle,
           location: candidate.location || jobLocation || 'غير محدد',
           is_pro: !!candidate.is_pro,
-          role: candidate.role
+          role: candidate.role,
+          is_available: Boolean(candidate.is_available || candidate.open_to === 'work'),
+          isAvailable: Boolean(candidate.is_available || candidate.open_to === 'work')
         });
       }
 
+      matched.sort((a, b) => (b.is_available ? 1 : 0) - (a.is_available ? 1 : 0));
       return { data: matched.slice(0, limit), error: null };
     } catch (err: any) {
       logger.error('[fetchCandidatesForJob] Exception:', err);
