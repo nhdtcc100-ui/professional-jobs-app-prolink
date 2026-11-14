@@ -391,9 +391,14 @@ export function MissionsView({
   const calculateMatchScore = (jobRequirements: string) => {
     if (!appUser?.skills || !jobRequirements) return 0;
     const reqs = jobRequirements.toLowerCase();
-    const skills = appUser.skills.map(s => s.toLowerCase());
-    const matches = skills.filter(skill => reqs.includes(skill));
+    const rawSkills = Array.isArray(appUser.skills)
+      ? appUser.skills
+      : typeof appUser.skills === 'string'
+        ? (appUser.skills as string).split(/[,\n،]+/)
+        : [];
+    const skills = rawSkills.map(s => String(s).trim().toLowerCase()).filter(Boolean);
     if (skills.length === 0) return 0;
+    const matches = skills.filter(skill => reqs.includes(skill));
     // Cap at 100%, based on top 5 skills match
     const score = Math.round((matches.length / Math.min(skills.length, 5)) * 100);
     return Math.min(score, 100);

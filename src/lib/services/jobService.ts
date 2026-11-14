@@ -3,7 +3,7 @@ import { sanitizeInput } from '../security/inputValidator';
 import { validateFile, imageService } from './imageService';
 import { verifyFileMimeType } from '../security/mimeValidator';
 import { logger } from '../logger';
-import { withMutex } from './concurrencyMutex';
+import { withMutex, concurrencyMutex } from './concurrencyMutex';
 import { idempotencyEngine, withIdempotency } from './idempotencyEngine';
 import { withCollisionRetry } from './collisionHandler';
 import { generateUUID } from '../security/distributedId';
@@ -185,7 +185,7 @@ export const jobService = {
 
     // ── 1. Fast Check & Upsert: If application already exists, update it cleanly ──
     try {
-      const { data: existingApp } = await withTimeout(
+      const { data: existingApp } = (await withTimeout(
         (supabase.from('job_applications') as any)
           .select('id, status')
           .eq('applicant_id', applicantId)
@@ -193,7 +193,7 @@ export const jobService = {
           .maybeSingle(),
         6000,
         'apply.checkExisting'
-      );
+      )) as any;
 
       if (existingApp?.id) {
         console.log("ℹ️ [applyToJob] Application already exists, updating existing record:", existingApp.id);

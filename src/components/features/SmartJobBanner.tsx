@@ -53,7 +53,8 @@ const JobSlide: React.FC<{
   ranked: RankedJob;
   onJobClick: (job: Job) => void;
 }> = ({ ranked, onJobClick }) => {
-  const { job, score, reasons } = ranked;
+  if (!ranked || !ranked.job) return null;
+  const { job, score = 0, reasons = [] } = ranked;
 
   return (
     <motion.div
@@ -178,11 +179,13 @@ export const SmartJobBanner: React.FC<SmartJobBannerProps> = ({
       {/* Slide */}
       <div className="px-4 pb-4 relative">
         <AnimatePresence mode="wait">
-          <JobSlide
-            key={activeIdx}
-            ranked={topJobs[activeIdx]}
-            onJobClick={onJobClick}
-          />
+          {(topJobs[activeIdx] || topJobs[0]) && (
+            <JobSlide
+              key={activeIdx}
+              ranked={topJobs[activeIdx] || topJobs[0]}
+              onJobClick={onJobClick}
+            />
+          )}
         </AnimatePresence>
 
         {/* Prev / Next arrows */}

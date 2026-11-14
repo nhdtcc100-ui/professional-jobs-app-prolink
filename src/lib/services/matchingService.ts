@@ -179,6 +179,7 @@ export function jobMatchReasons(job: Job, user: AppUser | null): string[] {
  */
 export function seekerMatchReasons(user: AppUser, job: Job): string[] {
   const reasons: string[] = [];
+  if (!user || !job) return reasons;
 
   if (textSimilarity(user.title || '', job.title) >= 0.5)
     reasons.push(`مسماه "${user.title}" قريب من الوظيفة`);
@@ -187,8 +188,13 @@ export function seekerMatchReasons(user: AppUser, job: Job): string[] {
   if (locSim >= 0.7)
     reasons.push(`الموقع: ${user.location || 'غير محدد'}`);
 
-  const matchedSkills = (user.skills || []).filter(s =>
-    normalize((job.requirements || '') + ' ' + job.description).includes(normalize(s))
+  const rawSkills = Array.isArray(user.skills)
+    ? user.skills
+    : typeof user.skills === 'string'
+      ? (user.skills as string).split(/[,\n،]+/)
+      : [];
+  const matchedSkills = rawSkills.filter(s =>
+    normalize((job.requirements || '') + ' ' + (job.description || '')).includes(normalize(String(s)))
   );
   if (matchedSkills.length)
     reasons.push(`مهارات مطلوبة: ${matchedSkills.slice(0, 3).join('، ')}`);
@@ -207,7 +213,8 @@ export function seekerMatchReasons(user: AppUser, job: Job): string[] {
  * If user has no profile data, returns jobs as-is (by date).
  */
 export function filterAndRankJobs(jobs: Job[], user: AppUser | null): RankedJob[] {
-  if (!user || (!user.title && !user.location && !user.skills?.length)) {
+  const hasSkills = Array.isArray(user?.skills) ? user.skills.length > 0 : Boolean(user?.skills);
+  if (!user || (!user.title && !user.location && !hasSkills)) {
     // No profile data — return with zero score (preserve original order)
     return jobs.map(job => ({ job, score: 0, reasons: [] }));
   }

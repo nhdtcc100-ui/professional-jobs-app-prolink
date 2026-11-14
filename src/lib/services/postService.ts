@@ -169,10 +169,10 @@ export const postService = {
               };
 
               try {
-                const res = await insertWithTimeout();
+                const res: any = await insertWithTimeout();
                 if (res.error && (res.error.code === '42703' || res.error.message?.includes('dislikes_count'))) {
                   const { dislikes_count, ...fallbackRow } = rowToInsert;
-                  const fbRes = await withTimeout(
+                  const fbRes: any = await withTimeout(
                     (supabase.from('posts') as any).insert([fallbackRow]),
                     10000,
                     'createPost.insert.fallback'
@@ -187,7 +187,7 @@ export const postService = {
                 console.error('[createPost] insert error:', insertErr);
                 // Fallback: try without dislikes_count column
                 const { dislikes_count, ...fallbackRow } = rowToInsert;
-                const fbRes = await withTimeout(
+                const fbRes: any = await withTimeout(
                   (supabase.from('posts') as any).insert([fallbackRow]),
                   10000,
                   'createPost.insert.catch-fallback'

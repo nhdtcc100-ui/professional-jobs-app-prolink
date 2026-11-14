@@ -5,8 +5,9 @@ import {
   ChevronsLeft, Upload, Download, Eye, CheckCircle2, Loader2,
   X, ExternalLink, Camera, RefreshCw,
   EyeOff, AlertCircle, WifiOff, KeyRound, ChevronDown, ChevronUp,
-  Shield, Wrench, ArrowRight
+  Shield, Wrench, ArrowRight, Sparkles
 } from 'lucide-react';
+import { DEFAULT_NEWS_PLACEHOLDER, handleImageError } from '../../../lib/utils/placeholders';
 import { supabase } from '../../../lib/supabase';
 import { profileService } from '../../../lib/services/profileService';
 import { cvService } from '../../../lib/services/cvService';
@@ -576,9 +577,6 @@ export function ModernProfileView({
       [colName]: value,
       updated_at: new Date().toISOString(),
     };
-    if (field === 'role') {
-      payload.account_type = value;
-    }
 
     const updateUrl = `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`;
     const t0 = performance.now();
@@ -693,7 +691,12 @@ export function ModernProfileView({
         'تحديث نوع الحساب'
       );
       if (setAppUser) {
-        setAppUser((prev: any) => ({ ...prev, role: newRole, account_type: newRole }));
+        setAppUser((prev: any) => ({
+          ...prev,
+          role: newRole,
+          account_type: newRole,
+          skills: Array.isArray(prev?.skills) ? prev.skills : []
+        }));
       }
       addToast('✅ تم تحويل الحساب إلى باحث عن عمل 🔍 بنجاح!', 'success');
     } catch (err: any) {
