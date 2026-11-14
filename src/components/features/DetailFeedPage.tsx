@@ -53,20 +53,29 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
     setCurrentIndex(Math.max(0, Math.min(initialIndex, (items?.length || 1) - 1)));
   }, [initialIndex]);
 
-  const touchStartX = useRef<number | null>(null);
-  const touchStartY = useRef<number | null>(null);
+  const isTransitioning = useRef(false);
 
   const goToNext = () => {
+    if (isTransitioning.current) return;
     if (currentIndex < items.length - 1) {
+      isTransitioning.current = true;
       setDirection(1);
       setCurrentIndex(prev => prev + 1);
+      setTimeout(() => {
+        isTransitioning.current = false;
+      }, 350);
     }
   };
 
   const goToPrev = () => {
+    if (isTransitioning.current) return;
     if (currentIndex > 0) {
+      isTransitioning.current = true;
       setDirection(-1);
       setCurrentIndex(prev => prev - 1);
+      setTimeout(() => {
+        isTransitioning.current = false;
+      }, 350);
     }
   };
 
@@ -216,22 +225,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                 // In RTL: swipe right goes to previous job
                 goToPrev();
               }
-            }}
-            onTouchStart={(e) => {
-              touchStartX.current = e.touches[0].clientX;
-              touchStartY.current = e.touches[0].clientY;
-            }}
-            onTouchEnd={(e) => {
-              if (touchStartX.current === null || touchStartY.current === null) return;
-              const diffX = e.changedTouches[0].clientX - touchStartX.current;
-              const diffY = e.changedTouches[0].clientY - touchStartY.current;
-              // Trigger horizontal navigation if horizontal gesture is clear
-              if (Math.abs(diffX) > 40 && Math.abs(diffX) > Math.abs(diffY) * 1.3) {
-                if (diffX < 0) goToNext();
-                else goToPrev();
-              }
-              touchStartX.current = null;
-              touchStartY.current = null;
             }}
             className="w-full sm:w-[92vw] md:w-[780px] max-w-[780px] h-full flex flex-col rounded-3xl border border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-slate-900 shadow-2xl relative overflow-hidden z-10 diwani-neon-card"
           >
