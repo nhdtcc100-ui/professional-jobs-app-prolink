@@ -1263,7 +1263,22 @@ function App() {
                       onAcceptConnection={handleAcceptConnection}
                       onRejectConnection={handleRejectConnection}
                       currentId={appUser?.id || ''} 
-                      onMessageClick={(id) => { const u = allUsers.find(x => x.id === id); if (u) { setSelectedChat(u); setActiveTab('messages'); } }} 
+                      onMessageClick={async (id) => {
+                        let targetUser = allUsers.find(x => String(x.id).toLowerCase() === String(id).toLowerCase());
+                        if (!targetUser || !targetUser.name || targetUser.name === 'مستخدم' || targetUser.name === 'مستخدم محادثة') {
+                          try {
+                            const { data: prof } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle();
+                            if (prof) {
+                              targetUser = mapProfile(prof);
+                              setAllUsers(prev => [...prev.filter(x => x.id !== id), targetUser!]);
+                            }
+                          } catch {}
+                        }
+                        if (targetUser) {
+                          setSelectedChat(targetUser);
+                          setActiveTab('messages');
+                        }
+                      }} 
                     />
                   </Suspense>
                 </div>

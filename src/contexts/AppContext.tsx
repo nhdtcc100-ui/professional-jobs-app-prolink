@@ -143,7 +143,9 @@ export const mapProfile = (p: any): any => {
   return {
     ...p,
     id: p.id,
-    name: p.name || p.full_name || 'مستخدم',
+    name: (p.name && p.name !== 'مستخدم' && p.name !== 'مستخدم محادثة')
+      ? p.name
+      : (p.full_name || p.display_name || p.raw_user_meta_data?.full_name || p.raw_user_meta_data?.name || p.user_metadata?.full_name || p.user_metadata?.name || (p.email ? p.email.split('@')[0] : '') || p.name || 'مستخدم'),
     email: p.email || '',
     title: p.title || p.job_title || p.headline || p.profession || '',
     job_title: p.title || p.job_title || p.headline || p.profession || '',
@@ -718,11 +720,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [toasts, setToasts] = useState<{ id: number, message: string, type: 'success' | 'error' | 'info' | 'warning' }[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAdmin, setShowAdmin] = useState(false);
-  const [selectedChat, setSelectedChat] = useState<AppUser | null>(null);
+  const [selectedChat, setSelectedChat] = useState<AppUser | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('prolink_selected_chat');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
   const selectedChatRef = useRef<AppUser | null>(selectedChat);
   useEffect(() => {
     selectedChatRef.current = selectedChat;
+    try {
+      if (selectedChat) {
+        sessionStorage.setItem('prolink_selected_chat', JSON.stringify(selectedChat));
+      } else {
+        sessionStorage.removeItem('prolink_selected_chat');
+      }
+    } catch {}
   }, [selectedChat]);
+
+  // Keep selectedChat synchronized with fresh profile data so real name is never lost on refresh
+  useEffect(() => {
+    if (selectedChat?.id && allUsers.length > 0) {
+      const fresh = allUsers.find(u => String(u.id).toLowerCase() === String(selectedChat.id).toLowerCase());
+      if (fresh && fresh.name && fresh.name !== 'مستخدم' && fresh.name !== 'مستخدم محادثة') {
+        if (selectedChat.name !== fresh.name || selectedChat.avatar !== fresh.avatar) {
+          setSelectedChat(fresh);
+        }
+      }
+    }
+  }, [allUsers, selectedChat?.id]);
   const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
   const [isPublishingArticle, setIsPublishingArticle] = useState(false);
 
@@ -1364,6 +1392,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const handleAcceptSync = async (notif: AppNotification) => {
+    if (notif.fromId) {
+      supabase.from('profiles').select('*').eq('id', notif.fromId).maybeSingle().then(({ data: prof }) => {
+        if (prof) {
+          const mapped = mapProfile(prof);
+          setAllUsers(prev => [...prev.filter(x => x.id !== notif.fromId), mapped]);
+        }
+      });
+    }
     // 1. Optimistic Update: Mark notification read & connection accepted
     setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
     setReadNotifIds(prev => {
@@ -1403,6 +1439,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const conn = connections.find(c => c.id === connId);
     const otherUserId = conn ? (conn.requesterId === appUser?.id ? conn.recipientId : conn.requesterId) : undefined;
+    if (otherUserId) {
+      supabase.from('profiles').select('*').eq('id', otherUserId).maybeSingle().then(({ data: prof }) => {
+        if (prof) {
+          const mapped = mapProfile(prof);
+          setAllUsers(prev => [...prev.filter(x => x.id !== otherUserId), mapped]);
+        }
+      });
+    }
 
     try {
       const { error } = await networkService.acceptConnection(connId, appUser || undefined, otherUserId);

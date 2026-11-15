@@ -43,14 +43,19 @@ const parseRSS = (xml: string, source: string, baseRegion: NewsItem['region']): 
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
     if (doc.querySelector('parsererror')) return [];
 
-    return Array.from(doc.querySelectorAll('item')).slice(0, 20).map(el => {
+    return Array.from(doc.querySelectorAll('item')).slice(0, 80).map(el => {
       const get = (tag: string) => el.querySelector(tag)?.textContent?.trim() || '';
       const title = newsService.cleanText(get('title'));
       const link  = get('link') || el.querySelector('guid')?.textContent?.trim() || '#';
       const desc  = newsService.cleanText(get('content:encoded') || get('description') || get('content') || '');
       const date  = get('pubDate') || get('dc:date') || get('published') || new Date().toISOString();
-      const thumb = el.querySelector('media\\:thumbnail, enclosure')?.getAttribute('url') ||
-                    el.querySelector('media\\:content')?.getAttribute('url') || '';
+      const thumb = newsService.proxyImage(
+        el.querySelector('media\\:content')?.getAttribute('url') ||
+        el.querySelector('enclosure[type^="image"]')?.getAttribute('url') ||
+        el.querySelector('enclosure')?.getAttribute('url') ||
+        el.querySelector('media\\:thumbnail')?.getAttribute('url') ||
+        newsService.extractFirstImage(desc) || ''
+      );
       
       return {
         id: Math.random().toString(36).substr(2, 9),
@@ -615,7 +620,7 @@ export function NewsView({
             if (res.ok) {
               const json = await res.json();
               const articles = json.articles || json.items || json.data || (Array.isArray(json) ? json : []);
-              return articles.slice(0, 15).map((a: any) => ({
+              return articles.slice(0, 80).map((a: any) => ({
                 id: Math.random().toString(36).substr(2, 9),
                 title: newsService.cleanText(a.title || a.name || ''),
                 link: a.url || a.link || '#',
@@ -652,7 +657,7 @@ export function NewsView({
         const merged = allNews
           .filter(n => { const k = n.title.slice(0, 40); if (seen.has(k)) return false; seen.add(k); return true; })
           .sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime())
-          .slice(0, 80);
+          .slice(0, 150);
 
         setNews(merged);
         setIsLive(true);

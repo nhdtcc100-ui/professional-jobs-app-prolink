@@ -22,7 +22,7 @@ export const profileService = {
     try {
       const response = await supabase
         .from('profiles')
-        .select('id, name, avatar_url, cover_url, role, is_pro, company_name, bio, skills, title, location')
+        .select('*')
         .limit(limit);
       
       if (response.error) {

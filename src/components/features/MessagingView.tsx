@@ -47,7 +47,7 @@ import { MessagingSettingsPage } from './MessagingSettingsPage';
 import { supabase } from '../../lib/supabase';
 import { imageService } from '../../lib/services/imageService';
 import { AppUser, AppConnection } from '../../types';
-import { useAppContext } from '../../contexts/AppContext';
+import { useAppContext, mapProfile } from '../../contexts/AppContext';
 
 interface MessagingViewProps {
   messages: any[];
@@ -238,7 +238,7 @@ export function MessagingView({
     checkApprovalStatus();
   }, [selectedChat, currentUser]);
 
-  const { markChatMessagesAsRead, readMessageIds, readChatSenders } = useAppContext();
+  const { markChatMessagesAsRead, readMessageIds, readChatSenders, setAllUsers } = useAppContext();
 
   // 👁️ Auto-mark messages as read when user is viewing this chat
   useEffect(() => {
@@ -246,6 +246,52 @@ export function MessagingView({
       markChatMessagesAsRead(selectedChat.id);
     }
   }, [selectedChat?.id, currentUser?.id, markChatMessagesAsRead]);
+
+  // ⚡ Auto-heal real user name: If selectedChat has placeholder 'مستخدم', fetch real name from DB immediately
+  useEffect(() => {
+    if (!selectedChat?.id) return;
+    if (!selectedChat.name || selectedChat.name === 'مستخدم' || selectedChat.name === 'مستخدم محادثة') {
+      supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', selectedChat.id)
+        .maybeSingle()
+        .then(({ data: prof }) => {
+          if (prof) {
+            const mapped = mapProfile(prof);
+            if (mapped.name && mapped.name !== 'مستخدم') {
+              onSelectChat(mapped);
+              setAllUsers((prev: AppUser[]) => [...prev.filter((x: AppUser) => x.id !== mapped.id), mapped]);
+            }
+          }
+        });
+    }
+  }, [selectedChat?.id, selectedChat?.name]);
+
+  // ⚡ Auto-fetch real profile for any message partners who might be missing from allUsers
+  useEffect(() => {
+    const unknownPartnerIds = Array.from(messagePartnerIds).filter(pId => {
+      const existing = (allUsers || []).find(u => String(u.id).toLowerCase() === pId.toLowerCase());
+      return !existing || !existing.name || existing.name === 'مستخدم' || existing.name === 'مستخدم محادثة';
+    });
+
+    if (unknownPartnerIds.length > 0) {
+      supabase
+        .from('profiles')
+        .select('*')
+        .in('id', unknownPartnerIds)
+        .then(({ data: profiles }) => {
+          if (profiles && profiles.length > 0) {
+            const mapped = profiles.map(mapProfile);
+            setAllUsers((prev: AppUser[]) => {
+              const prevMap = new Map(prev.map((u: AppUser) => [String(u.id).toLowerCase(), u]));
+              mapped.forEach((m: AppUser) => prevMap.set(String(m.id).toLowerCase(), m));
+              return Array.from(prevMap.values());
+            });
+          }
+        });
+    }
+  }, [messages.length, allUsers.length]);
 
   // ⚡ One-shot fetch when opening a conversation (hydrate messages for this chat pair only).
   // Polling is intentionally removed here — AppContext.catchUpMissedMessages handles background sync

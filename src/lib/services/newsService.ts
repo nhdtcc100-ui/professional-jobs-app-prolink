@@ -38,8 +38,21 @@ async function fetchWithTimeout(url: string, timeoutMs = 4500, options: RequestI
 export const newsService = {
   proxyImage(url: string): string {
     if (!url) return '';
+    // Telegram image resolution upgrade & CORS bypass
     if (url.includes('telesco.pe') || url.includes('telegram.org') || url.includes('cdn4.telegram') || url.includes('cdn.telegram')) {
-      return `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+      return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1200&fit=inside&we`;
+    }
+    // High-res upgrade for unsplash or common web CDN images
+    if (url.includes('unsplash.com')) {
+      return url.replace(/w=\d+/, 'w=1200').replace(/h=\d+/, 'h=800');
+    }
+    // Remove thumbnail downsizing parameters if present
+    if (url.includes('?w=') || url.includes('&w=') || url.includes('?width=') || url.includes('&width=')) {
+      try {
+        const u = new URL(url);
+        u.searchParams.set('w', '1200');
+        return u.toString();
+      } catch {}
     }
     return url;
   },
@@ -143,7 +156,9 @@ export const newsService = {
       if (html && html.includes('tgme_widget_message')) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
-        const messages = Array.from(doc.querySelectorAll('.tgme_widget_message_wrap')).slice(-15);
+        const allWraps = Array.from(doc.querySelectorAll('.tgme_widget_message_wrap'));
+        // Take all messages from today up to 80 items (not just 10 or 15)
+        const messages = allWraps.slice(-80);
 
         if (messages.length > 0) {
           return messages.map((msg, idx) => {
@@ -278,7 +293,7 @@ export const newsService = {
   parseXML(xml: string, source: string): NewsItem[] {
     try {
       const doc = new DOMParser().parseFromString(xml, 'text/xml');
-      const items = Array.from(doc.querySelectorAll('item, entry')).slice(0, 15);
+      const items = Array.from(doc.querySelectorAll('item, entry')).slice(0, 80);
       return items.map(el => {
         const get = (tag: string) => el.querySelector(tag)?.textContent?.trim() || '';
         const rawContent = get('description') || get('content') || get('summary') || '';
@@ -293,8 +308,13 @@ export const newsService = {
           content: this.cleanText(rawContent),
           description: this.cleanText(rawContent),
           author: source,
-          thumbnail: this.proxyImage(el.querySelector('enclosure')?.getAttribute('url') ||
-                     this.extractFirstImage(rawContent) || ''),
+          thumbnail: this.proxyImage(
+            el.querySelector('media\\:content[url]')?.getAttribute('url') ||
+            el.querySelector('enclosure[type^="image"]')?.getAttribute('url') ||
+            el.querySelector('enclosure')?.getAttribute('url') ||
+            el.querySelector('media\\:thumbnail')?.getAttribute('url') ||
+            this.extractFirstImage(rawContent) || ''
+          ),
           source: source,
           region: 'iraq' as const,
           topic: 'وظائف'
