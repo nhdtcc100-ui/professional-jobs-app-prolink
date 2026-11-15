@@ -1043,6 +1043,10 @@ function App() {
                     }}
                   />
 
+                  {canUserPostAndInteract(appUser) && (
+                    <PostBox avatar={appUser?.avatar} appUser={appUser} addToast={addToast} />
+                  )}
+
 
                   {/* ── Feed Control & Refresh Bar ── */}
                   <div className="flex items-center justify-between px-4 py-2.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">

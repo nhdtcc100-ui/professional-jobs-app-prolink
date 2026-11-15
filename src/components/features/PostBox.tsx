@@ -279,24 +279,48 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
           />
         </div>
         <button
-          onClick={() => setUploadType('article')}
-          className="flex-1 bg-slate-50 dark:bg-slate-900 hover:bg-white dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-2xl text-right px-6 py-3 text-sm font-black text-slate-400 hover:text-blue-600 hover:shadow-lg transition-all duration-300 shadow-inner group"
+          type="button"
+          onClick={() => setUploadType(prev => prev ? prev : 'article')}
+          className="flex-1 bg-slate-50 dark:bg-slate-900/90 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl text-right px-4 md:px-5 py-3 text-xs md:text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200 shadow-inner flex items-center justify-between group cursor-pointer"
         >
-          <span className="group-hover:translate-x-[-4px] inline-block transition-transform uppercase tracking-widest text-[10px]">بدء إرسال إشارة توجيه جديدة...</span>
+          <span className="truncate">
+            ما الذي ترغب في مشاركته أو نشره اليوم؟ (وظيفة، مقال، وسائط)...
+          </span>
+          <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/40 px-2.5 py-1 rounded-xl shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+            إنشاء منشور ✍️
+          </span>
         </button>
       </div>
       
-      <div className="flex justify-around items-center mt-5 gap-2">
+      <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
         <input type="file" ref={fileInputRef} className="hidden" accept={isSeeker ? "image/*" : "image/*,video/*"} onChange={handleFileChange} />
-        <ActionBtn onClick={triggerUpload} icon={<div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl shadow-sm"><ImageIcon className="text-blue-600" size={18} /></div>} label="صورة" />
-        <ActionBtn onClick={() => setUploadType('article')} icon={<div className="p-2 bg-purple-50 dark:bg-purple-900/30 rounded-xl shadow-sm"><FileText className="text-purple-600" size={18} /></div>} label="مقال" />
-        {isAdmin && <ActionBtn onClick={triggerUpload} icon={<div className="p-2 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl shadow-sm"><Video className="text-emerald-600" size={18} /></div>} label="فيديو" />}
+        
         {/* نشر وظيفة: يظهر فقط لصاحب العمل والأدمن — مخفي تماماً عن الباحث عن عمل */}
         {isEmployer && (
           <ActionBtn 
             onClick={() => setActiveTab('post-job')} 
-            icon={<div className="p-2 bg-amber-50 dark:bg-amber-900/30 rounded-xl shadow-sm"><Briefcase className="text-amber-600" size={18} /></div>} 
-            label="نشر وظيفة" 
+            icon={<div className="p-2 bg-amber-50 dark:bg-amber-900/30 rounded-xl shadow-sm text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform"><Briefcase size={18} /></div>} 
+            label="نشر وظيفة 💼" 
+          />
+        )}
+
+        <ActionBtn 
+          onClick={() => setUploadType(prev => prev === 'article' ? null : 'article')} 
+          icon={<div className="p-2 bg-purple-50 dark:bg-purple-900/30 rounded-xl shadow-sm text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform"><FileText size={18} /></div>} 
+          label="مقال مهني ✍️" 
+        />
+
+        <ActionBtn 
+          onClick={triggerUpload} 
+          icon={<div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl shadow-sm text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform"><ImageIcon size={18} /></div>} 
+          label="صورة / وسائط 📷" 
+        />
+
+        {isAdmin && (
+          <ActionBtn 
+            onClick={() => { setUploadType('video'); triggerUpload(); }} 
+            icon={<div className="p-2 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl shadow-sm text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform"><Video size={18} /></div>} 
+            label="فيديو 🎥" 
           />
         )}
       </div>
@@ -380,7 +404,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
               id="post-content"
               name="content"
               className={`w-full bg-slate-50 dark:bg-slate-900 rounded-[1.5rem] p-5 text-sm text-slate-700 dark:text-white h-32 focus:outline-none focus:ring-8 transition-all font-sans font-medium shadow-inner resize-none leading-relaxed border ${postError ? 'border-red-400 focus:ring-red-100' : 'border-transparent focus:ring-blue-50/50 dark:focus:ring-blue-900/10'}`}
-              placeholder={uploadType === 'article' ? "اكتب محتوى وتفاصيل المقال هنا..." : uploadType === 'job' ? "أدخل تفاصيل الوظيفة..." : "بماذا تفكر الآن؟ شارك إشارتك المهنية..."}
+              placeholder={uploadType === 'article' ? "اكتب محتوى وتفاصيل المقال هنا..." : uploadType === 'job' ? "أدخل تفاصيل الوظيفة..." : "بماذا تفكر الآن؟ شارك أفكارك أو خبراتك المهنية..."}
               value={content}
               onChange={e => handleContentChange(e.target.value)}
             />
@@ -403,7 +427,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
                 disabled={(!content.trim() && !attachment && !videoUrl) || isPosting || !!postError} 
                 className="py-3 px-10 rounded-2xl shadow-[0_10px_20px_rgba(10,102,194,0.3)] hover:shadow-[0_15px_30px_rgba(10,102,194,0.5)] active:scale-95 transition-all"
               >
-                {isPosting ? 'جاري الإرسال...' : 'إطلاق الإشارة 🚀'}
+                {isPosting ? 'جاري النشر...' : 'نشر الآن 🚀'}
               </GlassButton>
             </div>
           </motion.div>
