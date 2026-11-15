@@ -482,6 +482,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isMockEnabled, setIsMockEnabled] = useState(() => mockDataService.isEnabled());
 
   useEffect(() => {
+    // 🌐 Sync global mock data setting from platform_settings so it opens for everyone
+    mockDataService.syncFromPlatform();
     return mockDataService.onStateChange((enabled) => {
       setIsMockEnabled(enabled);
     });

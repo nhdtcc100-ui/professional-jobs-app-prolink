@@ -74,62 +74,107 @@ const parseRSS = (xml: string, source: string, baseRegion: NewsItem['region']): 
   } catch { return []; }
 };
 
-// Fetch one feed with fast fallback (RSS2JSON, Direct, or Proxies)
+// Fetch one feed with fast fallback (Per-feed Cache, Native Direct, RSS2JSON, or Safe Proxies)
+const FEED_CACHE_PREFIX = 'prolink_feed_cache_';
+const FEED_CACHE_TTL = 15 * 60 * 1000; // 15 mins
+
 const fetchFeed = async (feed: { url: string; region: NewsItem['region']; label: string }): Promise<NewsItem[]> => {
-  // 1. Try rss2json API first (instant JSON, zero XML parsing issues, bypasses CORS)
+  // 0. Check in-memory / sessionStorage per-feed cache first
   try {
-    const res = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}`, {
-      signal: AbortSignal.timeout(4000)
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.status === 'ok' && Array.isArray(data?.items) && data.items.length > 0) {
-        return data.items.map((item: any) => {
-          const title = newsService.cleanText(item.title || '');
-          const desc = newsService.cleanText(item.description || item.content || '');
-          return {
-            id: Math.random().toString(36).substr(2, 9),
-            title,
-            link: item.link || item.guid || '#',
-            pubDate: item.pubDate || new Date().toISOString(),
-            content: desc,
-            description: desc,
-            author: item.author || feed.label,
-            thumbnail: item.thumbnail || item.enclosure?.link || APP_PLACEHOLDER,
-            region: assignRegion(title + ' ' + desc, feed.region),
-            topic: assignTopic(title + ' ' + desc),
-            source: feed.label,
-          } as NewsItem;
-        }).filter((n: NewsItem) => n.title.length > 5);
+    const cached = sessionStorage.getItem(FEED_CACHE_PREFIX + feed.url);
+    if (cached) {
+      const { ts, data } = JSON.parse(cached);
+      if (Date.now() - ts < FEED_CACHE_TTL && Array.isArray(data) && data.length > 0) {
+        return data;
       }
     }
   } catch (_) {}
 
-  // 2. Direct fetch (native mobile WebView / CORS-enabled)
-  try {
-    const res = await fetch(feed.url, { signal: AbortSignal.timeout(3500) });
-    if (res.ok) {
-      const text = await res.text();
-      const items = parseRSS(text, feed.label, feed.region);
-      if (items.length > 0) return items;
-    }
-  } catch (_) {}
+  let items: NewsItem[] = [];
 
-  // 3. Fallback through resilient proxies
-  const proxies = [
-    (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-    (u: string) => `https://thingproxy.freeboard.io/fetch/${u}`,
-  ];
-  for (const proxy of proxies) {
+  // 1. Direct fetch ONLY on native mobile apps (Capacitor / Cordova) where CORS does not apply
+  const isNative = typeof window !== 'undefined' && Boolean((window as any)?.Capacitor?.isNativePlatform?.());
+  if (isNative) {
     try {
-      const res = await fetch(proxy(feed.url), { signal: AbortSignal.timeout(4000) });
-      if (!res.ok) continue;
-      const text = await res.text();
-      const items = parseRSS(text, feed.label, feed.region);
-      if (items.length > 0) return items;
+      const res = await fetch(feed.url, { signal: AbortSignal.timeout(3500) });
+      if (res.ok) {
+        const text = await res.text();
+        items = parseRSS(text, feed.label, feed.region);
+      }
     } catch (_) {}
   }
-  return [];
+
+  // 2. Try rss2json API (bypasses CORS and returns structured items)
+  if (items.length === 0) {
+    try {
+      const res = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}`, {
+        signal: AbortSignal.timeout(4500)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.status === 'ok' && Array.isArray(data?.items) && data.items.length > 0) {
+          items = data.items.map((item: any) => {
+            const title = newsService.cleanText(item.title || '');
+            const desc = newsService.cleanText(item.description || item.content || '');
+            const rawThumb = item.thumbnail || item.enclosure?.link || newsService.extractFirstImage(desc) || '';
+            return {
+              id: Math.random().toString(36).substr(2, 9),
+              title,
+              link: item.link || item.guid || '#',
+              pubDate: item.pubDate || new Date().toISOString(),
+              content: desc,
+              description: desc,
+              author: item.author || feed.label,
+              thumbnail: rawThumb ? newsService.proxyImage(rawThumb) : APP_PLACEHOLDER,
+              region: assignRegion(title + ' ' + desc, feed.region),
+              topic: assignTopic(title + ' ' + desc),
+              source: feed.label,
+            } as NewsItem;
+          }).filter((n: NewsItem) => n.title.length > 5);
+        }
+      }
+    } catch (_) {}
+  }
+
+  // 3. Fallback through resilient, active CORS proxies (No dead thingproxy)
+  if (items.length === 0) {
+    const proxies = [
+      (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+      (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+      (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`
+    ];
+
+    for (const proxy of proxies) {
+      try {
+        const pUrl = proxy(feed.url);
+        const res = await fetch(pUrl, { signal: AbortSignal.timeout(4500) });
+        if (!res.ok) continue;
+        let text = '';
+        if (pUrl.includes('/get?url=')) {
+          const json = await res.json();
+          text = json?.contents || '';
+        } else {
+          text = await res.text();
+        }
+        if (text && text.length > 50) {
+          const parsed = parseRSS(text, feed.label, feed.region);
+          if (parsed.length > 0) {
+            items = parsed;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+  }
+
+  // 4. Cache valid results
+  if (items.length > 0) {
+    try {
+      sessionStorage.setItem(FEED_CACHE_PREFIX + feed.url, JSON.stringify({ ts: Date.now(), data: items }));
+    } catch (_) {}
+  }
+
+  return items;
 };
 
 const assignTopic = (text: string): NewsItem['topic'] => {
@@ -461,81 +506,89 @@ export function NewsView({
   const [showAdminSources, setShowAdminSources] = useState(false);
 
   // Unified sources config key (shared with NewsSourcesAdmin)
-  const SOURCES_CONFIG_KEY = 'prolink_news_sources_config_v1';
+  const SOURCES_CONFIG_KEY = 'prolink_news_sources_config_v2';
 
-  const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
-    {
-      id: 'src-1',
-      name: 'قناة وظائف العراق (تيليجرام)',
-      type: 'telegram',
-      url: 'https://t.me/s/iraq_jobs_pro',
-      category: 'jobs',
-      enabled: true,
-    },
-    {
-      id: 'src-2',
-      name: 'الجزيرة نت - أخبار عامة (RSS)',
-      type: 'rss',
-      url: 'https://www.aljazeera.net/aljazeerarss/a7c186be-1baa-4bd4-9d80-a84db769f779/73d0e1b4-532f-45ef-b135-bfdff8b8cab9',
-      category: 'general',
-      enabled: true,
-    },
-    {
-      id: 'src-3',
-      name: 'يلا كورة - أخبار الرياضة (RSS)',
-      type: 'rss',
-      url: 'https://www.yallakora.com/rss',
-      category: 'sports',
-      enabled: true,
-    },
-    {
-      id: 'src-4',
-      name: 'أرقام - مال واقتصاد (RSS)',
-      type: 'rss',
-      url: 'https://www.argaam.com/rss',
-      category: 'economy',
-      enabled: true,
-    },
-    {
-      id: 'src-5',
-      name: 'سكاي نيوز عربية (RSS)',
-      type: 'rss',
-      url: 'https://www.skynewsarabia.com/web/rss',
-      category: 'general',
-      enabled: true,
-    },
-    {
-      id: 'src-6',
-      name: 'العربية - أخبار سياسية (RSS)',
-      type: 'rss',
-      url: 'https://www.alarabiya.net/tools/rss',
-      category: 'politics',
-      enabled: true,
-    },
-    {
-      id: 'src-7',
-      name: 'الجزيرة نت - رياضة (RSS)',
-      type: 'rss',
-      url: 'https://www.aljazeera.net/aljazeerarss/0be57742-7a9b-4a74-b7e7-daab0cd1be3b/5dcae4d3-3ef5-4ee3-bb9c-5b4bef94e0c9',
-      category: 'sports',
-      enabled: true,
-    },
-    {
-      id: 'src-8',
-      name: 'مباشر - اقتصاد وأسهم (RSS)',
-      type: 'rss',
-      url: 'https://www.mubasher.info/rss',
-      category: 'economy',
-      enabled: true,
-    }
-  ];
+const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
+  {
+    id: 'src-1',
+    name: 'قناة وظائف العراق (تيليجرام)',
+    type: 'telegram',
+    url: 'https://t.me/s/thekhana',
+    category: 'jobs',
+    enabled: true,
+  },
+  {
+    id: 'src-2',
+    name: 'الجزيرة نت - أخبار عامة (RSS)',
+    type: 'rss',
+    url: 'https://www.aljazeera.net/aljazeerarss/a7c186be-1baa-4bd4-9d80-a84db769f779/73d0e1b4-532f-45ef-b135-bfdff8b8cab9',
+    category: 'general',
+    enabled: true,
+  },
+  {
+    id: 'src-3',
+    name: 'الجزيرة نت - أخبار الرياضة (RSS)',
+    type: 'rss',
+    url: 'https://www.aljazeera.net/aljazeerarss/0be57742-7a9b-4a74-b7e7-daab0cd1be3b/5dcae4d3-3ef5-4ee3-bb9c-5b4bef94e0c9',
+    category: 'sports',
+    enabled: true,
+  },
+  {
+    id: 'src-4',
+    name: 'CNN الاقتصادية - مال وأعمال (RSS)',
+    type: 'rss',
+    url: 'https://arabic.cnn.com/api/v1/rss/business/rss.xml',
+    category: 'economy',
+    enabled: true,
+  },
+  {
+    id: 'src-5',
+    name: 'سكاي نيوز عربية (RSS)',
+    type: 'rss',
+    url: 'https://www.skynewsarabia.com/web/rss',
+    category: 'general',
+    enabled: true,
+  },
+  {
+    id: 'src-6',
+    name: 'BBC عربي - أخبار وتحليلات (RSS)',
+    type: 'rss',
+    url: 'https://feeds.bbci.co.uk/arabic/rss.xml',
+    category: 'politics',
+    enabled: true,
+  },
+  {
+    id: 'src-7',
+    name: 'beIN Sports - رياضة (RSS)',
+    type: 'rss',
+    url: 'https://www.beinsports.com/ar/rss',
+    category: 'sports',
+    enabled: true,
+  },
+  {
+    id: 'src-8',
+    name: 'الجزيرة نت - مال واقتصاد (RSS)',
+    type: 'rss',
+    url: 'https://www.aljazeera.net/aljazeerarss/67035676-e820-410a-8bf8-be9ca0b0d3bf/a0dafa02-cb45-4df3-be4a-efad5aaef5fa',
+    category: 'economy',
+    enabled: true,
+  }
+];
+
+  const sanitizeSources = (list: any[]): NewsSourceItem[] => {
+    // Filter out defunct / broken legacy URLs from older saves
+    const defunctHosts = ['argaam.com', 'yallakora.com', 'mubasher.info', 'alarabiya.net/tools/rss'];
+    const cleaned = list.filter(s => !defunctHosts.some(d => s.url && s.url.includes(d)));
+    if (cleaned.length < 3) return DEFAULT_SOURCES_LIST;
+    return cleaned;
+  };
 
   const [sources, setSources] = useState<NewsSourceItem[]>(() => {
     try {
-      const saved = localStorage.getItem(SOURCES_CONFIG_KEY);
+      const saved = localStorage.getItem(SOURCES_CONFIG_KEY) || localStorage.getItem('prolink_news_sources_config_v1');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return sanitizeSources(parsed);
       }
     } catch {}
     return DEFAULT_SOURCES_LIST;
@@ -576,6 +629,7 @@ export function NewsView({
       setNews(cached);
       setIsLive(true);
       setLoading(false);
+      return; // ⚡ Instant cache return - avoid blasting network requests repeatedly
     } else if (!cached) {
       setLoading(true);
     }
@@ -583,7 +637,11 @@ export function NewsView({
     try {
       const activeSources = sources.filter(s => s.enabled);
 
-      const allFeedPromises = activeSources.map(async (src) => {
+      const allFeedPromises = activeSources.map(async (src, idx) => {
+        // Stagger requests by 250ms to prevent bursting rate limits
+        if (idx > 0) {
+          await new Promise(res => setTimeout(res, idx * 250));
+        }
         try {
           if (src.type === 'rss') {
             const items = await fetchFeed({
@@ -675,7 +733,7 @@ export function NewsView({
       }
     }
     setLoading(false);
-  }, [sources, appUser?.isAdmin, news]);
+  }, [sources, appUser?.isAdmin]);
 
   useEffect(() => { fetchNews(); }, []);
 

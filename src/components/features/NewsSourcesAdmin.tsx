@@ -20,7 +20,7 @@ export interface NewsSourceItem {
   itemCount?: number;
 }
 
-const STORAGE_KEY = 'prolink_news_sources_config_v1';
+const STORAGE_KEY = 'prolink_news_sources_config_v2';
 const SETTING_KEY = 'news_sources_config';
 
 const DEFAULT_SOURCES: NewsSourceItem[] = [
@@ -28,13 +28,13 @@ const DEFAULT_SOURCES: NewsSourceItem[] = [
     id: 'src-1',
     name: 'قناة وظائف العراق (تيليجرام)',
     type: 'telegram',
-    url: 'https://t.me/s/iraq_jobs_pro',
+    url: 'https://t.me/s/thekhana',
     category: 'jobs',
     enabled: true,
   },
   {
     id: 'src-2',
-    name: 'الجزيرة نت - أخبار الشرق الأوسط (RSS)',
+    name: 'الجزيرة نت - أخبار عامة (RSS)',
     type: 'rss',
     url: 'https://www.aljazeera.net/aljazeerarss/a7c186be-1baa-4bd4-9d80-a84db769f779/73d0e1b4-532f-45ef-b135-bfdff8b8cab9',
     category: 'general',
@@ -42,6 +42,22 @@ const DEFAULT_SOURCES: NewsSourceItem[] = [
   },
   {
     id: 'src-3',
+    name: 'الجزيرة نت - أخبار الرياضة (RSS)',
+    type: 'rss',
+    url: 'https://www.aljazeera.net/aljazeerarss/0be57742-7a9b-4a74-b7e7-daab0cd1be3b/5dcae4d3-3ef5-4ee3-bb9c-5b4bef94e0c9',
+    category: 'sports',
+    enabled: true,
+  },
+  {
+    id: 'src-4',
+    name: 'CNN الاقتصادية - مال وأعمال (RSS)',
+    type: 'rss',
+    url: 'https://arabic.cnn.com/api/v1/rss/business/rss.xml',
+    category: 'economy',
+    enabled: true,
+  },
+  {
+    id: 'src-5',
     name: 'سكاي نيوز عربية (RSS)',
     type: 'rss',
     url: 'https://www.skynewsarabia.com/web/rss',
@@ -49,10 +65,26 @@ const DEFAULT_SOURCES: NewsSourceItem[] = [
     enabled: true,
   },
   {
-    id: 'src-4',
-    name: 'منصة الأخبار الاقتصادية والتوظيف (REST API)',
-    type: 'api',
-    url: 'https://api.rss2json.com/v1/api.json?rss_url=https://www.skynewsarabia.com/web/rss',
+    id: 'src-6',
+    name: 'BBC عربي - أخبار وتحليلات (RSS)',
+    type: 'rss',
+    url: 'https://feeds.bbci.co.uk/arabic/rss.xml',
+    category: 'politics',
+    enabled: true,
+  },
+  {
+    id: 'src-7',
+    name: 'beIN Sports - رياضة (RSS)',
+    type: 'rss',
+    url: 'https://www.beinsports.com/ar/rss',
+    category: 'sports',
+    enabled: true,
+  },
+  {
+    id: 'src-8',
+    name: 'الجزيرة نت - مال واقتصاد (RSS)',
+    type: 'rss',
+    url: 'https://www.aljazeera.net/aljazeerarss/67035676-e820-410a-8bf8-be9ca0b0d3bf/a0dafa02-cb45-4df3-be4a-efad5aaef5fa',
     category: 'economy',
     enabled: true,
   }
@@ -90,31 +122,39 @@ export const NewsSourcesAdmin: React.FC<{ addToast: (msg: string, type?: 'succes
       apiKey: ''
     },
     {
-      label: '⚽ يلا كورة - الرياضة (RSS)',
+      label: '⚽ الجزيرة - رياضة (RSS)',
       type: 'rss' as const,
       category: 'sports' as const,
-      name: 'يلا كورة - أخبار كروية',
-      url: 'https://www.yallakora.com/rss',
+      name: 'الجزيرة الرياضية',
+      url: 'https://www.aljazeera.net/aljazeerarss/0be57742-7a9b-4a74-b7e7-daab0cd1be3b/5dcae4d3-3ef5-4ee3-bb9c-5b4bef94e0c9',
       apiKey: ''
     },
     {
-      label: '📈 أرقام - اقتصاد وأسواق (RSS)',
+      label: '🏆 beIN Sports - رياضة عالمية (RSS)',
+      type: 'rss' as const,
+      category: 'sports' as const,
+      name: 'beIN Sports أخبار الرياضة',
+      url: 'https://www.beinsports.com/ar/rss',
+      apiKey: ''
+    },
+    {
+      label: '📈 CNN الاقتصادية - مال وأعمال (RSS)',
       type: 'rss' as const,
       category: 'economy' as const,
-      name: 'أرقام - اقتصاد ومال',
-      url: 'https://www.argaam.com/rss',
+      name: 'CNN الاقتصادية',
+      url: 'https://arabic.cnn.com/api/v1/rss/business/rss.xml',
       apiKey: ''
     },
     {
-      label: '💼 وظائف العراق (تيليجرام)',
+      label: '💼 وظائف العراق - الخانة (تيليجرام)',
       type: 'telegram' as const,
       category: 'jobs' as const,
-      name: 'قناة وظائف العراق',
-      url: 'https://t.me/s/iraq_jobs',
+      name: 'قناة الخانة - وظائف العراق',
+      url: 'https://t.me/s/thekhana',
       apiKey: ''
     },
     {
-      label: '📡 BBC عربي (RSS)',
+      label: '📡 BBC عربي - أخبار وتحليلات (RSS)',
       type: 'rss' as const,
       category: 'general' as const,
       name: 'BBC عربي - أخبار',
@@ -130,37 +170,21 @@ export const NewsSourcesAdmin: React.FC<{ addToast: (msg: string, type?: 'succes
       apiKey: ''
     },
     {
+      label: '💹 الجزيرة - مال واقتصاد (RSS)',
+      type: 'rss' as const,
+      category: 'economy' as const,
+      name: 'الجزيرة نت - اقتصاد',
+      url: 'https://www.aljazeera.net/aljazeerarss/67035676-e820-410a-8bf8-be9ca0b0d3bf/a0dafa02-cb45-4df3-be4a-efad5aaef5fa',
+      apiKey: ''
+    },
+    {
       label: '🤖 NewsAPI - أخبار تقنية (JSON API)',
       type: 'api' as const,
       category: 'tech' as const,
       name: 'NewsAPI - تقنية (يلزم مفتاح API مجاني)',
       url: 'https://newsapi.org/v2/top-headlines?country=sa&category=technology&apiKey=YOUR_KEY_HERE',
       apiKey: 'YOUR_NEWSAPI_KEY'
-    },
-    {
-      label: '🏆 الجزيرة - رياضة (RSS)',
-      type: 'rss' as const,
-      category: 'sports' as const,
-      name: 'الجزيرة الرياضية',
-      url: 'https://www.aljazeera.net/aljazeerarss/0be57742-7a9b-4a74-b7e7-daab0cd1be3b/5dcae4d3-3ef5-4ee3-bb9c-5b4bef94e0c9',
-      apiKey: ''
-    },
-    {
-      label: '💹 مباشر - اقتصاد وأسهم (RSS)',
-      type: 'rss' as const,
-      category: 'economy' as const,
-      name: 'مباشر للأسواق المالية',
-      url: 'https://www.mubasher.info/rss',
-      apiKey: ''
-    },
-    {
-      label: '📲 العربية - أخبار سياسية (RSS)',
-      type: 'rss' as const,
-      category: 'politics' as const,
-      name: 'قناة العربية - أخبار',
-      url: 'https://www.alarabiya.net/tools/rss',
-      apiKey: ''
-    },
+    }
   ];
 
   const fillExample = (ex: typeof API_EXAMPLES[0]) => {
