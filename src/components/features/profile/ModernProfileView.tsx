@@ -1,11 +1,11 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   User, Briefcase, MapPin, Phone, Lock, FileText, Pencil,
   ChevronsLeft, Upload, Download, Eye, CheckCircle2, Loader2,
   X, ExternalLink, Camera, RefreshCw,
   EyeOff, AlertCircle, WifiOff, KeyRound, ChevronDown, ChevronUp,
-  Shield, Wrench, ArrowRight, Sparkles
+  Shield, Wrench, ArrowRight, Sparkles, ArrowLeftRight, Clock
 } from 'lucide-react';
 import { DEFAULT_NEWS_PLACEHOLDER, handleImageError } from '../../../lib/utils/placeholders';
 import { supabase } from '../../../lib/supabase';
@@ -113,6 +113,7 @@ export function ModernProfileView({
   returnToJob,
   onReturnToJob,
 }: ModernProfileViewProps) {
+  const effectiveUserId = user?.id || profile?.id;
   // ─── Form State ───────────────────────────────────────────────────────────────
   const [name, setName] = useState(profile?.name || '');
   const [title, setTitle] = useState(profile?.display_title || profile?.title || (profile as any)?.industry || '');
@@ -129,6 +130,33 @@ export function ModernProfileView({
     (profile?.role as any) || ((profile as any)?.account_type as any) || 'seeker'
   );
   const [savingRole, setSavingRole] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
+  const [targetRoleToRequest, setTargetRoleToRequest] = useState<'seeker' | 'employer'>('employer');
+  const [roleReason, setRoleReason] = useState('');
+  const [isSendingRoleRequest, setIsSendingRoleRequest] = useState(false);
+  const [pendingRoleRequest, setPendingRoleRequest] = useState<any>(() => {
+    try {
+      const saved = localStorage.getItem('prolink_pending_role_req');
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
+
+  // Check for pending role change request from DB on mount or when role updates
+  useEffect(() => {
+    if (!effectiveUserId) return;
+    profileService.fetchPendingRoleChangeRequest(effectiveUserId).then(({ pending, request }) => {
+      if (pending && request) {
+        if (request.requested_role === role) {
+          setPendingRoleRequest(null);
+          try { localStorage.removeItem('prolink_pending_role_req'); } catch {}
+        } else {
+          setPendingRoleRequest(request);
+        }
+      } else {
+        setPendingRoleRequest(null);
+      }
+    });
+  }, [effectiveUserId, role]);
   const [isAvailable, setIsAvailable] = useState<boolean>(
     Boolean((profile as any)?.is_available || (profile as any)?.isAvailable || (profile as any)?.open_to === 'work')
   );
@@ -206,8 +234,6 @@ export function ModernProfileView({
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const cvInputRef = useRef<HTMLInputElement>(null);
-
-  const effectiveUserId = user?.id || profile?.id;
 
   // ─── Profile Tabs & Posts State ──────────────────────────────────────────────
   const [activeProfileTab, setActiveProfileTab] = useState<'info' | 'posts'>('info');
@@ -651,60 +677,56 @@ export function ModernProfileView({
     return { status: resStatus, duration };
   };
 
-  // ─── تغيير نوع الحساب (التحويل إلى صاحب عمل يتطلب موافقة الأدمن) ─────────────
-  const handleRoleChange = async (newRole: 'seeker' | 'employer') => {
+  // ─── تغيير نوع الحساب (التحويل بين صاحب عمل وباحث عن عمل يتطلب موافقة الأدمن) ─────────────
+  const handleRoleChange = (newRole: 'seeker' | 'employer') => {
     if (!isMe || !effectiveUserId || savingRole || newRole === role) return;
     try { navigator.vibrate?.([10]); } catch (_) {}
 
-    // 🔒 إذا كان الحساب باحثاً عن عمل ويريد الترقية إلى صاحب عمل -> إرسال طلب للإدارة
-    if (newRole === 'employer' && role === 'seeker') {
-      const companyPrompt = window.prompt('يرجى كتابة اسم المؤسسة أو سبب طلب الترقية إلى حساب "صاحب عمل":');
-      if (companyPrompt === null) return;
-
-      setSavingRole(true);
-      try {
-        const { error } = await profileService.sendRoleChangeRequest(
-          effectiveUserId,
-          name || profile?.name || 'مستخدم',
-          avatar || profile?.avatar || '',
-          role,
-          'employer',
-          companyPrompt.trim() || 'طلب ترقية إلى صاحب عمل لنشر وإدارة الوظائف'
-        );
-        if (error) throw error;
-        addToast('📨 تم إرسال طلب الترقية إلى صاحب عمل للإدارة بنجاح! سيتم التفعيل فور المراجعة.', 'success');
-      } catch (err: any) {
-        addToast('فشل إرسال الطلب: ' + (err?.message || 'خطأ غير معروف'), 'error');
-      } finally {
-        setSavingRole(false);
-      }
+    // 🔒 إذا كان هناك طلب قيد المراجعة مسبقاً
+    if (pendingRoleRequest && pendingRoleRequest.status === 'pending' && pendingRoleRequest.requested_role !== role) {
+      addToast('لديك طلب تغيير نوع حساب قيد المراجعة حالياً من قبل الإدارة', 'info');
       return;
     }
 
-    const oldRole = role;
-    setRole(newRole);
-    setSavingRole(true);
+    // فتح النافذة الاحترافية لطلب التحويل
+    setTargetRoleToRequest(newRole);
+    setRoleReason('');
+    setShowRoleModal(true);
+  };
+
+  const handleSubmitRoleRequest = async () => {
+    if (!effectiveUserId || isSendingRoleRequest) return;
+    setIsSendingRoleRequest(true);
     try {
-      await withTimeout(
-        updateProfileDbFieldDirect(effectiveUserId, 'role', newRole),
-        8000,
-        'تحديث نوع الحساب'
+      const defaultReason = targetRoleToRequest === 'employer'
+        ? 'طلب ترقية إلى حساب صاحب عمل لنشر وإدارة الوظائف ومتابعة المرشحين'
+        : 'طلب تحويل الحساب إلى باحث عن عمل للتقديم على الوظائف واستكشاف الفرص المهنية';
+
+      const { data, error } = await profileService.sendRoleChangeRequest(
+        effectiveUserId,
+        name || profile?.name || (user?.user_metadata?.full_name || 'مستخدم'),
+        avatar || profile?.avatar || '',
+        role,
+        targetRoleToRequest,
+        roleReason.trim() || defaultReason
       );
-      if (setAppUser) {
-        setAppUser((prev: any) => ({
-          ...prev,
-          role: newRole,
-          account_type: newRole,
-          skills: Array.isArray(prev?.skills) ? prev.skills : []
-        }));
-      }
-      addToast('✅ تم تحويل الحساب إلى باحث عن عمل 🔍 بنجاح!', 'success');
+      if (error) throw error;
+
+      const targetLabel = targetRoleToRequest === 'employer' ? 'صاحب عمل 💼' : 'باحث عن عمل 🔍';
+      addToast(`📨 تم إرسال طلب التحويل إلى "${targetLabel}" للإدارة بنجاح! سيتم التفعيل فور المراجعة.`, 'success');
+
+      const newPending = {
+        requested_role: targetRoleToRequest,
+        status: 'pending',
+        created_at: new Date().toISOString()
+      };
+      setPendingRoleRequest(newPending);
+      try { localStorage.setItem('prolink_pending_role_req', JSON.stringify(newPending)); } catch {}
+      setShowRoleModal(false);
     } catch (err: any) {
-      console.error('[RoleChange] error:', err);
-      setRole(oldRole);
-      addToast('فشل تحديث نوع الحساب: ' + (err?.message || 'خطأ في الشبكة'), 'error');
+      addToast('فشل إرسال الطلب: ' + (err?.message || 'خطأ غير معروف'), 'error');
     } finally {
-      setSavingRole(false);
+      setIsSendingRoleRequest(false);
     }
   };
 
@@ -1254,6 +1276,14 @@ export function ModernProfileView({
                 </span>
               )}
             </div>
+
+            {/* Pending Request Banner */}
+            {pendingRoleRequest && pendingRoleRequest.status === 'pending' && pendingRoleRequest.requested_role !== role && (
+              <div className="mb-3 p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center gap-2.5 text-xs text-amber-700 dark:text-amber-400 font-bold">
+                <Clock size={16} className="shrink-0 text-amber-500 animate-pulse" />
+                <span>طلبك لتغيير نوع الحساب إلى "{pendingRoleRequest.requested_role === 'employer' ? 'صاحب عمل 💼' : 'باحث عن عمل 🔍'}" قيد المراجعة لدى الإدارة حالياً.</span>
+              </div>
+            )}
 
             {/* Segmented Control Buttons (باحث عن عمل وصاحب عمل) */}
             <div className="grid grid-cols-2 gap-2 p-1.5 rounded-2xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60">
@@ -1908,6 +1938,120 @@ export function ModernProfileView({
               >
                 حسناً، فهمت
               </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Professional Role Change Request Modal ── */}
+      <AnimatePresence>
+        {showRoleModal && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md" dir="rtl">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 15 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="relative w-full max-w-md bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-3xl p-6 shadow-2xl z-10 space-y-5"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/25">
+                    <ArrowLeftRight size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-slate-900 dark:text-white">
+                      طلب تغيير نوع الحساب
+                    </h3>
+                    <p className="text-[11px] font-bold text-slate-400">
+                      يُرسل الطلب للإدارة لتوثيق وتحديث صلاحيات حسابك
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={isSendingRoleRequest}
+                  onClick={() => setShowRoleModal(false)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Roles Flow Preview Badges */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-700/60 flex items-center justify-between gap-2">
+                <div className="flex-1 text-center">
+                  <span className="text-[10px] font-bold text-slate-400 block mb-0.5">الحساب الحالي</span>
+                  <span className="text-xs font-black text-slate-700 dark:text-slate-200">
+                    {role === 'employer' ? 'صاحب عمل 💼' : 'باحث عن عمل 🔍'}
+                  </span>
+                </div>
+                <div className="p-2 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 shrink-0">
+                  <ArrowLeftRight size={14} />
+                </div>
+                <div className="flex-1 text-center">
+                  <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 block mb-0.5">الحساب المطلوب</span>
+                  <span className="text-xs font-black text-blue-600 dark:text-blue-400">
+                    {targetRoleToRequest === 'employer' ? 'صاحب عمل 💼' : 'باحث عن عمل 🔍'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Notice note */}
+              <div className="p-3 rounded-2xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/40 text-[11px] text-blue-700 dark:text-blue-300 font-medium leading-relaxed">
+                💡 {targetRoleToRequest === 'employer' 
+                  ? 'حساب صاحب العمل يتيح لك نشر الوظائف، استلام طلبات التقديم، والتواصل مع المرشحين.'
+                  : 'حساب الباحث عن عمل يتيح لك بناء سيرتك الذاتية، التقديم على الوظائف، واستكشاف الفرص المهنية.'}
+              </div>
+
+              {/* Reason Input */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black text-slate-700 dark:text-slate-300 block">
+                  {targetRoleToRequest === 'employer' 
+                    ? 'اسم الشركة / المؤسسة أو سبب طلب الترقية:'
+                    : 'سبب الرغبة في التحويل إلى باحث عن عمل:'}
+                </label>
+                <textarea
+                  value={roleReason}
+                  onChange={(e) => setRoleReason(e.target.value)}
+                  placeholder={targetRoleToRequest === 'employer' 
+                    ? 'مثال: شركة تقنية في بغداد نرغب بنشر وظائف للمطورين...'
+                    : 'مثال: أرغب بالبحث والتقديم على فرص العمل المتاحة...'}
+                  rows={3}
+                  className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 text-xs font-bold text-slate-800 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-500 transition-all resize-none"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isSendingRoleRequest}
+                  onClick={() => setShowRoleModal(false)}
+                  className="flex-1 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-black hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-95 cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="button"
+                  disabled={isSendingRoleRequest}
+                  onClick={handleSubmitRoleRequest}
+                  className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:brightness-110 text-white text-xs font-black shadow-lg shadow-blue-500/25 transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSendingRoleRequest ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>جاري الإرسال...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>إرسال الطلب للإدارة 🚀</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
