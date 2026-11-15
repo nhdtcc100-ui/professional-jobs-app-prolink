@@ -268,61 +268,31 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
 
   return (
     <div className="bg-white dark:bg-[#0f172a] border border-slate-100 dark:border-slate-800 shadow-[0_15px_40px_rgba(0,0,0,0.03)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] rounded-[2.5rem] p-6 mb-6 transition-all duration-500 hover:shadow-[0_30px_70px_rgba(10,102,194,0.1)]">
-      <div className="flex gap-4">
-        <div className="relative group/avatar">
+      <div className="flex items-center gap-4">
+        <div className="relative group/avatar shrink-0">
           <div className="absolute inset-0 bg-blue-600 rounded-2xl blur-lg opacity-0 group-hover/avatar:opacity-20 transition-opacity" />
           <img 
             src={avatar || 'https://ui-avatars.com/api/?name=User&background=random'} 
-            className="relative w-12 h-12 rounded-2xl border-2 border-white dark:border-slate-700 shadow-md group-hover/avatar:scale-110 group-hover/avatar:rotate-3 transition-all duration-500" 
+            className="relative w-12 h-12 rounded-2xl border-2 border-white dark:border-slate-700 shadow-md group-hover/avatar:scale-110 group-hover/avatar:rotate-3 transition-all duration-500 object-cover" 
             alt="Me" 
             referrerPolicy="no-referrer" 
           />
         </div>
-        <button
-          type="button"
-          onClick={() => setUploadType(prev => prev ? prev : 'article')}
-          className="flex-1 bg-slate-50 dark:bg-slate-900/90 hover:bg-slate-100/80 dark:hover:bg-slate-800/80 border border-slate-200/80 dark:border-slate-800 rounded-2xl text-right px-4 md:px-5 py-3 text-xs md:text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200 shadow-inner flex items-center justify-between group cursor-pointer"
-        >
-          <span className="truncate">
-            ما الذي ترغب في مشاركته أو نشره اليوم؟ (وظيفة، مقال، وسائط)...
-          </span>
-          <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/40 px-2.5 py-1 rounded-xl shrink-0 group-hover:bg-blue-600 group-hover:text-white transition-colors">
-            إنشاء منشور ✍️
-          </span>
-        </button>
-      </div>
-      
-      <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80">
-        <input type="file" ref={fileInputRef} className="hidden" accept={isSeeker ? "image/*" : "image/*,video/*"} onChange={handleFileChange} />
         
-        {/* نشر وظيفة: يظهر فقط لصاحب العمل والأدمن — مخفي تماماً عن الباحث عن عمل */}
-        {isEmployer && (
-          <ActionBtn 
-            onClick={() => setActiveTab('post-job')} 
-            icon={<div className="p-2 bg-amber-50 dark:bg-amber-900/30 rounded-xl shadow-sm text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform"><Briefcase size={18} /></div>} 
-            label="نشر وظيفة 💼" 
-          />
-        )}
-
-        <ActionBtn 
-          onClick={() => setUploadType(prev => prev === 'article' ? null : 'article')} 
-          icon={<div className="p-2 bg-purple-50 dark:bg-purple-900/30 rounded-xl shadow-sm text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform"><FileText size={18} /></div>} 
-          label="مقال مهني ✍️" 
-        />
-
-        <ActionBtn 
-          onClick={triggerUpload} 
-          icon={<div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl shadow-sm text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform"><ImageIcon size={18} /></div>} 
-          label="صورة / وسائط 📷" 
-        />
-
-        {isAdmin && (
-          <ActionBtn 
-            onClick={() => { setUploadType('video'); triggerUpload(); }} 
-            icon={<div className="p-2 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl shadow-sm text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform"><Video size={18} /></div>} 
-            label="فيديو 🎥" 
-          />
-        )}
+        <div className="flex-1 flex justify-around items-center gap-2">
+          <input type="file" ref={fileInputRef} className="hidden" accept={isSeeker ? "image/*" : "image/*,video/*"} onChange={handleFileChange} />
+          <ActionBtn onClick={triggerUpload} icon={<div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl shadow-sm"><ImageIcon className="text-blue-600" size={18} /></div>} label="صورة" />
+          <ActionBtn onClick={() => setUploadType('article')} icon={<div className="p-2 bg-purple-50 dark:bg-purple-900/30 rounded-xl shadow-sm"><FileText className="text-purple-600" size={18} /></div>} label="مقال" />
+          {isAdmin && <ActionBtn onClick={triggerUpload} icon={<div className="p-2 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl shadow-sm"><Video className="text-emerald-600" size={18} /></div>} label="فيديو" />}
+          {/* نشر وظيفة: يظهر فقط لصاحب العمل والأدمن — مخفي تماماً عن الباحث عن عمل */}
+          {isEmployer && (
+            <ActionBtn 
+              onClick={() => setActiveTab('post-job')} 
+              icon={<div className="p-2 bg-amber-50 dark:bg-amber-900/30 rounded-xl shadow-sm"><Briefcase className="text-amber-600" size={18} /></div>} 
+              label="نشر وظيفة" 
+            />
+          )}
+        </div>
       </div>
 
       <AnimatePresence>
