@@ -27,7 +27,7 @@ const ATTACK_LABELS: Record<AttackType, { label: string; emoji: string }> = {
 type FilterType = 'all' | AttackType | 'critical' | 'db_sentinel';
 
 interface ThreatFeedTableProps {
-  addToast: (msg: string, type?: 'success' | 'error') => void;
+  addToast: (msg: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 }
 
 export const ThreatFeedTable: React.FC<ThreatFeedTableProps> = ({ addToast }) => {

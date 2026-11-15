@@ -5,7 +5,7 @@ import { AppUser } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
 
 interface IntelligenceCenterProps {
-  addToast: (msg: string, type?: 'success' | 'error') => void;
+  addToast: (msg: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
   setShowAdmin?: (show: boolean) => void;
   appUser?: AppUser | null;
   setSelectedProfile?: (user: AppUser | null) => void;

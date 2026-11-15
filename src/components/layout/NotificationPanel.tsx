@@ -18,7 +18,7 @@ interface NotificationPanelProps {
   setShowNotifications: (show: boolean) => void;
   setActiveTab: (tab: string) => void;
   handleAcceptSync: (notif: AppNotification) => Promise<void>;
-  addToast: (msg: string, type?: 'success' | 'error') => void;
+  addToast: (msg: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 }
 
 import { safeTimeAgo } from '../../lib/utils/formatDate';
@@ -50,7 +50,7 @@ interface ItemRowProps {
   onToggleRead: (e: React.MouseEvent, n: AppNotification) => void;
   onAcceptSync: (n: AppNotification) => void;
   onDelete: (id: string) => void;
-  addToast: (msg: string, type?: 'success' | 'error') => void;
+  addToast: (msg: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
   idx: number;
 }
 

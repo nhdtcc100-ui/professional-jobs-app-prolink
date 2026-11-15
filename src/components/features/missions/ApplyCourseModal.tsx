@@ -14,7 +14,7 @@ interface ApplyCourseModalProps {
   allUsers?: AppUser[];
   onClose: () => void;
   onSuccess: (courseId: string) => void;
-  addToast: (msg: string, type?: 'success' | 'error') => void;
+  addToast: (msg: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 }
 
 export const ApplyCourseModal: React.FC<ApplyCourseModalProps> = ({

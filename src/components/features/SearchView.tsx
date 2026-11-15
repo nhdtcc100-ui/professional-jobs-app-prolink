@@ -17,7 +17,7 @@ interface SearchViewProps {
   allUsers: AppUser[];
   handleEchoPost: (post: Post) => Promise<void>;
   setRelocatingPost: (post: Post) => void;
-  addToast: (msg: string, type?: 'success' | 'error') => void;
+  addToast: (msg: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
   handleLike: (postId: string) => Promise<void>;
   handleAddComment: (postId: string, content: string) => Promise<void>;
   onDeletePost?: (id: string) => void;

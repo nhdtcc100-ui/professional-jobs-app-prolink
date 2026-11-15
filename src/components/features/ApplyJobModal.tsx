@@ -26,7 +26,7 @@ interface ApplyJobModalProps {
   setIsApplying: (b: boolean) => void;
   isUploadingCv: boolean;
   setIsUploadingCv: (b: boolean) => void;
-  addToast: (msg: string, type?: 'success' | 'error') => void;
+  addToast: (msg: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 }
 
 interface PrevWork {
