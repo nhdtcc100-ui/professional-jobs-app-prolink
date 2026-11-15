@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, Suspense, lazy, useCallback, useMemo } from 'react';
+﻿import React, { useState, useEffect, useRef, Suspense, lazy, useCallback, useMemo } from 'react';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import {
   loadMissionsView,
@@ -59,7 +59,7 @@ declare global {
 
 import { MessagingView } from './components/features/MessagingView';
 
-// 🚀 Lazy-loaded heavy feature views (integrated with preloadTab)
+// ðŸš€ Lazy-loaded heavy feature views (integrated with preloadTab)
 const MissionsView    = lazy(() => loadMissionsView().then(m => ({ default: m.MissionsView })));
 const NetworkView     = lazy(() => loadNetworkView().then(m => ({ default: m.NetworkView })));
 const NewsView        = lazy(() => loadNewsView().then(m => ({ default: m.NewsView })));
@@ -100,7 +100,7 @@ function App() {
     isGuestMode, enterGuestMode, exitGuestMode,
   } = useAppContext();
 
-  // ⚡ Keep-alive visited tabs tracker for instant navigation and scroll preservation
+  // âš¡ Keep-alive visited tabs tracker for instant navigation and scroll preservation
   const [visitedTabs, setVisitedTabs] = useState<Record<string, boolean>>({ [activeTab || 'home']: true });
 
   useEffect(() => {
@@ -118,17 +118,17 @@ function App() {
     setAntiInspectUser(appUser);
   }, [appUser]);
 
-  // ── خروج وضع الزائر تلقائياً عند تسجيل الدخول ──
+  // â”€â”€ Ø®Ø±ÙˆØ¬ ÙˆØ¶Ø¹ Ø§Ù„Ø²Ø§Ø¦Ø± ØªÙ„Ù‚Ø§Ø¦ÙŠØ§Ù‹ Ø¹Ù†Ø¯ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ â”€â”€
   useEffect(() => {
     if (user && isGuestMode) {
       exitGuestMode();
     }
   }, [user, isGuestMode, exitGuestMode]);
 
-  // ── requireAuth: يجب أن يكون هنا (قبل أي early return) لاحترام Rules of Hooks ──
+  // â”€â”€ requireAuth: ÙŠØ¬Ø¨ Ø£Ù† ÙŠÙƒÙˆÙ† Ù‡Ù†Ø§ (Ù‚Ø¨Ù„ Ø£ÙŠ early return) Ù„Ø§Ø­ØªØ±Ø§Ù… Rules of Hooks â”€â”€
   const requireAuth = useCallback((message?: string) => {
     if (!appUser) {
-      addToast(message || 'سجّل الدخول للتفاعل مع المحتوى 🔒', 'error');
+      addToast(message || 'Ø³Ø¬Ù‘Ù„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ù„Ù„ØªÙØ§Ø¹Ù„ Ù…Ø¹ Ø§Ù„Ù…Ø­ØªÙˆÙ‰ ðŸ”’', 'error');
       return false;
     }
     return true;
@@ -167,23 +167,23 @@ function App() {
     callMode: 'voice' | 'video';
   } | null>(null);
 
-  // 💼 Page View state for posting a job
+  // ðŸ’¼ Page View state for posting a job
   const [pageJobFormData, setPageJobFormData] = useState({
     title: '', company: appUser?.companyName || '', description: '', requirements: '',
-    location: '', salary: '', jobType: 'دوام كامل', category: '', working_hours: '', imageUrl: '', is_active: true
+    location: '', salary: '', jobType: 'Ø¯ÙˆØ§Ù… ÙƒØ§Ù…Ù„', category: '', working_hours: '', imageUrl: '', is_active: true
   });
   const [isPostingJobPage, setIsPostingJobPage] = useState(false);
-  const [selectedJobCategory, setSelectedJobCategory] = useState<string>('الكل');
+  const [selectedJobCategory, setSelectedJobCategory] = useState<string>('Ø§Ù„ÙƒÙ„');
 
-  // ⚡ تغذية مدمجة ومفلترة ومخزنة مؤقتاً عبر useMemo لمنح سرعة فائقة 60FPS عند التنقل بين أقسام الوظائف
+  // âš¡ ØªØºØ°ÙŠØ© Ù…Ø¯Ù…Ø¬Ø© ÙˆÙ…ÙÙ„ØªØ±Ø© ÙˆÙ…Ø®Ø²Ù†Ø© Ù…Ø¤Ù‚ØªØ§Ù‹ Ø¹Ø¨Ø± useMemo Ù„Ù…Ù†Ø­ Ø³Ø±Ø¹Ø© ÙØ§Ø¦Ù‚Ø© 60FPS Ø¹Ù†Ø¯ Ø§Ù„ØªÙ†Ù‚Ù„ Ø¨ÙŠÙ† Ø£Ù‚Ø³Ø§Ù… Ø§Ù„ÙˆØ¸Ø§Ø¦Ù
   const memoizedCombinedFeed = useMemo(() => {
-    const filteredFeedJobs = selectedJobCategory === 'الكل'
+    const filteredFeedJobs = selectedJobCategory === 'Ø§Ù„ÙƒÙ„'
       ? jobs
       : jobs.filter(j => isJobInCategory(j, selectedJobCategory));
 
-    const feedPosts = selectedJobCategory === 'الكل'
+    const feedPosts = selectedJobCategory === 'Ø§Ù„ÙƒÙ„'
       ? posts
-      : (selectedJobCategory === 'أخبار' ? posts : []);
+      : (selectedJobCategory === 'Ø£Ø®Ø¨Ø§Ø±' ? posts : []);
 
     return [
       ...feedPosts.map(p => ({ ...p, feedType: 'post' as const })),
@@ -198,16 +198,16 @@ function App() {
   const handlePostJobFromPage = async () => {
     if (!appUser) return;
     if (!isJobPoster(appUser)) {
-      addToast('نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 🚫', 'error');
+      addToast('Ù†Ø´Ø± Ø§Ù„ÙˆØ¸Ø§Ø¦Ù Ù…Ø®ØµØµ Ù„Ø£ØµØ­Ø§Ø¨ Ø§Ù„Ø¹Ù…Ù„ ÙˆØ§Ù„Ù…Ø¤Ø³Ø³Ø§Øª ÙÙ‚Ø· ðŸš«', 'error');
       return;
     }
     if (appUser.isActive === false) {
-      addToast('حسابك محظور ولا يمكنك نشر وظائف 🚫', 'error');
+      addToast('Ø­Ø³Ø§Ø¨Ùƒ Ù…Ø­Ø¸ÙˆØ± ÙˆÙ„Ø§ ÙŠÙ…ÙƒÙ†Ùƒ Ù†Ø´Ø± ÙˆØ¸Ø§Ø¦Ù ðŸš«', 'error');
       return;
     }
-    if (!pageJobFormData.title.trim()) { addToast('يرجى إدخال المسمى الوظيفي', 'error'); return; }
+    if (!pageJobFormData.title.trim()) { addToast('ÙŠØ±Ø¬Ù‰ Ø¥Ø¯Ø®Ø§Ù„ Ø§Ù„Ù…Ø³Ù…Ù‰ Ø§Ù„ÙˆØ¸ÙŠÙÙŠ', 'error'); return; }
     if (!pageJobFormData.category?.trim()) {
-      addToast('يرجى تحديد قسم الوظيفة (حقل إجباري) ⚠️', 'error');
+      addToast('ÙŠØ±Ø¬Ù‰ ØªØ­Ø¯ÙŠØ¯ Ù‚Ø³Ù… Ø§Ù„ÙˆØ¸ÙŠÙØ© (Ø­Ù‚Ù„ Ø¥Ø¬Ø¨Ø§Ø±ÙŠ) âš ï¸', 'error');
       return;
     }
 
@@ -215,10 +215,10 @@ function App() {
     try {
       const postData = {
         title: pageJobFormData.title,
-        company: pageJobFormData.company || appUser.companyName || 'مؤسسة غير معرفة',
+        company: pageJobFormData.company || appUser.companyName || 'Ù…Ø¤Ø³Ø³Ø© ØºÙŠØ± Ù…Ø¹Ø±ÙØ©',
         description: pageJobFormData.description,
         requirements: pageJobFormData.requirements,
-        location: pageJobFormData.location || appUser.location || 'عن بُعد',
+        location: pageJobFormData.location || appUser.location || 'Ø¹Ù† Ø¨ÙØ¹Ø¯',
         salary: pageJobFormData.salary,
         jobType: pageJobFormData.jobType,
         category: pageJobFormData.category,
@@ -231,14 +231,14 @@ function App() {
       const { error } = await jobService.postJob(postData);
       if (error) throw error;
 
-      addToast('🚀 تم نشر الوظيفة بنجاح!');
+      addToast('ðŸš€ ØªÙ… Ù†Ø´Ø± Ø§Ù„ÙˆØ¸ÙŠÙØ© Ø¨Ù†Ø¬Ø§Ø­!');
       setPageJobFormData({
         title: '', company: appUser?.companyName || '', description: '', requirements: '',
-        location: '', salary: '', jobType: 'دوام كامل', category: '', working_hours: '', imageUrl: '', is_active: true
+        location: '', salary: '', jobType: 'Ø¯ÙˆØ§Ù… ÙƒØ§Ù…Ù„', category: '', working_hours: '', imageUrl: '', is_active: true
       });
       setActiveTab('home');
     } catch (e: any) {
-      addToast('فشل النشر: ' + e.message, 'error');
+      addToast('ÙØ´Ù„ Ø§Ù„Ù†Ø´Ø±: ' + e.message, 'error');
     } finally {
       setIsPostingJobPage(false);
     }
@@ -254,10 +254,11 @@ function App() {
     items: any[];
     initialIndex: number;
   } | null>(null);
+  const [returnToSearch, setReturnToSearch] = useState<string | null>(null);
   const [initialJobForMissions, setInitialJobForMissions] = useState<Job | null>(null);
   const webRTCServiceRef = useRef<WebRTCService | null>(null);
   
-  // 💓 Presence Heartbeat: Update 'last_seen_at' every 60 seconds
+  // ðŸ’“ Presence Heartbeat: Update 'last_seen_at' every 60 seconds
   useEffect(() => {
     if (!appUser?.id) return;
     
@@ -274,7 +275,7 @@ function App() {
     return () => clearInterval(heartbeat);
   }, [appUser?.id]);
 
-  // 📱 Detect mobile vs desktop/iPad screen size
+  // ðŸ“± Detect mobile vs desktop/iPad screen size
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
@@ -285,11 +286,15 @@ function App() {
   // On all devices (Mobile, iPad, Desktop): opening a profile switches activeTab to 'profile' (page mode)
   useEffect(() => {
     if (selectedProfile) {
+      // Remember search context so back button returns to search results
+      if (searchQuery && searchQuery.trim().length > 0) {
+        setReturnToSearch(searchQuery);
+      }
       setActiveTab('profile');
     }
-  }, [selectedProfile, setActiveTab]);
+  }, [selectedProfile]);
 
-  // 🔗 viewUserProfile event — dispatched by components to open a profile
+  // ðŸ”— viewUserProfile event â€” dispatched by components to open a profile
   useEffect(() => {
     const handler = (e: Event) => {
       const userId = (e as CustomEvent).detail;
@@ -307,7 +312,7 @@ function App() {
 
   const callTimeoutRef = useRef<any>(null);
 
-  // ── Global Scroll to Top on Tab Change & Overflow Safety ─────────────────
+  // â”€â”€ Global Scroll to Top on Tab Change & Overflow Safety â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
     try {
@@ -331,13 +336,13 @@ function App() {
     return () => window.removeEventListener('prolink:exitGuestMode', handleExit);
   }, [exitGuestMode]);
 
-  // ── Call Timeout Logic (WhatsApp Style) ──────────────────────────────────
+  // â”€â”€ Call Timeout Logic (WhatsApp Style) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (activeCall?.type === 'outgoing' && activeCall.show) {
       // Set 45 second timeout
       callTimeoutRef.current = setTimeout(() => {
         if (activeCall.type === 'outgoing') {
-          addToast('لا يوجد رد من الطرف الآخر', 'error');
+          addToast('Ù„Ø§ ÙŠÙˆØ¬Ø¯ Ø±Ø¯ Ù…Ù† Ø§Ù„Ø·Ø±Ù Ø§Ù„Ø¢Ø®Ø±', 'error');
           endCall();
         }
       }, 45000);
@@ -397,7 +402,7 @@ function App() {
     if (!activeCallRef.current) return;
     const callToClose = activeCallRef.current;
     
-    // 🚀 Optimistic UI: Clear local state immediately for instant feedback
+    // ðŸš€ Optimistic UI: Clear local state immediately for instant feedback
     setActiveCall(null);
     setLocalStream(null);
     setRemoteStream(null);
@@ -408,7 +413,7 @@ function App() {
       if (callToClose?.id) {
         // If it was ringing and ended by caller, it's a missed call
         if (callToClose.type === 'outgoing' && !remoteStream) {
-          await callService.notifyMissedCall(appUser?.id || '', callToClose.user.id, appUser?.name || 'مستخدم', callToClose.callMode);
+          await callService.notifyMissedCall(appUser?.id || '', callToClose.user.id, appUser?.name || 'Ù…Ø³ØªØ®Ø¯Ù…', callToClose.callMode);
         }
         await callService.endCall(callToClose.id);
       } else if (callToClose?.user?.id) {
@@ -430,11 +435,11 @@ function App() {
         clearTimeout(callTimeoutRef.current);
         callTimeoutRef.current = null;
       }
-      addToast('تم إنهاء المكالمة', 'success');
+      addToast('ØªÙ… Ø¥Ù†Ù‡Ø§Ø¡ Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø©', 'success');
     }
   };
 
-  // 📱 Universal Android Hardware Back Button & Mobile Popstate Controller
+  // ðŸ“± Universal Android Hardware Back Button & Mobile Popstate Controller
   useMobileBackButton({
     activeCall,
     endCall,
@@ -511,10 +516,10 @@ function App() {
         if (activeCallRef.current?.show) return; 
         if (incomingCall.status !== 'ringing') return;
 
-        addToast('📞 مكالمة مهنية واردة...', 'success');
+        addToast('ðŸ“ž Ù…ÙƒØ§Ù„Ù…Ø© Ù…Ù‡Ù†ÙŠØ© ÙˆØ§Ø±Ø¯Ø©...', 'success');
         setActiveCall({ 
           id: incomingCall.id, 
-          user: { name: 'مستخدم ProLink', avatar: null },
+          user: { name: 'Ù…Ø³ØªØ®Ø¯Ù… ProLink', avatar: null },
           type: 'incoming', 
           show: true,
           isExpanded: false,
@@ -548,7 +553,7 @@ function App() {
           
           // 1. Transition UI Instantly
           setActiveCall(prev => prev ? { ...prev, type: 'active', id: updatedCall.id } : null);
-          addToast('تم قبول المكالمة', 'success');
+          addToast('ØªÙ… Ù‚Ø¨ÙˆÙ„ Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø©', 'success');
 
           // 2. Start Media in background
           const isVideo = currentActive.callMode === 'video';
@@ -568,13 +573,13 @@ function App() {
     return () => { channel.unsubscribe(); };
   }, [appUser?.id]);
 
-  // ── Call Handlers ───────────────────────────────────────────────────────────
+  // â”€â”€ Call Handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const startCall = async (u: any, mode: 'voice' | 'video' = 'voice') => {
     if (!appUser) return;
 
-    // 🔒 خاصية المكالمات مخصصة للإدارة العليا فقط
+    // ðŸ”’ Ø®Ø§ØµÙŠØ© Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø§Øª Ù…Ø®ØµØµØ© Ù„Ù„Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø¹Ù„ÙŠØ§ ÙÙ‚Ø·
     if (!appUser.isAdmin) {
-      addToast('خاصية المكالمات الصوتية والمرئية مخصصة للإدارة العليا فقط 🔒', 'error');
+      addToast('Ø®Ø§ØµÙŠØ© Ø§Ù„Ù…ÙƒØ§Ù„Ù…Ø§Øª Ø§Ù„ØµÙˆØªÙŠØ© ÙˆØ§Ù„Ù…Ø±Ø¦ÙŠØ© Ù…Ø®ØµØµØ© Ù„Ù„Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø¹Ù„ÙŠØ§ ÙÙ‚Ø· ðŸ”’', 'error');
       return;
     }
 
@@ -586,7 +591,7 @@ function App() {
         setActiveCall(prev => prev ? { ...prev, id: (data as any).id } : null);
       }
     } catch (e) {
-      addToast('فشل بدء الاتصال', 'error');
+      addToast('ÙØ´Ù„ Ø¨Ø¯Ø¡ Ø§Ù„Ø§ØªØµØ§Ù„', 'error');
       setActiveCall(null);
     }
   };
@@ -612,13 +617,13 @@ function App() {
   };
 
 
-  // ── Onboarding ─────────────────────────────────────────────────────────────
+  // â”€â”€ Onboarding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const { showOnboarding, setShowOnboarding } = useOnboarding(appUser);
 
   React.useEffect(() => {
     window.quickShareJob = (job: Job) => {
       if (!appUser) {
-        addToast('يرجى تسجيل الدخول أولاً', 'error');
+        addToast('ÙŠØ±Ø¬Ù‰ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ø£ÙˆÙ„Ø§Ù‹', 'error');
         return;
       }
       setSharingJob(job);
@@ -636,7 +641,7 @@ function App() {
   const handleShareJobToUser = async (targetUser: AppUser, job: Job) => {
     if (!appUser) return;
     try {
-      const jobMsg = `[JOB_CARD:${job.id}|${job.title}|${job.company}|${job.location || 'عن بُعد'}|${job.salary || 'غير محدد'}|${job.image_url || ''}]`;
+      const jobMsg = `[JOB_CARD:${job.id}|${job.title}|${job.company}|${job.location || 'Ø¹Ù† Ø¨ÙØ¹Ø¯'}|${job.salary || 'ØºÙŠØ± Ù…Ø­Ø¯Ø¯'}|${job.image_url || ''}]`;
       const { error } = await (supabase as any).from('messages').insert([{ 
         sender_id: appUser.id, 
         receiver_id: targetUser.id, 
@@ -645,12 +650,12 @@ function App() {
       
       if (error) throw error;
       
-      addToast(`تم إرسال الوظيفة إلى ${targetUser.name} ✅`);
+      addToast(`ØªÙ… Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„ÙˆØ¸ÙŠÙØ© Ø¥Ù„Ù‰ ${targetUser.name} âœ…`);
       setSharingJob(null);
       setSelectedChat(targetUser);
       setActiveTab('messages');
     } catch (e) {
-      addToast('فشل إرسال الوظيفة', 'error');
+      addToast('ÙØ´Ù„ Ø¥Ø±Ø³Ø§Ù„ Ø§Ù„ÙˆØ¸ÙŠÙØ©', 'error');
     }
   };
 
@@ -678,7 +683,7 @@ function App() {
         if (data && data.length > 0) {
           const mapped: AppUser[] = data.map((p: any) => ({
             id: p.id,
-            name: p.name || 'مجهول',
+            name: p.name || 'Ù…Ø¬Ù‡ÙˆÙ„',
             email: p.email || '',
             avatar: p.avatar_url || '',
             role: p.role || 'job_seeker',
@@ -735,7 +740,7 @@ function App() {
             <img 
               src={`${import.meta.env.BASE_URL}logo.png`} 
               className="w-full h-full object-cover" 
-              alt="منصة عمل" 
+              alt="Ù…Ù†ØµØ© Ø¹Ù…Ù„" 
               onError={(e) => {
                 const el = e.target as HTMLImageElement;
                 el.style.display = 'none';
@@ -744,21 +749,21 @@ function App() {
               }}
             />
             <div className="logo-splash-fb absolute inset-0 hidden items-center justify-center text-white font-black text-2xl">
-              ع
+              Ø¹
             </div>
           </div>
         </div>
         <div className="mt-8 text-center">
-          <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight mb-2">منصة عمل</h2>
+          <h2 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight mb-2">Ù…Ù†ØµØ© Ø¹Ù…Ù„</h2>
           <p className="font-bold text-slate-400 uppercase tracking-[0.3em] text-[10px] animate-pulse">
-            جاري التحميل في منصة عمل...
+            Ø¬Ø§Ø±ÙŠ Ø§Ù„ØªØ­Ù…ÙŠÙ„ ÙÙŠ Ù…Ù†ØµØ© Ø¹Ù…Ù„...
           </p>
         </div>
       </div>
     </div>
   );
 
-  // ── Email Verification Screen (shown right after sign-up) ────────────────────
+  // â”€â”€ Email Verification Screen (shown right after sign-up) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   if (pendingEmailVerification) {
     return (
       <EmailVerificationScreen
@@ -771,9 +776,9 @@ function App() {
     );
   }
 
-  // requireAuth تم نقله إلى الأعلى (قبل early returns) لإصلاح React Error #300
+  // requireAuth ØªÙ… Ù†Ù‚Ù„Ù‡ Ø¥Ù„Ù‰ Ø§Ù„Ø£Ø¹Ù„Ù‰ (Ù‚Ø¨Ù„ early returns) Ù„Ø¥ØµÙ„Ø§Ø­ React Error #300
 
-  // ── Guard: show auth screen if not logged in AND not in guest mode ──
+  // â”€â”€ Guard: show auth screen if not logged in AND not in guest mode â”€â”€
   if (!user && !isGuestMode) {
     return (
       <AuthView
@@ -793,21 +798,21 @@ function App() {
     return <RoleSelectionView selectRole={selectRole} appUser={appUser} />;
   }
 
-  // 🚫 Banned user screen
+  // ðŸš« Banned user screen
   if (appUser && appUser.isActive === false) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6" dir="rtl">
         <div className="max-w-sm w-full text-center">
           <div className="w-24 h-24 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-            <span className="text-5xl">🚫</span>
+            <span className="text-5xl">ðŸš«</span>
           </div>
-          <h1 className="text-2xl font-black text-white mb-3">تم تعليق حسابك</h1>
-          <p className="text-slate-400 text-sm leading-relaxed mb-8">تم حظر حسابك بواسطة الإدارة. إذا كنت تعتقد أن هذا خطأ، يرجى التواصل مع الدعم الفني.</p>
+          <h1 className="text-2xl font-black text-white mb-3">ØªÙ… ØªØ¹Ù„ÙŠÙ‚ Ø­Ø³Ø§Ø¨Ùƒ</h1>
+          <p className="text-slate-400 text-sm leading-relaxed mb-8">ØªÙ… Ø­Ø¸Ø± Ø­Ø³Ø§Ø¨Ùƒ Ø¨ÙˆØ§Ø³Ø·Ø© Ø§Ù„Ø¥Ø¯Ø§Ø±Ø©. Ø¥Ø°Ø§ ÙƒÙ†Øª ØªØ¹ØªÙ‚Ø¯ Ø£Ù† Ù‡Ø°Ø§ Ø®Ø·Ø£ØŒ ÙŠØ±Ø¬Ù‰ Ø§Ù„ØªÙˆØ§ØµÙ„ Ù…Ø¹ Ø§Ù„Ø¯Ø¹Ù… Ø§Ù„ÙÙ†ÙŠ.</p>
           <button
             onClick={logout}
             className="w-full py-4 bg-red-600 text-white font-black rounded-2xl hover:bg-red-700 transition-all active:scale-95"
           >
-            تسجيل الخروج
+            ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø®Ø±ÙˆØ¬
           </button>
         </div>
       </div>
@@ -844,7 +849,7 @@ function App() {
         />
       )}
 
-      {/* ── شريط تنبيه الزائر ── */}
+      {/* â”€â”€ Ø´Ø±ÙŠØ· ØªÙ†Ø¨ÙŠÙ‡ Ø§Ù„Ø²Ø§Ø¦Ø± â”€â”€ */}
       {isGuestMode && !user && (
         <GuestBanner
           onLogin={() => exitGuestMode()}
@@ -884,7 +889,7 @@ function App() {
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                   </span>
                   <p className="text-[11px] font-black text-blue-400 uppercase tracking-[0.2em] animate-pulse">
-                     مكالمة {activeCall.callMode === 'video' ? 'فيديو' : 'صوتية'} واردة...
+                     Ù…ÙƒØ§Ù„Ù…Ø© {activeCall.callMode === 'video' ? 'ÙÙŠØ¯ÙŠÙˆ' : 'ØµÙˆØªÙŠØ©'} ÙˆØ§Ø±Ø¯Ø©...
                   </p>
                 </div>
               </div>
@@ -930,10 +935,10 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* ── Cyber Security Alert Banner (إشعار قسم السايبر سيكيورتي للأدمن فقط) ──────────────── */}
+      {/* â”€â”€ Cyber Security Alert Banner (Ø¥Ø´Ø¹Ø§Ø± Ù‚Ø³Ù… Ø§Ù„Ø³Ø§ÙŠØ¨Ø± Ø³ÙŠÙƒÙŠÙˆØ±ØªÙŠ Ù„Ù„Ø£Ø¯Ù…Ù† ÙÙ‚Ø·) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <AlertBanner appUser={appUser} onNavigateToSecurity={() => setShowAdmin(true)} />
 
-      {/* ── Admin Dashboard full page ─────────────────────── */}
+      {/* â”€â”€ Admin Dashboard full page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <AnimatePresence mode="wait">
         {showAdmin && (appUser?.isAdmin || appUser?.hasSupportAccess) && (
           <Suspense
@@ -942,7 +947,7 @@ function App() {
                 <div className="w-12 h-12 rounded-2xl bg-blue-600/30 text-blue-400 flex items-center justify-center border border-blue-500/30 animate-pulse mb-3">
                   <Shield size={24} />
                 </div>
-                <p className="text-xs font-black">جاري فتح لوحة التحكم العليا...</p>
+                <p className="text-xs font-black">Ø¬Ø§Ø±ÙŠ ÙØªØ­ Ù„ÙˆØ­Ø© Ø§Ù„ØªØ­ÙƒÙ… Ø§Ù„Ø¹Ù„ÙŠØ§...</p>
               </div>
             }
             key="admin-dashboard"
@@ -991,14 +996,12 @@ function App() {
             <SearchView
               searchQuery={searchQuery} filteredUsers={filteredUsers}
               filteredJobs={filteredJobs} filteredPosts={filteredPosts}
-              filteredGroups={filteredGroups}
               setSelectedProfile={setSelectedProfile} setActiveTab={setActiveTab}
               setSearchQuery={setSearchQuery} user={user} allUsers={allUsers}
               handleEchoPost={handleEchoPost} setRelocatingPost={setRelocatingPost}
               addToast={addToast} handleLike={handleLike} handleAddComment={handleAddComment}
               onDeletePost={(id) => setPosts(prev => prev.filter(p => p.id !== id))}
               setSelectedPostDetail={setSelectedPostDetail}
-              onSelectGroup={(g) => { setSelectedChat(null); setSelectedGroup(g); setActiveTab('messages'); }}
               onJobClick={(job) => {
                 const jobIdx = Math.max(0, filteredJobs.findIndex(j => j.id === job.id));
                 setDetailFeed({
@@ -1007,10 +1010,13 @@ function App() {
                   initialIndex: jobIdx
                 });
               }}
+              onPublisherClick={(emp) => {
+                setSelectedProfile(emp);
+              }}
             />
           ) : (
             <>
-              {/* ⚡ Keep-Alive: Home Feed */}
+              {/* âš¡ Keep-Alive: Home Feed */}
               <div
                 key="keepalive-tab-home"
                 className={activeTab === 'home' ? 'space-y-4' : 'hidden'}
@@ -1031,14 +1037,14 @@ function App() {
                     }}
                   />
 
-                  {/* 💼 Job Categories Card (أسفل الكاروسيل مباشرة وفق متطلبات التصميم) */}
+                  {/* ðŸ’¼ Job Categories Card (Ø£Ø³ÙÙ„ Ø§Ù„ÙƒØ§Ø±ÙˆØ³ÙŠÙ„ Ù…Ø¨Ø§Ø´Ø±Ø© ÙˆÙÙ‚ Ù…ØªØ·Ù„Ø¨Ø§Øª Ø§Ù„ØªØµÙ…ÙŠÙ…) */}
                   <JobCategoriesCard
                     selectedCategory={selectedJobCategory}
                     onSelectCategory={setSelectedJobCategory}
                     jobs={jobs}
                   />
 
-                  {/* 🔧 سوق الخدمات ضمن أقسام وتصنيفات الوظائف في الصفحة الرئيسية */}
+                  {/* ðŸ”§ Ø³ÙˆÙ‚ Ø§Ù„Ø®Ø¯Ù…Ø§Øª Ø¶Ù…Ù† Ø£Ù‚Ø³Ø§Ù… ÙˆØªØµÙ†ÙŠÙØ§Øª Ø§Ù„ÙˆØ¸Ø§Ø¦Ù ÙÙŠ Ø§Ù„ØµÙØ­Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ© */}
                   {selectedJobCategory === 'services' ? (
                     <div className="mt-2 space-y-4">
                       <Suspense fallback={<TabSkeleton />}>
@@ -1055,7 +1061,7 @@ function App() {
                   ) : (
                     <>
 
-                  {/* Smart Job Banner — only for seekers with profile data */}
+                  {/* Smart Job Banner â€” only for seekers with profile data */}
                   <SmartJobBanner
                     jobs={jobs}
                     appUser={appUser}
@@ -1068,17 +1074,17 @@ function App() {
                     <PostBox avatar={appUser?.avatar} appUser={appUser} addToast={addToast} />
                   )}
 
-                  {/* ── Feed Control & Refresh Bar ── */}
+                  {/* â”€â”€ Feed Control & Refresh Bar â”€â”€ */}
                   <div className="flex items-center justify-between px-4 py-2.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
                       <span className="text-xs font-black text-slate-800 dark:text-slate-100">
-                        التغذية المباشرة
+                        Ø§Ù„ØªØºØ°ÙŠØ© Ø§Ù„Ù…Ø¨Ø§Ø´Ø±Ø©
                       </span>
                       <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
-                        {selectedJobCategory === 'الكل' 
-                          ? `(${posts.length + jobs.length} عنصر)` 
-                          : `(${selectedJobCategory}: ${(selectedJobCategory === 'أخبار' ? posts.length : 0) + jobs.filter(j => isJobInCategory(j, selectedJobCategory)).length} عنصر)`}
+                        {selectedJobCategory === 'Ø§Ù„ÙƒÙ„' 
+                          ? `(${posts.length + jobs.length} Ø¹Ù†ØµØ±)` 
+                          : `(${selectedJobCategory}: ${(selectedJobCategory === 'Ø£Ø®Ø¨Ø§Ø±' ? posts.length : 0) + jobs.filter(j => isJobInCategory(j, selectedJobCategory)).length} Ø¹Ù†ØµØ±)`}
                       </span>
                     </div>
 
@@ -1087,17 +1093,17 @@ function App() {
                         setIsRefreshingFeed(true);
                         try {
                           if (refreshData) await refreshData();
-                          addToast('تم تحديث الصفحة الرئيسية بنجاح 🔄');
+                          addToast('ØªÙ… ØªØ­Ø¯ÙŠØ« Ø§Ù„ØµÙØ­Ø© Ø§Ù„Ø±Ø¦ÙŠØ³ÙŠØ© Ø¨Ù†Ø¬Ø§Ø­ ðŸ”„');
                         } finally {
                           setIsRefreshingFeed(false);
                         }
                       }}
                       disabled={isRefreshingFeed}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white text-xs font-black transition-all shadow-sm active:scale-95 disabled:opacity-50"
-                      title="تحديث التغذية الفورية"
+                      title="ØªØ­Ø¯ÙŠØ« Ø§Ù„ØªØºØ°ÙŠØ© Ø§Ù„ÙÙˆØ±ÙŠØ©"
                     >
                       <RefreshCw size={13} className={isRefreshingFeed ? 'animate-spin' : ''} />
-                      <span>تحديث التغذية</span>
+                      <span>ØªØ­Ø¯ÙŠØ« Ø§Ù„ØªØºØ°ÙŠØ©</span>
                     </button>
                   </div>
 
@@ -1108,16 +1114,16 @@ function App() {
                           <Briefcase size={28} />
                         </div>
                         <h3 className="text-sm font-black text-slate-800 dark:text-slate-100 mb-1">
-                          لا توجد وظائف معروضة حالياً في قسم «{selectedJobCategory}»
+                          Ù„Ø§ ØªÙˆØ¬Ø¯ ÙˆØ¸Ø§Ø¦Ù Ù…Ø¹Ø±ÙˆØ¶Ø© Ø­Ø§Ù„ÙŠØ§Ù‹ ÙÙŠ Ù‚Ø³Ù… Â«{selectedJobCategory}Â»
                         </h3>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-                          يمكنك تصفح باقي الأقسام أو إعادة تعيين الفلتر لعرض جميع الوظائف
+                          ÙŠÙ…ÙƒÙ†Ùƒ ØªØµÙØ­ Ø¨Ø§Ù‚ÙŠ Ø§Ù„Ø£Ù‚Ø³Ø§Ù… Ø£Ùˆ Ø¥Ø¹Ø§Ø¯Ø© ØªØ¹ÙŠÙŠÙ† Ø§Ù„ÙÙ„ØªØ± Ù„Ø¹Ø±Ø¶ Ø¬Ù…ÙŠØ¹ Ø§Ù„ÙˆØ¸Ø§Ø¦Ù
                         </p>
                         <button
-                          onClick={() => setSelectedJobCategory('الكل')}
+                          onClick={() => setSelectedJobCategory('Ø§Ù„ÙƒÙ„')}
                           className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black shadow-md hover:bg-blue-700 active:scale-95 transition-all"
                         >
-                          عرض جميع الوظائف
+                          Ø¹Ø±Ø¶ Ø¬Ù…ÙŠØ¹ Ø§Ù„ÙˆØ¸Ø§Ø¦Ù
                         </button>
                       </div>
                     ) : (
@@ -1168,7 +1174,7 @@ function App() {
                                   setActiveTab('profile');
                                 }}
                                 onDeleteJob={async (jobId) => {
-                                  if (!window.confirm('هل أنت متأكد من حذف هذه الوظيفة؟')) return;
+                                  if (!window.confirm('Ù‡Ù„ Ø£Ù†Øª Ù…ØªØ£ÙƒØ¯ Ù…Ù† Ø­Ø°Ù Ù‡Ø°Ù‡ Ø§Ù„ÙˆØ¸ÙŠÙØ©ØŸ')) return;
                                   await (supabase as any).from('jobs').delete().eq('id', jobId);
                                 }}
                               />
@@ -1183,7 +1189,7 @@ function App() {
                 </>
               </div>
 
-              {/* ⚡ Keep-Alive: Jobs View */}
+              {/* âš¡ Keep-Alive: Jobs View */}
               {visitedTabs.jobs && (
                 <div
                   key="keepalive-tab-jobs"
@@ -1216,17 +1222,17 @@ function App() {
                       }}
                       onApplyJob={(job) => {
                         if (!appUser || isGuestMode) {
-                          addToast('يجب تسجيل الدخول أو إنشاء حساب للتقديم على هذه الوظيفة 💼', 'info' as any);
+                          addToast('ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ø£Ùˆ Ø¥Ù†Ø´Ø§Ø¡ Ø­Ø³Ø§Ø¨ Ù„Ù„ØªÙ‚Ø¯ÙŠÙ… Ø¹Ù„Ù‰ Ù‡Ø°Ù‡ Ø§Ù„ÙˆØ¸ÙŠÙØ© ðŸ’¼', 'info' as any);
                           exitGuestMode();
                           return;
                         }
                         const isPublisher = !appUser.isAdmin && (appUser.id === job.employer_id || appUser.id === (job as any).employerId);
                         if (isPublisher) {
-                          addToast('أنت ناشر هذه الوظيفة، لا يمكنك التقديم عليها 🏢', 'error' as any);
+                          addToast('Ø£Ù†Øª Ù†Ø§Ø´Ø± Ù‡Ø°Ù‡ Ø§Ù„ÙˆØ¸ÙŠÙØ©ØŒ Ù„Ø§ ÙŠÙ…ÙƒÙ†Ùƒ Ø§Ù„ØªÙ‚Ø¯ÙŠÙ… Ø¹Ù„ÙŠÙ‡Ø§ ðŸ¢', 'error' as any);
                           return;
                         }
                         if (appUser.role === 'employer' && !appUser.isAdmin) {
-                          addToast('أصحاب العمل لا يمكنهم التقديم على الوظائف. يمكنك التقديم فقط بعد تحويل حسابك إلى باحث عن عمل 👤', 'error' as any);
+                          addToast('Ø£ØµØ­Ø§Ø¨ Ø§Ù„Ø¹Ù…Ù„ Ù„Ø§ ÙŠÙ…ÙƒÙ†Ù‡Ù… Ø§Ù„ØªÙ‚Ø¯ÙŠÙ… Ø¹Ù„Ù‰ Ø§Ù„ÙˆØ¸Ø§Ø¦Ù. ÙŠÙ…ÙƒÙ†Ùƒ Ø§Ù„ØªÙ‚Ø¯ÙŠÙ… ÙÙ‚Ø· Ø¨Ø¹Ø¯ ØªØ­ÙˆÙŠÙ„ Ø­Ø³Ø§Ø¨Ùƒ Ø¥Ù„Ù‰ Ø¨Ø§Ø­Ø« Ø¹Ù† Ø¹Ù…Ù„ ðŸ‘¤', 'error' as any);
                           return;
                         }
                         setApplyingJob(job);
@@ -1248,9 +1254,9 @@ function App() {
                       <div className="w-14 h-14 bg-amber-500/10 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                         <Briefcase size={28} />
                       </div>
-                      <h3 className="text-base font-black text-slate-800 dark:text-white">نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 💼</h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">حسابك مسجل كـ (باحث عن عمل). يمكن للحسابات الفردية التصفح والتقديم على الفرص بدلاً من نشرها.</p>
-                      <button onClick={() => setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all">الرجوع للرئيسية</button>
+                      <h3 className="text-base font-black text-slate-800 dark:text-white">Ù†Ø´Ø± Ø§Ù„ÙˆØ¸Ø§Ø¦Ù Ù…Ø®ØµØµ Ù„Ø£ØµØ­Ø§Ø¨ Ø§Ù„Ø¹Ù…Ù„ ÙˆØ§Ù„Ù…Ø¤Ø³Ø³Ø§Øª ÙÙ‚Ø· ðŸ’¼</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">Ø­Ø³Ø§Ø¨Ùƒ Ù…Ø³Ø¬Ù„ ÙƒÙ€ (Ø¨Ø§Ø­Ø« Ø¹Ù† Ø¹Ù…Ù„). ÙŠÙ…ÙƒÙ† Ù„Ù„Ø­Ø³Ø§Ø¨Ø§Øª Ø§Ù„ÙØ±Ø¯ÙŠØ© Ø§Ù„ØªØµÙØ­ ÙˆØ§Ù„ØªÙ‚Ø¯ÙŠÙ… Ø¹Ù„Ù‰ Ø§Ù„ÙØ±Øµ Ø¨Ø¯Ù„Ø§Ù‹ Ù…Ù† Ù†Ø´Ø±Ù‡Ø§.</p>
+                      <button onClick={() => setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all">Ø§Ù„Ø±Ø¬ÙˆØ¹ Ù„Ù„Ø±Ø¦ÙŠØ³ÙŠØ©</button>
                     </div>
                   ) : (
                     <div className="pb-safe-bottom px-1 md:px-0">
@@ -1269,7 +1275,7 @@ function App() {
                 </motion.div>
               )}
 
-              {/* ⚡ Keep-Alive: Network View */}
+              {/* âš¡ Keep-Alive: Network View */}
               {visitedTabs.network && (
                 <div
                   key="keepalive-tab-network"
@@ -1310,7 +1316,7 @@ function App() {
                   </Suspense>
                 </motion.div>
               )}
-              {/* ⚡ Keep-Alive: Messages View */}
+              {/* âš¡ Keep-Alive: Messages View */}
               {visitedTabs.messages && (
                 !appUser ? (
                   activeTab === 'messages' && (
@@ -1325,15 +1331,15 @@ function App() {
                       <div className="w-16 h-16 bg-blue-50 dark:bg-blue-950/40 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
                         <MessageSquare size={30} />
                       </div>
-                      <h3 className="text-base font-black text-slate-800 dark:text-white">الرسائل والمحادثات مقفلة 🔒</h3>
+                      <h3 className="text-base font-black text-slate-800 dark:text-white">Ø§Ù„Ø±Ø³Ø§Ø¦Ù„ ÙˆØ§Ù„Ù…Ø­Ø§Ø¯Ø«Ø§Øª Ù…Ù‚ÙÙ„Ø© ðŸ”’</h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">
-                        أنت تتصفح كزائر. يرجى تسجيل الدخول للوصول إلى المحادثات والرسائل المباشرة.
+                        Ø£Ù†Øª ØªØªØµÙØ­ ÙƒØ²Ø§Ø¦Ø±. ÙŠØ±Ø¬Ù‰ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ù„Ù„ÙˆØµÙˆÙ„ Ø¥Ù„Ù‰ Ø§Ù„Ù…Ø­Ø§Ø¯Ø«Ø§Øª ÙˆØ§Ù„Ø±Ø³Ø§Ø¦Ù„ Ø§Ù„Ù…Ø¨Ø§Ø´Ø±Ø©.
                       </p>
                       <button
                         onClick={() => window.dispatchEvent(new CustomEvent('prolink:exitGuestMode'))}
                         className="mt-5 w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
                       >
-                        <span>تسجيل الدخول الآن</span>
+                        <span>ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ø§Ù„Ø¢Ù†</span>
                       </button>
                     </motion.div>
                   )
@@ -1386,7 +1392,7 @@ function App() {
                 </motion.div>
               )}
 
-              {/* ⚡ Keep-Alive: News View */}
+              {/* âš¡ Keep-Alive: News View */}
               {visitedTabs.news && (
                 <div
                   key="keepalive-tab-news"
@@ -1444,14 +1450,14 @@ function App() {
                       <ERPView appUser={appUser} addToast={addToast} />
                     </Suspense>
                   ) : (
-                    // 🚫 منع وصول غير الأدمن للـ ERP بشكل صريح — الحماية على مستوى UI
+                    // ðŸš« Ù…Ù†Ø¹ ÙˆØµÙˆÙ„ ØºÙŠØ± Ø§Ù„Ø£Ø¯Ù…Ù† Ù„Ù„Ù€ ERP Ø¨Ø´ÙƒÙ„ ØµØ±ÙŠØ­ â€” Ø§Ù„Ø­Ù…Ø§ÙŠØ© Ø¹Ù„Ù‰ Ù…Ø³ØªÙˆÙ‰ UI
                     <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-lg mx-auto shadow-xl" dir="rtl">
                       <div className="w-14 h-14 bg-red-500/10 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
                         <Briefcase size={28} />
                       </div>
-                      <h3 className="text-base font-black text-slate-800 dark:text-white">نظام الموارد البشرية (ERP) — مخصص للإدارة فقط 🔒</h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">حسابك الحالي ليس لديه صلاحية الوصول لهذا النظام. هذا النظام مخصص فقط للإدارة العليا.</p>
-                      <button onClick={() => setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all">الرجوع للرئيسية</button>
+                      <h3 className="text-base font-black text-slate-800 dark:text-white">Ù†Ø¸Ø§Ù… Ø§Ù„Ù…ÙˆØ§Ø±Ø¯ Ø§Ù„Ø¨Ø´Ø±ÙŠØ© (ERP) â€” Ù…Ø®ØµØµ Ù„Ù„Ø¥Ø¯Ø§Ø±Ø© ÙÙ‚Ø· ðŸ”’</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">Ø­Ø³Ø§Ø¨Ùƒ Ø§Ù„Ø­Ø§Ù„ÙŠ Ù„ÙŠØ³ Ù„Ø¯ÙŠÙ‡ ØµÙ„Ø§Ø­ÙŠØ© Ø§Ù„ÙˆØµÙˆÙ„ Ù„Ù‡Ø°Ø§ Ø§Ù„Ù†Ø¸Ø§Ù…. Ù‡Ø°Ø§ Ø§Ù„Ù†Ø¸Ø§Ù… Ù…Ø®ØµØµ ÙÙ‚Ø· Ù„Ù„Ø¥Ø¯Ø§Ø±Ø© Ø§Ù„Ø¹Ù„ÙŠØ§.</p>
+                      <button onClick={() => setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all">Ø§Ù„Ø±Ø¬ÙˆØ¹ Ù„Ù„Ø±Ø¦ÙŠØ³ÙŠØ©</button>
                     </div>
                   )}
                 </motion.div>
@@ -1513,6 +1519,12 @@ function App() {
                           setActiveTab('jobs');
                           setInitialJobForMissions(returnToJob);
                           setReturnToJob(null);
+                        } else if (returnToSearch) {
+                          // Return to search results with the previous query preserved
+                          setSelectedProfile(null);
+                          setActiveTab('home');
+                          setSearchQuery(returnToSearch);
+                          setReturnToSearch(null);
                         } else {
                           setSelectedProfile(null);
                           setActiveTab('home');
@@ -1553,7 +1565,7 @@ function App() {
                 </motion.div>
               )}
 
-              {/* ─── Settings Page ─── */}
+              {/* â”€â”€â”€ Settings Page â”€â”€â”€ */}
               {activeTab === 'settings' && appUser && (
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
@@ -1613,7 +1625,7 @@ function App() {
       </main>
       )}
 
-      {/* ── Full-screen overlays: rendered OUTSIDE <main> at root level to be above MobileNav ── */}
+      {/* â”€â”€ Full-screen overlays: rendered OUTSIDE <main> at root level to be above MobileNav â”€â”€ */}
       <AnimatePresence mode="wait">
         {applyingJob && appUser && (
           <ApplyJobModal
@@ -1650,17 +1662,17 @@ function App() {
             }}
             onApplyJob={(job) => {
               if (!appUser || isGuestMode) {
-                addToast('يجب تسجيل الدخول أو إنشاء حساب للتقديم على هذه الوظيفة 💼', 'info' as any);
+                addToast('ÙŠØ¬Ø¨ ØªØ³Ø¬ÙŠÙ„ Ø§Ù„Ø¯Ø®ÙˆÙ„ Ø£Ùˆ Ø¥Ù†Ø´Ø§Ø¡ Ø­Ø³Ø§Ø¨ Ù„Ù„ØªÙ‚Ø¯ÙŠÙ… Ø¹Ù„Ù‰ Ù‡Ø°Ù‡ Ø§Ù„ÙˆØ¸ÙŠÙØ© ðŸ’¼', 'info' as any);
                 exitGuestMode();
                 return;
               }
               const isPublisher = !appUser.isAdmin && (appUser.id === job.employer_id || appUser.id === (job as any).employerId);
               if (isPublisher) {
-                addToast('أنت ناشر هذه الوظيفة، لا يمكنك التقديم عليها 🏢', 'error' as any);
+                addToast('Ø£Ù†Øª Ù†Ø§Ø´Ø± Ù‡Ø°Ù‡ Ø§Ù„ÙˆØ¸ÙŠÙØ©ØŒ Ù„Ø§ ÙŠÙ…ÙƒÙ†Ùƒ Ø§Ù„ØªÙ‚Ø¯ÙŠÙ… Ø¹Ù„ÙŠÙ‡Ø§ ðŸ¢', 'error' as any);
                 return;
               }
               if (appUser.role === 'employer' && !appUser.isAdmin) {
-                addToast('أصحاب العمل لا يمكنهم التقديم على الوظائف. يمكنك التقديم فقط بعد تحويل حسابك إلى باحث عن عمل 👤', 'error' as any);
+                addToast('Ø£ØµØ­Ø§Ø¨ Ø§Ù„Ø¹Ù…Ù„ Ù„Ø§ ÙŠÙ…ÙƒÙ†Ù‡Ù… Ø§Ù„ØªÙ‚Ø¯ÙŠÙ… Ø¹Ù„Ù‰ Ø§Ù„ÙˆØ¸Ø§Ø¦Ù. ÙŠÙ…ÙƒÙ†Ùƒ Ø§Ù„ØªÙ‚Ø¯ÙŠÙ… ÙÙ‚Ø· Ø¨Ø¹Ø¯ ØªØ­ÙˆÙŠÙ„ Ø­Ø³Ø§Ø¨Ùƒ Ø¥Ù„Ù‰ Ø¨Ø§Ø­Ø« Ø¹Ù† Ø¹Ù…Ù„ ðŸ‘¤', 'error' as any);
                 return;
               }
               setDetailFeed(null);
@@ -1719,7 +1731,7 @@ function App() {
                setSharedPost(p); 
                setActiveTab('messages'); 
                setSelectedPostDetail(null);
-               addToast('تمت إضافة المنشور للمشاركة في المجموعات 🌐'); 
+               addToast('ØªÙ…Øª Ø¥Ø¶Ø§ÙØ© Ø§Ù„Ù…Ù†Ø´ÙˆØ± Ù„Ù„Ù…Ø´Ø§Ø±ÙƒØ© ÙÙŠ Ø§Ù„Ù…Ø¬Ù…ÙˆØ¹Ø§Øª ðŸŒ'); 
             }}
             onRelocate={(p) => {
                setRelocatingPost(p);
@@ -1732,7 +1744,7 @@ function App() {
         )}
       </AnimatePresence>
 
-      {/* ── Edit Job Modal (from feed) ── */}
+      {/* â”€â”€ Edit Job Modal (from feed) â”€â”€ */}
       {editingFeedJob && (
         <EditJobModal
           job={editingFeedJob}
@@ -1741,7 +1753,7 @@ function App() {
         />
       )}
 
-      {/* ── Edit Post Modal (Full Editor for articles/posts/images) ── */}
+      {/* â”€â”€ Edit Post Modal (Full Editor for articles/posts/images) â”€â”€ */}
       {editingFeedPost && (
         <EditPostModal
           post={editingFeedPost}

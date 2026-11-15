@@ -2019,6 +2019,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const mapped = mapProfile(p);
                 try {
                   localStorage.setItem('prolink_cached_user', JSON.stringify(mapped));
+                  if (current.role !== mapped.role) {
+                    localStorage.removeItem('prolink_pending_role_req');
+                    window.dispatchEvent(new CustomEvent('prolink_role_updated', {
+                      detail: { role: mapped.role, status: 'approved' }
+                    }));
+                  }
                 } catch (_) {}
                 return mapped;
               }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Bell, X, CheckCheck, Briefcase, Heart, MessageSquare, 
@@ -25,17 +25,17 @@ import { safeTimeAgo } from '../../lib/utils/formatDate';
 
 // Notification type config
 const NOTIF_CONFIG: Record<string, { icon: any; color: string; bg: string; label: string }> = {
-  follow_request:       { icon: UserPlus,       color: 'text-blue-600 dark:text-blue-400',    bg: 'bg-blue-100 dark:bg-blue-950/60',    label: 'أرسل طلب تواصل' },
-  sync_approval:        { icon: UserCheck,      color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-950/60', label: 'قبل طلب تواصلك ✅' },
-  role_change_approved: { icon: CheckCircle2,   color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-950/60', label: 'تمت الموافقة على ترقية نوع حسابك 🎉' },
-  role_change_rejected: { icon: ArrowLeftRight, color: 'text-rose-600 dark:text-rose-400',       bg: 'bg-rose-100 dark:bg-rose-950/60',       label: 'تم رفض طلب تغيير نوع الحساب ❌' },
-  like:                 { icon: Heart,          color: 'text-rose-500 dark:text-rose-400',    bg: 'bg-rose-100 dark:bg-rose-950/60',    label: 'أعجب بمنشورك' },
-  comment:              { icon: MessageSquare,  color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-100 dark:bg-violet-950/60',  label: 'علّق على منشورك' },
-  job_application:      { icon: Briefcase,      color: 'text-amber-600 dark:text-amber-400',   bg: 'bg-amber-100 dark:bg-amber-950/60',   label: 'تقدّم لوظيفتك' },
-  message:              { icon: MessageSquare,  color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-100 dark:bg-indigo-950/60',  label: 'أرسل لك رسالة' },
-  missed_call:          { icon: Phone,          color: 'text-red-600 dark:text-red-400',     bg: 'bg-red-100 dark:bg-red-950/60',     label: 'مكالمة فائتة 📞' },
-  role_change_request:  { icon: ArrowLeftRight, color: 'text-amber-600 dark:text-amber-400',   bg: 'bg-amber-100 dark:bg-amber-950/60',   label: 'طلب تغيير نوع الحساب' },
-  default:              { icon: Bell,           color: 'text-slate-500 dark:text-slate-400',   bg: 'bg-slate-100 dark:bg-slate-800',   label: 'إشعار جديد' },
+  follow_request:       { icon: UserPlus,       color: 'text-blue-600 dark:text-blue-400',    bg: 'bg-blue-100 dark:bg-blue-950/60',    label: 'Ø£Ø±Ø³Ù„ Ø·Ù„Ø¨ ØªÙˆØ§ØµÙ„' },
+  sync_approval:        { icon: UserCheck,      color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-950/60', label: 'Ù‚Ø¨Ù„ Ø·Ù„Ø¨ ØªÙˆØ§ØµÙ„Ùƒ âœ…' },
+  role_change_approved: { icon: CheckCircle2,   color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-100 dark:bg-emerald-950/60', label: 'ØªÙ…Øª Ø§Ù„Ù…ÙˆØ§ÙÙ‚Ø© Ø¹Ù„Ù‰ ØªØ±Ù‚ÙŠØ© Ù†ÙˆØ¹ Ø­Ø³Ø§Ø¨Ùƒ ðŸŽ‰' },
+  role_change_rejected: { icon: ArrowLeftRight, color: 'text-rose-600 dark:text-rose-400',       bg: 'bg-rose-100 dark:bg-rose-950/60',       label: 'ØªÙ… Ø±ÙØ¶ Ø·Ù„Ø¨ ØªØºÙŠÙŠØ± Ù†ÙˆØ¹ Ø§Ù„Ø­Ø³Ø§Ø¨ âŒ' },
+  like:                 { icon: Heart,          color: 'text-rose-500 dark:text-rose-400',    bg: 'bg-rose-100 dark:bg-rose-950/60',    label: 'Ø£Ø¹Ø¬Ø¨ Ø¨Ù…Ù†Ø´ÙˆØ±Ùƒ' },
+  comment:              { icon: MessageSquare,  color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-100 dark:bg-violet-950/60',  label: 'Ø¹Ù„Ù‘Ù‚ Ø¹Ù„Ù‰ Ù…Ù†Ø´ÙˆØ±Ùƒ' },
+  job_application:      { icon: Briefcase,      color: 'text-amber-600 dark:text-amber-400',   bg: 'bg-amber-100 dark:bg-amber-950/60',   label: 'ØªÙ‚Ø¯Ù‘Ù… Ù„ÙˆØ¸ÙŠÙØªÙƒ' },
+  message:              { icon: MessageSquare,  color: 'text-indigo-600 dark:text-indigo-400', bg: 'bg-indigo-100 dark:bg-indigo-950/60',  label: 'Ø£Ø±Ø³Ù„ Ù„Ùƒ Ø±Ø³Ø§Ù„Ø©' },
+  missed_call:          { icon: Phone,          color: 'text-red-600 dark:text-red-400',     bg: 'bg-red-100 dark:bg-red-950/60',     label: 'Ù…ÙƒØ§Ù„Ù…Ø© ÙØ§Ø¦ØªØ© ðŸ“ž' },
+  role_change_request:  { icon: ArrowLeftRight, color: 'text-amber-600 dark:text-amber-400',   bg: 'bg-amber-100 dark:bg-amber-950/60',   label: 'Ø·Ù„Ø¨ ØªØºÙŠÙŠØ± Ù†ÙˆØ¹ Ø§Ù„Ø­Ø³Ø§Ø¨' },
+  default:              { icon: Bell,           color: 'text-slate-500 dark:text-slate-400',   bg: 'bg-slate-100 dark:bg-slate-800',   label: 'Ø¥Ø´Ø¹Ø§Ø± Ø¬Ø¯ÙŠØ¯' },
 };
 
 function timeAgo(dateStr: any) {
@@ -70,7 +70,7 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
   const Icon = cfg.icon;
   const [isSwipedOut, setIsSwipedOut] = useState(false);
 
-  // 👁️ Auto-Seen On View Detection: tracks notification when visible
+  // ðŸ‘ï¸ Auto-Seen On View Detection: tracks notification when visible
   useEffect(() => {
     if (isRead) return;
     const el = rowRef.current;
@@ -126,8 +126,8 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
     <div className="relative overflow-hidden bg-red-600 dark:bg-red-700">
       {/* Swipe Action Background Reveal */}
       <div className="absolute inset-0 flex items-center justify-between px-5 text-white font-black text-xs select-none">
-        <div className="flex items-center gap-1.5"><Trash2 size={15} /> <span>حذف</span></div>
-        <div className="flex items-center gap-1.5"><span>حذف</span> <Trash2 size={15} /></div>
+        <div className="flex items-center gap-1.5"><Trash2 size={15} /> <span>Ø­Ø°Ù</span></div>
+        <div className="flex items-center gap-1.5"><span>Ø­Ø°Ù</span> <Trash2 size={15} /></div>
       </div>
 
       <motion.div
@@ -175,7 +175,7 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
                 className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 text-white rounded-xl text-[11px] font-black hover:bg-emerald-700 transition-all shadow-sm active:scale-95"
               >
                 <Check size={13} />
-                <span>قبول الطلب</span>
+                <span>Ù‚Ø¨ÙˆÙ„ Ø§Ù„Ø·Ù„Ø¨</span>
               </button>
             </div>
           )}
@@ -192,16 +192,21 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
                     if (parsed?.requestedRole) newRole = parsed.requestedRole;
                     if (parsed?.userId) targetUserId = parsed.userId;
                   } catch {
-                    if (n.message?.includes('باحث')) newRole = 'seeker';
+                    if (n.message?.includes('Ø¨Ø§Ø­Ø«')) newRole = 'seeker';
                   }
-                  await profileService.approveRoleChangeRequest(n.id, targetUserId, newRole);
-                  addToast(`✅ تم قبول تحويل الحساب إلى "${newRole === 'employer' ? 'صاحب عمل' : 'باحث عن عمل'}"`);
+                  // âš¡ Ø­Ø°Ù Ø§Ù„Ø¥Ø´Ø¹Ø§Ø± ÙÙˆØ±Ø§Ù‹ ÙˆØ¨Ø´ÙƒÙ„ Ù„Ø­Ø¸ÙŠ (Optimistic UI)
                   onDelete(n.id);
+                  addToast(`âœ… ØªÙ… Ù‚Ø¨ÙˆÙ„ ØªØ­ÙˆÙŠÙ„ Ø§Ù„Ø­Ø³Ø§Ø¨ Ø¥Ù„Ù‰ "${newRole === 'employer' ? 'ØµØ§Ø­Ø¨ Ø¹Ù…Ù„' : 'Ø¨Ø§Ø­Ø« Ø¹Ù† Ø¹Ù…Ù„'}" ÙÙˆØ±Ø§Ù‹!`, 'success');
+                  try {
+                    await profileService.approveRoleChangeRequest(n.id, targetUserId, newRole);
+                  } catch (err: any) {
+                    console.error("Failed to approve role request in background:", err);
+                  }
                 }}
                 className="flex items-center gap-1.5 px-3 py-1 bg-emerald-600 text-white rounded-xl text-[10px] font-black hover:bg-emerald-700 transition-all shadow-sm active:scale-95"
               >
                 <Check size={12} />
-                <span>قبول وتغيير الدور</span>
+                <span>Ù‚Ø¨ÙˆÙ„ ÙˆØªØºÙŠÙŠØ± Ø§Ù„Ø¯ÙˆØ±</span>
               </button>
               <button
                 onClick={async (e) => {
@@ -211,14 +216,19 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
                     const parsed = typeof n.targetId === 'string' ? JSON.parse(n.targetId) : n.targetId;
                     if (parsed?.userId) targetUserId = parsed.userId;
                   } catch {}
-                  await profileService.rejectRoleChangeRequest(n.id, targetUserId);
-                  addToast('تم رفض الطلب');
+                  // âš¡ Ø­Ø°Ù Ø§Ù„Ø¥Ø´Ø¹Ø§Ø± ÙÙˆØ±Ø§Ù‹ (Optimistic UI)
                   onDelete(n.id);
+                  addToast('ØªÙ… Ø±ÙØ¶ Ø§Ù„Ø·Ù„Ø¨', 'error');
+                  try {
+                    await profileService.rejectRoleChangeRequest(n.id, targetUserId);
+                  } catch (err: any) {
+                    console.error("Failed to reject role request in background:", err);
+                  }
                 }}
                 className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-[10px] font-black hover:bg-red-500 hover:text-white transition-all active:scale-95"
               >
                 <X size={12} />
-                <span>رفض</span>
+                <span>Ø±ÙØ¶</span>
               </button>
             </div>
           )}
@@ -227,7 +237,7 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
         <button
           onClick={(e) => onToggleRead(e, n)}
           className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-slate-200/60 dark:hover:bg-slate-700/60 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-all shrink-0 mt-1"
-          title={isRead ? 'قراءة' : 'تعليم كمقروء'}
+          title={isRead ? 'Ù‚Ø±Ø§Ø¡Ø©' : 'ØªØ¹Ù„ÙŠÙ… ÙƒÙ…Ù‚Ø±ÙˆØ¡'}
         >
           {isRead ? <EyeOff size={14} /> : <Eye size={14} />}
         </button>
@@ -249,7 +259,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
   const [filter, setFilter] = useState<'all' | 'unread' | 'read'>('unread');
   const { markNotificationAsRead, deleteReadNotifications, deleteAllNotifications, readNotifTimestamps } = useAppContext();
 
-  // 👁️ Track unread notifications viewed in the current open session
+  // ðŸ‘ï¸ Track unread notifications viewed in the current open session
   const seenThisSessionRef = useRef<Set<string>>(new Set());
 
   const handleAutoSeen = (n: AppNotification) => {
@@ -258,7 +268,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
     }
   };
 
-  // 🚪 When panel closes, convert all seen unread notifications to READ state
+  // ðŸšª When panel closes, convert all seen unread notifications to READ state
   const handleClosePanel = async () => {
     const seenIds = Array.from(seenThisSessionRef.current);
     if (seenIds.length > 0) {
@@ -305,20 +315,20 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
     } catch (e) {
       console.warn('Sync read status error:', e);
     }
-    addToast('تم تمييز جميع الإشعارات كمقروءة ✅');
+    addToast('ØªÙ… ØªÙ…ÙŠÙŠØ² Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª ÙƒÙ…Ù‚Ø±ÙˆØ¡Ø© âœ…');
   };
 
   const handleDeleteRead = async () => {
-    if (window.confirm('هل تريد حذف جميع الإشعارات المقروءة؟')) {
+    if (window.confirm('Ù‡Ù„ ØªØ±ÙŠØ¯ Ø­Ø°Ù Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª Ø§Ù„Ù…Ù‚Ø±ÙˆØ¡Ø©ØŸ')) {
       await deleteReadNotifications();
-      addToast('تم حذف الإشعارات المقروءة بنجاح 🗑️');
+      addToast('ØªÙ… Ø­Ø°Ù Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª Ø§Ù„Ù…Ù‚Ø±ÙˆØ¡Ø© Ø¨Ù†Ø¬Ø§Ø­ ðŸ—‘ï¸');
     }
   };
 
   const handleDeleteAll = async () => {
-    if (window.confirm('هل أنت متأكد من حذف جميع الإشعارات؟')) {
+    if (window.confirm('Ù‡Ù„ Ø£Ù†Øª Ù…ØªØ£ÙƒØ¯ Ù…Ù† Ø­Ø°Ù Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§ØªØŸ')) {
       await deleteAllNotifications();
-      addToast('تم حذف كافة الإشعارات 💣');
+      addToast('ØªÙ… Ø­Ø°Ù ÙƒØ§ÙØ© Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª ðŸ’£');
     }
   };
 
@@ -383,7 +393,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
           <div className="px-5 pt-5 pb-3 flex items-center justify-between border-b border-slate-100 dark:border-slate-800">
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="font-black text-slate-800 dark:text-white text-base">مركز التنبيهات</h4>
+                <h4 className="font-black text-slate-800 dark:text-white text-base">Ù…Ø±ÙƒØ² Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª</h4>
                 {unreadCount > 0 && (
                   <span className="flex items-center gap-1 px-2 py-0.5 bg-rose-500 text-white rounded-full text-[10px] font-black shadow-sm shadow-rose-500/30 animate-pulse">
                     <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
@@ -392,7 +402,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                 )}
               </div>
               <p className="text-[10px] text-slate-400 font-bold mt-0.5">
-                {unreadCount === 0 ? 'جميع الإشعارات تمت مشاهدتها ✓' : `لديك ${unreadCount} إشعار جديد`}
+                {unreadCount === 0 ? 'Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª ØªÙ…Øª Ù…Ø´Ø§Ù‡Ø¯ØªÙ‡Ø§ âœ“' : `Ù„Ø¯ÙŠÙƒ ${unreadCount} Ø¥Ø´Ø¹Ø§Ø± Ø¬Ø¯ÙŠØ¯`}
               </p>
             </div>
             <div className="flex items-center gap-1.5">
@@ -400,10 +410,10 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                 <button
                   onClick={markAllRead}
                   className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 rounded-xl text-[10px] font-black hover:bg-blue-100 dark:hover:bg-blue-800/60 transition-all active:scale-95 border border-blue-200/40 dark:border-blue-700/30"
-                  title="تمييز جميع الإشعارات كمقروءة"
+                  title="ØªÙ…ÙŠÙŠØ² Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª ÙƒÙ…Ù‚Ø±ÙˆØ¡Ø©"
                 >
                   <CheckCheck size={13} />
-                  <span>الكل مقروء</span>
+                  <span>Ø§Ù„ÙƒÙ„ Ù…Ù‚Ø±ÙˆØ¡</span>
                 </button>
               )}
 
@@ -411,7 +421,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                 <button
                   onClick={handleDeleteRead}
                   className="p-2 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 rounded-xl text-[10px] font-black hover:bg-rose-100 dark:hover:bg-rose-900/60 transition-all active:scale-95 border border-rose-200/40 dark:border-rose-800/40"
-                  title="حذف الإشعارات المقروءة"
+                  title="Ø­Ø°Ù Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª Ø§Ù„Ù…Ù‚Ø±ÙˆØ¡Ø©"
                 >
                   <Trash2 size={14} />
                 </button>
@@ -421,7 +431,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                 <button
                   onClick={handleDeleteAll}
                   className="p-2 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl text-[10px] font-black hover:bg-slate-200 dark:hover:bg-slate-700 transition-all active:scale-95"
-                  title="حذف جميع الإشعارات"
+                  title="Ø­Ø°Ù Ø¬Ù…ÙŠØ¹ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª"
                 >
                   <Flame size={14} />
                 </button>
@@ -436,9 +446,9 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
           {/* Quick Filter Tabs */}
           <div className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-50/70 dark:bg-slate-950/40 border-b border-slate-100 dark:border-slate-800">
             {[
-              { id: 'unread', label: 'غير مقروءة', count: unreadCount, highlight: unreadCount > 0 },
-              { id: 'read', label: 'المقروءة', count: readCount },
-              { id: 'all', label: 'الكل', count: notifications.length }
+              { id: 'unread', label: 'ØºÙŠØ± Ù…Ù‚Ø±ÙˆØ¡Ø©', count: unreadCount, highlight: unreadCount > 0 },
+              { id: 'read', label: 'Ø§Ù„Ù…Ù‚Ø±ÙˆØ¡Ø©', count: readCount },
+              { id: 'all', label: 'Ø§Ù„ÙƒÙ„', count: notifications.length }
             ].map(f => {
               const active = filter === f.id;
               return (
@@ -474,10 +484,10 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                   <Bell size={24} />
                 </div>
                 <h5 className="text-xs font-black text-slate-700 dark:text-slate-300 mb-1">
-                  {filter === 'unread' ? 'لا توجد إشعارات جديدة غير مقروءة' : filter === 'read' ? 'لا توجد إشعارات مقروءة' : 'لا توجد أي إشعارات'}
+                  {filter === 'unread' ? 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¥Ø´Ø¹Ø§Ø±Ø§Øª Ø¬Ø¯ÙŠØ¯Ø© ØºÙŠØ± Ù…Ù‚Ø±ÙˆØ¡Ø©' : filter === 'read' ? 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø¥Ø´Ø¹Ø§Ø±Ø§Øª Ù…Ù‚Ø±ÙˆØ¡Ø©' : 'Ù„Ø§ ØªÙˆØ¬Ø¯ Ø£ÙŠ Ø¥Ø´Ø¹Ø§Ø±Ø§Øª'}
                 </h5>
                 <p className="text-slate-400 text-[11px] font-medium max-w-[240px] mx-auto">
-                  {filter === 'unread' ? 'لقد شاهدت جميع التنبيهات بنجاح!' : 'ستظهر هنا الإشعارات والتفاعلات فور وصولها.'}
+                  {filter === 'unread' ? 'Ù„Ù‚Ø¯ Ø´Ø§Ù‡Ø¯Øª Ø¬Ù…ÙŠØ¹ Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª Ø¨Ù†Ø¬Ø§Ø­!' : 'Ø³ØªØ¸Ù‡Ø± Ù‡Ù†Ø§ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª ÙˆØ§Ù„ØªÙØ§Ø¹Ù„Ø§Øª ÙÙˆØ± ÙˆØµÙˆÙ„Ù‡Ø§.'}
                 </p>
                 {filter === 'unread' && readCount > 0 && (
                   <button
@@ -485,7 +495,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                     className="mt-3 px-3.5 py-1.5 bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 rounded-xl text-[11px] font-black hover:bg-blue-100 transition-all inline-flex items-center gap-1.5"
                   >
                     <Eye size={12} />
-                    <span>عرض التنبيهات السابقة ({readCount})</span>
+                    <span>Ø¹Ø±Ø¶ Ø§Ù„ØªÙ†Ø¨ÙŠÙ‡Ø§Øª Ø§Ù„Ø³Ø§Ø¨Ù‚Ø© ({readCount})</span>
                   </button>
                 )}
               </div>
@@ -514,8 +524,8 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
 
           {/* Footer stats bar */}
           <div className="px-5 py-2.5 bg-slate-50 dark:bg-slate-950/60 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] font-bold text-slate-400">
-            <span>إجمالي الإشعارات: {notifications.length}</span>
-            <span>المقروءة: {readCount} • غير المقروءة: {unreadCount}</span>
+            <span>Ø¥Ø¬Ù…Ø§Ù„ÙŠ Ø§Ù„Ø¥Ø´Ø¹Ø§Ø±Ø§Øª: {notifications.length}</span>
+            <span>Ø§Ù„Ù…Ù‚Ø±ÙˆØ¡Ø©: {readCount} â€¢ ØºÙŠØ± Ø§Ù„Ù…Ù‚Ø±ÙˆØ¡Ø©: {unreadCount}</span>
           </div>
         </div>
       </motion.div>

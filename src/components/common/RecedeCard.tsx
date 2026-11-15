@@ -29,3 +29,4 @@ export const RecedeCard: React.FC<RecedeCardProps> = ({ children, className = ''
     </motion.div>
   );
 };
+

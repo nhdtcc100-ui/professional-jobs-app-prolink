@@ -12,7 +12,7 @@ export interface NewsSourceItem {
   name: string;
   type: 'telegram' | 'rss' | 'api';
   url: string;
-  category: 'jobs' | 'tech' | 'general' | 'economy';
+  category: 'jobs' | 'tech' | 'general' | 'economy' | 'sports' | 'politics';
   apiKey?: string;
   enabled: boolean;
   lastFetchedAt?: string;
@@ -75,8 +75,102 @@ export const NewsSourcesAdmin: React.FC<{ addToast: (msg: string, type?: 'succes
   const [newName, setNewName] = useState('');
   const [newType, setNewType] = useState<'telegram' | 'rss' | 'api'>('rss');
   const [newUrl, setNewUrl] = useState('');
-  const [newCategory, setNewCategory] = useState<'jobs' | 'tech' | 'general' | 'economy'>('jobs');
+  const [newCategory, setNewCategory] = useState<'jobs' | 'tech' | 'general' | 'economy' | 'sports' | 'politics'>('jobs');
   const [newApiKey, setNewApiKey] = useState('');
+
+
+  // Quick-fill examples for each type and category
+  const API_EXAMPLES = [
+    {
+      label: '🗞️ الجزيرة - أخبار عامة (RSS)',
+      type: 'rss' as const,
+      category: 'general' as const,
+      name: 'الجزيرة نت - أخبار عامة',
+      url: 'https://www.aljazeera.net/aljazeerarss/a7c186be-1baa-4bd4-9d80-a84db769f779/73d0e1b4-532f-45ef-b135-bfdff8b8cab9',
+      apiKey: ''
+    },
+    {
+      label: '⚽ يلا كورة - الرياضة (RSS)',
+      type: 'rss' as const,
+      category: 'sports' as const,
+      name: 'يلا كورة - أخبار كروية',
+      url: 'https://www.yallakora.com/rss',
+      apiKey: ''
+    },
+    {
+      label: '📈 أرقام - اقتصاد وأسواق (RSS)',
+      type: 'rss' as const,
+      category: 'economy' as const,
+      name: 'أرقام - اقتصاد ومال',
+      url: 'https://www.argaam.com/rss',
+      apiKey: ''
+    },
+    {
+      label: '💼 وظائف العراق (تيليجرام)',
+      type: 'telegram' as const,
+      category: 'jobs' as const,
+      name: 'قناة وظائف العراق',
+      url: 'https://t.me/s/iraq_jobs',
+      apiKey: ''
+    },
+    {
+      label: '📡 BBC عربي (RSS)',
+      type: 'rss' as const,
+      category: 'general' as const,
+      name: 'BBC عربي - أخبار',
+      url: 'https://feeds.bbci.co.uk/arabic/rss.xml',
+      apiKey: ''
+    },
+    {
+      label: '📰 سكاي نيوز عربية (RSS)',
+      type: 'rss' as const,
+      category: 'general' as const,
+      name: 'سكاي نيوز عربية',
+      url: 'https://www.skynewsarabia.com/web/rss',
+      apiKey: ''
+    },
+    {
+      label: '🤖 NewsAPI - أخبار تقنية (JSON API)',
+      type: 'api' as const,
+      category: 'tech' as const,
+      name: 'NewsAPI - تقنية (يلزم مفتاح API مجاني)',
+      url: 'https://newsapi.org/v2/top-headlines?country=sa&category=technology&apiKey=YOUR_KEY_HERE',
+      apiKey: 'YOUR_NEWSAPI_KEY'
+    },
+    {
+      label: '🏆 الجزيرة - رياضة (RSS)',
+      type: 'rss' as const,
+      category: 'sports' as const,
+      name: 'الجزيرة الرياضية',
+      url: 'https://www.aljazeera.net/aljazeerarss/0be57742-7a9b-4a74-b7e7-daab0cd1be3b/5dcae4d3-3ef5-4ee3-bb9c-5b4bef94e0c9',
+      apiKey: ''
+    },
+    {
+      label: '💹 مباشر - اقتصاد وأسهم (RSS)',
+      type: 'rss' as const,
+      category: 'economy' as const,
+      name: 'مباشر للأسواق المالية',
+      url: 'https://www.mubasher.info/rss',
+      apiKey: ''
+    },
+    {
+      label: '📲 العربية - أخبار سياسية (RSS)',
+      type: 'rss' as const,
+      category: 'politics' as const,
+      name: 'قناة العربية - أخبار',
+      url: 'https://www.alarabiya.net/tools/rss',
+      apiKey: ''
+    },
+  ];
+
+  const fillExample = (ex: typeof API_EXAMPLES[0]) => {
+    setNewName(ex.name);
+    setNewType(ex.type);
+    setNewUrl(ex.url);
+    setNewCategory(ex.category);
+    setNewApiKey(ex.apiKey);
+    setIsAdding(true);
+  };
 
   // Load from DB on mount
   useEffect(() => {
@@ -231,6 +325,31 @@ export const NewsSourcesAdmin: React.FC<{ addToast: (msg: string, type?: 'succes
         </button>
       </div>
 
+
+      {/* Quick-Add Examples Reference */}
+      <div className="bg-slate-900/50 border border-slate-700/40 rounded-3xl p-5 space-y-3">
+        <h4 className="text-xs font-black text-slate-300 flex items-center gap-2 uppercase tracking-widest">
+          <Zap size={14} className="text-amber-400" />
+          أمثلة روابط جاهزة - اضغط لتعبئة النموذج تلقائياً
+        </h4>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {API_EXAMPLES.map((ex, i) => (
+            <button
+              key={i}
+              type="button"
+              onClick={() => fillExample(ex)}
+              className="text-right px-3.5 py-2.5 rounded-2xl bg-slate-800/70 hover:bg-slate-700/80 border border-slate-700/50 hover:border-blue-500/50 text-xs font-bold text-slate-300 hover:text-white transition-all active:scale-95 flex items-center gap-2"
+            >
+              <span className="text-sm">{ex.label.split(' ')[0]}</span>
+              <span className="flex-1 text-right leading-tight">{ex.label.replace(/^[^s]+s/, '')}</span>
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-slate-500 font-medium">
+          ملاحظة: روابط RSS و تيليجرام مجانية. روابط JSON API مثل NewsAPI تتطلب مفتاح API مجاني من موقعهم.
+        </p>
+      </div>
+
       {/* Add Form */}
       <AnimatePresence>
         {isAdding && (
@@ -295,6 +414,8 @@ export const NewsSourcesAdmin: React.FC<{ addToast: (msg: string, type?: 'succes
                   <option value="tech">تقنية وذكاء اصطناعي (Tech)</option>
                   <option value="economy">أعمال واقتصاد (Economy)</option>
                   <option value="general">أخبار عامة (General)</option>
+                  <option value="sports">رياضة وكرة قدم (Sports)</option>
+                  <option value="politics">أخبار سياسية (Politics)</option>
                 </select>
               </div>
 
@@ -408,3 +529,4 @@ export const NewsSourcesAdmin: React.FC<{ addToast: (msg: string, type?: 'succes
     </div>
   );
 };
+

@@ -756,55 +756,75 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
 
 
   const handleApproveRoleChange = async (notif: any) => {
+    let targetUserId = notif.from_id;
+    let newRole: 'seeker' | 'employer' = 'employer';
     try {
-      let targetUserId = notif.from_id;
-      let newRole: 'seeker' | 'employer' = 'employer';
-      try {
-        const parsed = typeof notif.target_id === 'string' ? JSON.parse(notif.target_id) : notif.target_id;
-        if (parsed?.requestedRole) newRole = parsed.requestedRole;
-        if (parsed?.userId) targetUserId = parsed.userId;
-      } catch {
-        if (notif.message?.includes('باحث')) newRole = 'seeker';
-        else if (notif.message?.includes('صاحب')) newRole = 'employer';
-      }
+      const parsed = typeof notif.target_id === 'string' ? JSON.parse(notif.target_id) : notif.target_id;
+      if (parsed?.requestedRole) newRole = parsed.requestedRole;
+      if (parsed?.userId) targetUserId = parsed.userId;
+    } catch {
+      if (notif.message?.includes('باحث')) newRole = 'seeker';
+      else if (notif.message?.includes('صاحب')) newRole = 'employer';
+    }
 
-      const { error } = await profileService.approveRoleChangeRequest(notif.id, targetUserId, newRole);
-      if (error) throw error;
+    // ⚡ 1. إخفاء الإشعار والطلب فوراً وبشكل لحظي (Optimistic UI) بدون أي انتظار
+    setAllAdminNotifications(prev => {
+      const filtered = prev.filter(item => item.id !== notif.id && item.from_id !== targetUserId);
+      try { localStorage.setItem('prolink_admin_notifs_list', JSON.stringify(filtered)); } catch {}
+      return filtered;
+    });
+    setRoleRequests(prev => prev.filter(item => item.id !== notif.id && item.user_id !== targetUserId));
+    setAllUsers(prev => prev.map(u => u.id === targetUserId ? { ...u, role: newRole } : u));
+    setGlobalUsers(prev => prev.map(u => u.id === targetUserId ? { ...u, role: newRole } : u));
+    addToast(`✅ تم قبول الطلب وترقية دور ${notif.from_name || 'المستخدم'} فوراً!`, 'success');
 
-      // تحديث حالة الإشعار في قاعدة البيانات لمنع ظهوره غداً نهائياً مع حفظ السجل
-      await db.from('notifications').update({ read: true }).eq('id', notif.id);
-      await (db as any).from('role_change_requests').update({ status: 'approved' }).or(`id.eq.${notif.id},user_id.eq.${targetUserId}`);
-
-      addToast(`✅ تم قبول الطلب وتغيير دور ${notif.from_name || 'المستخدم'} إلى "${newRole === 'employer' ? 'صاحب عمل' : 'باحث عن عمل'}"`);
-      setAllAdminNotifications(prev => prev.filter(item => item.id !== notif.id));
-      setAllUsers(prev => prev.map(u => u.id === targetUserId ? { ...u, role: newRole } : u));
-      setGlobalUsers(prev => prev.map(u => u.id === targetUserId ? { ...u, role: newRole } : u));
+    try {
+      // 2. تحديث متوازي وفوري في قاعدة البيانات بالخلفية
+      await Promise.allSettled([
+        profileService.approveRoleChangeRequest(notif.id, targetUserId, newRole, currentAppUser?.id),
+        db.from('notifications').update({ read: true }).eq('id', notif.id),
+        (db as any).from('role_change_requests').update({
+          status: 'approved',
+          reviewed_by: currentAppUser?.id || null,
+          reviewed_at: new Date().toISOString()
+        }).or(`id.eq.${notif.id},user_id.eq.${targetUserId}`)
+      ]);
       fetchStats();
     } catch (err: any) {
-      addToast('فشل قبول الطلب: ' + (err.message || 'خطأ غير معروف'), 'error');
+      console.error('Approve role background error:', err);
     }
   };
 
   const handleRejectRoleChange = async (notif: any) => {
+    let targetUserId = notif.from_id;
     try {
-      let targetUserId = notif.from_id;
-      try {
-        const parsed = typeof notif.target_id === 'string' ? JSON.parse(notif.target_id) : notif.target_id;
-        if (parsed?.userId) targetUserId = parsed.userId;
-      } catch {}
+      const parsed = typeof notif.target_id === 'string' ? JSON.parse(notif.target_id) : notif.target_id;
+      if (parsed?.userId) targetUserId = parsed.userId;
+    } catch {}
 
-      const { error } = await profileService.rejectRoleChangeRequest(notif.id, targetUserId);
-      if (error) throw error;
+    // ⚡ 1. إخفاء الإشعار والطلب فوراً وبشكل لحظي (Optimistic UI)
+    setAllAdminNotifications(prev => {
+      const filtered = prev.filter(item => item.id !== notif.id && item.from_id !== targetUserId);
+      try { localStorage.setItem('prolink_admin_notifs_list', JSON.stringify(filtered)); } catch {}
+      return filtered;
+    });
+    setRoleRequests(prev => prev.filter(item => item.id !== notif.id && item.user_id !== targetUserId));
+    addToast(`تم رفض طلب تغيير الدور للمستخدم ${notif.from_name || ''}`);
 
-      // تحديث حالة الإشعار في قاعدة البيانات لمنع ظهوره غداً نهائياً
-      await db.from('notifications').update({ read: true }).eq('id', notif.id);
-      await (db as any).from('role_change_requests').update({ status: 'rejected' }).or(`id.eq.${notif.id},user_id.eq.${targetUserId}`);
-
-      addToast(`تم رفض طلب تغيير الدور للمستخدم ${notif.from_name || ''}`);
-      setAllAdminNotifications(prev => prev.filter(item => item.id !== notif.id));
+    try {
+      // 2. تحديث متوازي بالخلفية
+      await Promise.allSettled([
+        profileService.rejectRoleChangeRequest(notif.id, targetUserId, currentAppUser?.id),
+        db.from('notifications').update({ read: true }).eq('id', notif.id),
+        (db as any).from('role_change_requests').update({
+          status: 'rejected',
+          reviewed_by: currentAppUser?.id || null,
+          reviewed_at: new Date().toISOString()
+        }).or(`id.eq.${notif.id},user_id.eq.${targetUserId}`)
+      ]);
       fetchStats();
     } catch (err: any) {
-      addToast('فشل الرفض: ' + (err.message || 'خطأ غير معروف'), 'error');
+      console.error('Reject role background error:', err);
     }
   };
 
@@ -1003,53 +1023,62 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-2">
-                        {pendingRoleRequests.map((req) => {
-                          let requestedRole = 'employer';
-                          try {
-                            const parsed = typeof req.target_id === 'string' ? JSON.parse(req.target_id) : req.target_id;
-                            if (parsed?.requestedRole) requestedRole = parsed.requestedRole;
-                          } catch {
-                            if (req.message?.includes('باحث')) requestedRole = 'seeker';
-                          }
-                          return (
-                            <div key={req.id} className="p-4 rounded-2xl bg-slate-900/90 border border-amber-500/30 flex items-center justify-between gap-4 shadow-lg">
-                              <div className="flex items-center gap-3 min-w-0">
-                                <img
-                                  src={req.from_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(req.from_name || 'U')}&background=random`}
-                                  className="w-11 h-11 rounded-xl object-cover border border-slate-700 shrink-0 shadow-md"
-                                  alt=""
-                                />
-                                <div className="min-w-0">
-                                  <h4 className="text-xs font-black text-white truncate">{req.from_name || 'مستخدم'}</h4>
-                                  <p className="text-[11px] text-amber-400 font-bold truncate mt-0.5">
-                                    طلب التحويل إلى: {requestedRole === 'employer' ? '🏢 صاحب عمل' : '👤 باحث عن عمل'}
-                                  </p>
-                                  {req.message && (
-                                    <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5 max-w-[220px]">
-                                      {req.message}
+                        <AnimatePresence mode="popLayout">
+                          {pendingRoleRequests.map((req) => {
+                            let requestedRole = 'employer';
+                            try {
+                              const parsed = typeof req.target_id === 'string' ? JSON.parse(req.target_id) : req.target_id;
+                              if (parsed?.requestedRole) requestedRole = parsed.requestedRole;
+                            } catch {
+                              if (req.message?.includes('باحث')) requestedRole = 'seeker';
+                            }
+                            return (
+                              <motion.div
+                                key={req.id}
+                                layout
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.85, transition: { duration: 0.2 } }}
+                                className="p-4 rounded-2xl bg-slate-900/90 border border-amber-500/30 flex items-center justify-between gap-4 shadow-lg"
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <img
+                                    src={req.from_avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(req.from_name || 'U')}&background=random`}
+                                    className="w-11 h-11 rounded-xl object-cover border border-slate-700 shrink-0 shadow-md"
+                                    alt=""
+                                  />
+                                  <div className="min-w-0">
+                                    <h4 className="text-xs font-black text-white truncate">{req.from_name || 'مستخدم'}</h4>
+                                    <p className="text-[11px] text-amber-400 font-bold truncate mt-0.5">
+                                      طلب التحويل إلى: {requestedRole === 'employer' ? '🏢 صاحب عمل' : '👤 باحث عن عمل'}
                                     </p>
-                                  )}
+                                    {req.message && (
+                                      <p className="text-[10px] text-slate-400 font-medium truncate mt-0.5 max-w-[220px]">
+                                        {req.message}
+                                      </p>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                              <div className="flex items-center gap-2 shrink-0">
-                                <button
-                                  onClick={() => handleApproveRoleChange(req)}
-                                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-900/30 flex items-center gap-1 active:scale-95 transition-all"
-                                >
-                                  <Check size={14} />
-                                  <span>قبول</span>
-                                </button>
-                                <button
-                                  onClick={() => handleRejectRoleChange(req)}
-                                  className="px-3 py-2 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 rounded-xl text-xs font-black active:scale-95 transition-all"
-                                >
-                                  <X size={14} />
-                                  <span>رفض</span>
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                    onClick={() => handleApproveRoleChange(req)}
+                                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black shadow-lg shadow-emerald-900/30 flex items-center gap-1 active:scale-95 transition-all"
+                                  >
+                                    <Check size={14} />
+                                    <span>قبول</span>
+                                  </button>
+                                  <button
+                                    onClick={() => handleRejectRoleChange(req)}
+                                    className="px-3 py-2 bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 rounded-xl text-xs font-black active:scale-95 transition-all"
+                                  >
+                                    <X size={14} />
+                                    <span>رفض</span>
+                                  </button>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                        </AnimatePresence>
                       </div>
                     </motion.div>
                   );
@@ -1540,18 +1569,26 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                                     <>
                                       <button
                                         onClick={async () => {
-                                          setRoleActionLoadingId(req.id);
+                                          const reqId = req.id;
+                                          const userId = req.user_id;
+                                          const targetRole = req.requested_role;
+                                          // ⚡ Optimistic UI: إخفاء الطلب وتحديث الحساب فوراً
+                                          setRoleRequests(prev => prev.filter(r => r.id !== reqId && r.user_id !== userId));
+                                          setAllAdminNotifications(prev => {
+                                            const filtered = prev.filter(n => n.id !== reqId && n.from_id !== userId);
+                                            try { localStorage.setItem('prolink_admin_notifs_list', JSON.stringify(filtered)); } catch {}
+                                            return filtered;
+                                          });
+                                          setAllUsers((prev: any[]) => prev.map(u => u.id === userId ? { ...u, role: targetRole } : u));
+                                          setGlobalUsers((prev: any[]) => prev.map(u => u.id === userId ? { ...u, role: targetRole } : u));
+                                          addToast('✅ تم قبول الطلب وترقية الحساب فوراً!', 'success');
+
                                           try {
-                                            await profileService.approveRoleChangeRequest(req.id, req.user_id, req.requested_role, currentAppUser?.id);
-                                            setAllUsers((prev: any[]) => prev.map(u => u.id === req.user_id ? { ...u, role: req.requested_role } : u));
-                                            setGlobalUsers((prev: any[]) => prev.map(u => u.id === req.user_id ? { ...u, role: req.requested_role } : u));
-                                            addToast(`✅ تم قبول الطلب وترقية حساب ${req.user_name} بنجاح!`, 'success');
+                                            await profileService.approveRoleChangeRequest(reqId, userId, targetRole, currentAppUser?.id);
                                             fetchRoleRequests();
                                             fetchSupportThreads();
-                                          } catch (e: any) {
-                                            addToast('فشل قبول الطلب: ' + e.message, 'error');
-                                          } finally {
-                                            setRoleActionLoadingId(null);
+                                          } catch (e) {
+                                            console.error('approveRoleChangeRequest background error:', e);
                                           }
                                         }}
                                         disabled={roleActionLoadingId === req.id}
@@ -1563,16 +1600,23 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
 
                                       <button
                                         onClick={async () => {
-                                          setRoleActionLoadingId(req.id);
+                                          const reqId = req.id;
+                                          const userId = req.user_id;
+                                          // ⚡ Optimistic UI: إخفاء الطلب فوراً
+                                          setRoleRequests(prev => prev.filter(r => r.id !== reqId && r.user_id !== userId));
+                                          setAllAdminNotifications(prev => {
+                                            const filtered = prev.filter(n => n.id !== reqId && n.from_id !== userId);
+                                            try { localStorage.setItem('prolink_admin_notifs_list', JSON.stringify(filtered)); } catch {}
+                                            return filtered;
+                                          });
+                                          addToast('تم رفض طلب تغيير نوع الحساب', 'info');
+
                                           try {
-                                            await profileService.rejectRoleChangeRequest(req.id, req.user_id, currentAppUser?.id);
-                                            addToast('تم رفض طلب تغيير نوع الحساب', 'info');
+                                            await profileService.rejectRoleChangeRequest(reqId, userId, currentAppUser?.id);
                                             fetchRoleRequests();
                                             fetchSupportThreads();
-                                          } catch (e: any) {
-                                            addToast('فشل الرفض: ' + e.message, 'error');
-                                          } finally {
-                                            setRoleActionLoadingId(null);
+                                          } catch (e) {
+                                            console.error('rejectRoleChangeRequest background error:', e);
                                           }
                                         }}
                                         disabled={roleActionLoadingId === req.id}
@@ -1853,19 +1897,24 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                                           <div className="flex items-center gap-2 w-full sm:w-auto">
                                             <button
                                               onClick={async () => {
-                                                try {
-                                                  await profileService.approveRoleChangeRequest(m.id, selectedSupportUser.id, requestedRole, currentAppUser?.id);
+                                                  const targetId = selectedSupportUser.id;
+                                                  // ⚡ Optimistic UI: تحديث الواجهة فوراً
                                                   setSelectedSupportUser((prev: any) => ({ ...prev, role: requestedRole }));
-                                                  setAllUsers((prev: any[]) => prev.map(u => u.id === selectedSupportUser.id ? { ...u, role: requestedRole } : u));
-                                                  setGlobalUsers((prev: any[]) => prev.map(u => u.id === selectedSupportUser.id ? { ...u, role: requestedRole } : u));
-                                                  addToast(`✅ تم قبول الطلب وتحويل حساب ${selectedSupportUser.name} إلى ${requestedRole === "employer" ? "صاحب عمل" : "باحث عن عمل"}!`, "success");
-                                                  fetchSupportThreads();
-                                                  fetchRoleRequests();
-                                                } catch (e: any) {
-                                                  addToast("فشل قبول الطلب: " + e.message, "error");
-                                                }
-                                              }}
-                                              className="flex-1 sm:flex-none px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-900/30 active:scale-95 transition-all"
+                                                  setAllUsers((prev: any[]) => prev.map(u => u.id === targetId ? { ...u, role: requestedRole } : u));
+                                                  setGlobalUsers((prev: any[]) => prev.map(u => u.id === targetId ? { ...u, role: requestedRole } : u));
+                                                  setRoleRequests(prev => prev.filter(r => r.user_id !== targetId));
+                                                  setAllAdminNotifications(prev => prev.filter(n => n.from_id !== targetId));
+                                                  addToast('✅ تم قبول الطلب وتحويل الدور فوراً!', 'success');
+
+                                                  try {
+                                                    await profileService.approveRoleChangeRequest(m.id, targetId, requestedRole, currentAppUser?.id);
+                                                    fetchSupportThreads();
+                                                    fetchRoleRequests();
+                                                  } catch (e) {
+                                                    console.error('Failed to approve in background:', e);
+                                                  }
+                                                }}
+                                                className="flex-1 sm:flex-none px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-900/30 active:scale-95 transition-all"
                                             >
                                               <Check size={14} /> قبول وتغيير الدور الآن
                                             </button>

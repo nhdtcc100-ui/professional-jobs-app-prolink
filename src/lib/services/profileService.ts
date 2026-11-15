@@ -488,17 +488,30 @@ export const profileService = {
 
       // حفظ نسخة محلية للعرض الفوري في الواجهة
       try {
-        const cached = JSON.parse(localStorage.getItem('prolink_pending_role_req') || 'null');
-        if (!cached || cached.user_id !== userId) {
-          localStorage.setItem('prolink_pending_role_req', JSON.stringify({
-            id: data?.id,
-            user_id: userId,
-            requested_role: requestedRole,
-            status: 'pending',
-            created_at: new Date().toISOString()
-          }));
-        }
+        localStorage.setItem('prolink_pending_role_req', JSON.stringify({
+          id: data?.id,
+          user_id: userId,
+          requested_role: requestedRole,
+          status: 'pending',
+          created_at: new Date().toISOString()
+        }));
       } catch {}
+
+      // إرسال إشعار للإدارة في جدول notifications ليظهر فوراً للأدمن
+      try {
+        await supabase.from('notifications').insert([{
+          user_id: 'admin',
+          type: 'role_change_request',
+          from_id: userId,
+          from_name: userName,
+          from_avatar: userAvatar,
+          target_id: JSON.stringify({ userId, requestedRole, requestId: data?.id }),
+          read: false,
+          message: `طلب تحويل الحساب إلى ${requestedRole === 'employer' ? 'صاحب عمل 🏢' : 'باحث عن عمل 👤'}${reason.trim() ? ': ' + reason.trim() : ''}`
+        }] as any);
+      } catch (notifErr) {
+        logger.warn('Failed to insert admin notification:', notifErr);
+      }
 
       return { error: null, data };
     } catch (err: any) {
@@ -525,6 +538,15 @@ export const profileService = {
 
       if (!error) {
         if (data) {
+          // إذا كان دور المستخدم المخزن محلياً يطابق الدور المطلوب، فالطلب مكتمل ولم يعد معلقاً
+          try {
+            const cachedUser = JSON.parse(localStorage.getItem('prolink_cached_user') || 'null');
+            if (cachedUser && (cachedUser.id === userId || cachedUser.user_id === userId) && cachedUser.role === data.requested_role) {
+              localStorage.removeItem('prolink_pending_role_req');
+              return { pending: false, request: null };
+            }
+          } catch {}
+
           try {
             localStorage.setItem('prolink_pending_role_req', JSON.stringify(data));
           } catch {}
@@ -583,11 +605,25 @@ export const profileService = {
   ) {
     try {
       // 1. تحديث دور المستخدم في profiles
-      const { error: profileErr } = await supabase
-        .from('profiles')
-        .update({ role: newRole, account_type: newRole })
-        .eq('id', targetUserId);
-      if (profileErr) throw profileErr;
+      let profileErr: any = null;
+      try {
+        const res = await supabase
+          .from('profiles')
+          .update({ role: newRole, account_type: newRole })
+          .eq('id', targetUserId);
+        profileErr = res.error;
+      } catch (e) {
+        profileErr = e;
+      }
+
+      if (profileErr) {
+        // المحاولة مع role فقط لتجنب أي تعارض في الأعمدة
+        const res = await supabase
+          .from('profiles')
+          .update({ role: newRole })
+          .eq('id', targetUserId);
+        if (res.error) throw res.error;
+      }
 
       // 2. تحديث حالة كافة الطلبات المعلقة لهذا المستخدم إلى approved
       const nowIso = new Date().toISOString();
@@ -612,16 +648,25 @@ export const profileService = {
         .eq('user_id', targetUserId)
         .eq('status', 'pending');
 
-      // 3. إشعار للمستخدم
+      // 3. تحديث الإشعارات المعلقة لدى الإدارة لتصبح مقروءة فوراً
+      try {
+        await supabase
+          .from('notifications')
+          .update({ read: true })
+          .eq('type', 'role_change_request')
+          .or(`from_id.eq.${targetUserId},id.eq.${requestId}`);
+      } catch (_) {}
+
+      // 4. إشعار للمستخدم بالترقية الفورية
       const roleLabel = newRole === 'employer' ? 'صاحب عمل / شركة 🏢' : 'باحث عن عمل 👤';
       try {
         await supabase.from('notifications').insert([{
           user_id: targetUserId,
           type: 'role_change_approved',
-          from_id: adminId || targetUserId,
+          from_id: adminId || 'admin',
           from_name: 'إدارة ProLink',
           from_avatar: 'https://ui-avatars.com/api/?name=Admin&background=0284c7&color=fff',
-          target_id: targetUserId,
+          target_id: JSON.stringify({ userId: targetUserId, newRole }),
           read: false,
           message: `🎉 تمت الموافقة على طلبك! تم ترقية حسابك إلى: ${roleLabel}. يمكنك الآن التمتع بجميع الصلاحيات والميزات الجديدة.`
         }] as any);
@@ -629,9 +674,12 @@ export const profileService = {
         logger.warn('Failed to insert approval notification:', notifErr);
       }
 
-      // 4. مسح الكاش المحلي
+      // 5. مسح الكاش المحلي وإطلاق حدث محلي في حال كان الأدمن هو نفس المستخدم في جلسة الاختبار
       try {
         localStorage.removeItem('prolink_pending_role_req');
+        window.dispatchEvent(new CustomEvent('prolink_role_updated', {
+          detail: { role: newRole, status: 'approved' }
+        }));
       } catch {}
 
       return { error: null };
@@ -678,16 +726,25 @@ export const profileService = {
         .eq('user_id', targetUserId)
         .eq('status', 'pending');
 
-      // 2. إشعار للمستخدم
+      // 2. تحديث إشعارات الإدارة لتصبح مقروءة فوراً
+      try {
+        await supabase
+          .from('notifications')
+          .update({ read: true })
+          .eq('type', 'role_change_request')
+          .or(`from_id.eq.${targetUserId},id.eq.${requestId}`);
+      } catch (_) {}
+
+      // 3. إشعار للمستخدم
       try {
         const rejectMsg = `نعتذر، تم رفض طلب تغيير نوع حسابك.${adminNote ? ` السبب: ${adminNote}` : ' تم إلغاء حالة المراجعة ويمكنك تقديم طلب جديد متى شئت.'}`;
         await supabase.from('notifications').insert([{
           user_id: targetUserId,
           type: 'role_change_rejected',
-          from_id: adminId || targetUserId,
+          from_id: adminId || 'admin',
           from_name: 'إدارة ProLink',
           from_avatar: 'https://ui-avatars.com/api/?name=Admin&background=ef4444&color=fff',
-          target_id: targetUserId,
+          target_id: JSON.stringify({ userId: targetUserId }),
           read: false,
           message: rejectMsg
         }] as any);
@@ -695,9 +752,12 @@ export const profileService = {
         logger.warn('Failed to insert rejection notification:', notifErr);
       }
 
-      // 3. مسح الكاش المحلي
+      // 4. مسح الكاش المحلي
       try {
         localStorage.removeItem('prolink_pending_role_req');
+        window.dispatchEvent(new CustomEvent('prolink_role_updated', {
+          detail: { status: 'rejected' }
+        }));
       } catch {}
 
       return { error: null };
