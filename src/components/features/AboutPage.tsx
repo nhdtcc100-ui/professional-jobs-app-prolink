@@ -144,12 +144,12 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
     if (activeTab !== "support" || !appUser?.id) return;
     setChatLoading(true);
 
-    const threeDaysAgoISO = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const twoDaysAgoISO = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
     (supabase as any)
       .from(SUPPORT_TABLE)
       .select("*")
       .or(`sender_id.eq.${appUser.id},receiver_id.eq.${appUser.id}`)
-      .gte("created_at", threeDaysAgoISO)
+      .gte("created_at", twoDaysAgoISO)
       .order("created_at", { ascending: true })
       .then(({ data }: any) => {
         setMessages(data || []);
@@ -165,12 +165,12 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
       try {
         const res = await telegramSupportService.syncTelegramReplies(appUser.id);
         if (res.synced > 0) {
-          const threeDaysAgoISO = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+          const twoDaysAgoISO = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
           const { data } = await (supabase as any)
             .from(SUPPORT_TABLE)
             .select("*")
             .or(`sender_id.eq.${appUser.id},receiver_id.eq.${appUser.id}`)
-            .gte("created_at", threeDaysAgoISO)
+            .gte("created_at", twoDaysAgoISO)
             .order("created_at", { ascending: true });
           if (data) setMessages(data as SupportMessage[]);
         }

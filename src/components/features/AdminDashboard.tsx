@@ -12,6 +12,7 @@ import { supabase } from '../../lib/supabase';
 import { profileService } from '../../lib/services/profileService';
 import { telegramSupportService } from '../../lib/services/telegramSupportService';
 import { mockDataService } from '../../lib/services/mockDataService';
+import { NewsSourcesAdmin } from './NewsSourcesAdmin';
 import { useAppContext } from '../../contexts/AppContext';
 import { isUUID, sanitizeInput } from '../../lib/utils/sanitize';
 import { threatEngine } from '../../lib/security/threatEngine';
@@ -377,13 +378,14 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
         await telegramSupportService.syncTelegramReplies();
       } catch (_) {}
 
-      const thirtyDaysAgoISO = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      telegramSupportService.purgeIdleSupportMessages().catch(() => {});
+      const twoDaysAgoISO = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
 
       // جلب الرسائل من جدول support_messages
       const { data: msgs, error: msgsErr } = await db
         .from("support_messages")
         .select("*")
-        .gte("created_at", thirtyDaysAgoISO)
+        .gte("created_at", twoDaysAgoISO)
         .order("created_at", { ascending: true });
 
       if (msgsErr) {
@@ -769,8 +771,12 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
       const { error } = await profileService.approveRoleChangeRequest(notif.id, targetUserId, newRole);
       if (error) throw error;
 
+      // تحديث حالة الإشعار في قاعدة البيانات لمنع ظهوره غداً نهائياً مع حفظ السجل
+      await db.from('notifications').update({ read: true }).eq('id', notif.id);
+      await (db as any).from('role_change_requests').update({ status: 'approved' }).or(`id.eq.${notif.id},user_id.eq.${targetUserId}`);
+
       addToast(`✅ تم قبول الطلب وتغيير دور ${notif.from_name || 'المستخدم'} إلى "${newRole === 'employer' ? 'صاحب عمل' : 'باحث عن عمل'}"`);
-      setAllAdminNotifications(prev => prev.map(item => item.id === notif.id ? { ...item, read: true } : item));
+      setAllAdminNotifications(prev => prev.filter(item => item.id !== notif.id));
       setAllUsers(prev => prev.map(u => u.id === targetUserId ? { ...u, role: newRole } : u));
       setGlobalUsers(prev => prev.map(u => u.id === targetUserId ? { ...u, role: newRole } : u));
       fetchStats();
@@ -790,8 +796,12 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
       const { error } = await profileService.rejectRoleChangeRequest(notif.id, targetUserId);
       if (error) throw error;
 
+      // تحديث حالة الإشعار في قاعدة البيانات لمنع ظهوره غداً نهائياً
+      await db.from('notifications').update({ read: true }).eq('id', notif.id);
+      await (db as any).from('role_change_requests').update({ status: 'rejected' }).or(`id.eq.${notif.id},user_id.eq.${targetUserId}`);
+
       addToast(`تم رفض طلب تغيير الدور للمستخدم ${notif.from_name || ''}`);
-      setAllAdminNotifications(prev => prev.map(item => item.id === notif.id ? { ...item, read: true } : item));
+      setAllAdminNotifications(prev => prev.filter(item => item.id !== notif.id));
       fetchStats();
     } catch (err: any) {
       addToast('فشل الرفض: ' + (err.message || 'خطأ غير معروف'), 'error');
@@ -960,7 +970,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                 {/* ─── ⚡ بطاقة طلبات تغيير نوع الحساب المعلقة ─── */}
                 {(() => {
                   const pendingRoleRequests = allAdminNotifications.filter(
-                    n => n.type === 'role_change_request' && !n.read
+                    n => n.type === 'role_change_request' && !n.read && n.status !== 'approved' && n.status !== 'rejected'
                   );
                   if (pendingRoleRequests.length === 0) return null;
 

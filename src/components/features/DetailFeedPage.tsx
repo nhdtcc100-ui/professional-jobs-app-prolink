@@ -25,7 +25,7 @@ interface DetailFeedPageProps {
   onDislike?: (id: string) => void;
   onAddComment?: (id: string, c: string) => void;
   allUsers?: any[];
-  onPublisherClick?: (user: any, job?: any) => void;
+  onPublisherClick?: (user: any, item?: any, currentIndex?: number) => void;
 }
 
 export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
@@ -94,6 +94,24 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
       onNavigateTab(type === 'job' ? 'jobs' : type === 'news' ? 'news' : 'home');
     } else {
       onClose();
+    }
+  };
+
+    const handleOpenPublisher = () => {
+    const targetUser = pubUser || {
+      id: currentItem.employer_id || currentItem.employerId || currentItem.author_id || currentItem.authorId,
+      name: currentItem.company || currentItem.authorName || currentItem.author_name || 'الناشر',
+      avatar: pubAvatar || currentItem.employerAvatar || currentItem.authorAvatar || '',
+      title: currentItem.authorTitle || currentItem.specialty || '',
+      role: isCurJob ? 'employer' : 'seeker'
+    };
+    if (onPublisherClick) {
+      onClose();
+      onPublisherClick(targetUser, currentItem, currentIndex);
+    } else if (setSelectedProfile) {
+      onClose();
+      setSelectedProfile(targetUser);
+      if (onNavigateTab) onNavigateTab('profile');
     }
   };
 
@@ -498,14 +516,18 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
               <div className="flex flex-col h-full w-full overflow-hidden">
                 {/* Fixed Post Author Bar */}
                 <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10">
-                  <div className="flex items-center gap-3">
+                  <div 
+                    className="flex items-center gap-3 cursor-pointer group/author transition-all hover:opacity-90 active:scale-98"
+                    onClick={handleOpenPublisher}
+                    title="عرض الملف الشخصي للناشر"
+                  >
                     <img
                       src={currentItem.authorAvatar || 'https://ui-avatars.com/api/?background=random'}
                       alt={currentItem.authorName}
-                      className="w-11 h-11 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm"
+                      className="w-11 h-11 rounded-2xl object-cover border-2 border-slate-200 dark:border-slate-700 shadow-sm group-hover/author:border-blue-500 transition-colors"
                     />
                     <div>
-                      <h3 className="font-black text-slate-800 dark:text-white text-sm leading-tight">
+                      <h3 className="font-black text-slate-800 dark:text-white text-sm leading-tight group-hover/author:text-blue-600 transition-colors">
                         {currentItem.authorName || 'مستخدم'}
                       </h3>
                       <p className="text-[11px] text-slate-400 font-bold mt-0.5">

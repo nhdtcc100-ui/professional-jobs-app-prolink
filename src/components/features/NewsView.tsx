@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { newsService } from '../../lib/services/newsService';
 import { DetailFeedPage } from './DetailFeedPage';
+import { RecedeCard } from '../common/RecedeCard';
 import { safeTimeAgo } from '../../lib/utils/formatDate';
 import { useAppContext } from '../../contexts/AppContext';
 
@@ -887,9 +888,9 @@ export function NewsView({
           <motion.div key="content" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-3">
             {featured && <NewsCard item={featured} featured onSelect={handleSelectNews} />}
             {rest.map((n, i) => (
-              <motion.div key={i} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}>
+              <RecedeCard key={n.id || i}>
                 <NewsCard item={n} onSelect={handleSelectNews} />
-              </motion.div>
+              </RecedeCard>
             ))}
           </motion.div>
         )}

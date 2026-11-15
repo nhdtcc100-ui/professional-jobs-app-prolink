@@ -39,6 +39,7 @@ import { AlertBanner } from './components/features/security/AlertBanner';
 import { SecurityAlertToast } from './components/features/security/SecurityAlertToast';
 import { initAntiInspect, setAntiInspectUser } from './lib/security/antiInspect';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { RecedeCard } from './components/common/RecedeCard';
 import { GuestBanner } from './components/common/GuestBanner';
 import { isJobPoster, canUserPostAndInteract } from './lib/utils/roleUtils';
 import { JobCategoriesCard } from './components/features/missions/JobCategoriesCard';
@@ -248,6 +249,11 @@ function App() {
   const [selectedPostDetail, setSelectedPostDetail] = useState<Post | null>(null);
   const [selectedJobDetail, setSelectedJobDetail] = useState<Job | null>(null);
   const [returnToJob, setReturnToJob] = useState<Job | null>(null);
+  const [returnToDetailFeed, setReturnToDetailFeed] = useState<{
+    type: 'job' | 'news' | 'post';
+    items: any[];
+    initialIndex: number;
+  } | null>(null);
   const [initialJobForMissions, setInitialJobForMissions] = useState<Job | null>(null);
   const webRTCServiceRef = useRef<WebRTCService | null>(null);
   
@@ -993,6 +999,14 @@ function App() {
               onDeletePost={(id) => setPosts(prev => prev.filter(p => p.id !== id))}
               setSelectedPostDetail={setSelectedPostDetail}
               onSelectGroup={(g) => { setSelectedChat(null); setSelectedGroup(g); setActiveTab('messages'); }}
+              onJobClick={(job) => {
+                const jobIdx = Math.max(0, filteredJobs.findIndex(j => j.id === job.id));
+                setDetailFeed({
+                  type: 'job',
+                  items: filteredJobs.length > 0 ? filteredJobs : [job],
+                  initialIndex: jobIdx
+                });
+              }}
             />
           ) : (
             <>
@@ -1108,17 +1122,22 @@ function App() {
                       </div>
                     ) : (
                       memoizedCombinedFeed.map((item: any, idx) => (
-                        <React.Fragment key={item.id}>
+                        <RecedeCard key={item.id}>
                           {item.feedType === 'post' ? (
                             <PostNewsCard
                               post={item}
                               delay={Math.min(idx * 0.03, 0.3)}
                               onClick={() => {
+                                const isItemArticle = (item as any).post_type === 'article' || (item as any).type === 'article' || item.content?.startsWith('# ');
                                 const feedPosts = memoizedCombinedFeed.filter((it: any) => it.feedType === 'post');
-                                const postIdx = Math.max(0, feedPosts.findIndex((p: any) => p.id === item.id));
+                                const relevantItems = isItemArticle 
+                                  ? feedPosts.filter((p: any) => p.post_type === 'article' || p.type === 'article' || p.content?.startsWith('# '))
+                                  : feedPosts;
+                                const targetList = relevantItems.length > 0 ? relevantItems : feedPosts;
+                                const postIdx = Math.max(0, targetList.findIndex((p: any) => p.id === item.id));
                                 setDetailFeed({
                                   type: 'post',
-                                  items: feedPosts,
+                                  items: targetList,
                                   initialIndex: postIdx
                                 });
                               }}
@@ -1155,7 +1174,7 @@ function App() {
                               />
                             </div>
                           )}
-                        </React.Fragment>
+                        </RecedeCard>
                       ))
                     )}
                   </div>
@@ -1485,7 +1504,11 @@ function App() {
                         setReturnToJob(null);
                       }}
                       onBack={() => {
-                        if (returnToJob) {
+                        if (returnToDetailFeed) {
+                          setSelectedProfile(null);
+                          setDetailFeed(returnToDetailFeed);
+                          setReturnToDetailFeed(null);
+                        } else if (returnToJob) {
                           setSelectedProfile(null);
                           setActiveTab('jobs');
                           setInitialJobForMissions(returnToJob);
@@ -1649,10 +1672,17 @@ function App() {
             onDislike={handleDislike}
             onAddComment={handleAddComment}
             allUsers={allUsers}
-            onPublisherClick={(user: any, job?: any) => {
+            onPublisherClick={(user: any, item?: any, itemIndex?: number) => {
+              if (detailFeed) {
+                setReturnToDetailFeed({
+                  type: detailFeed.type,
+                  items: detailFeed.items,
+                  initialIndex: typeof itemIndex === 'number' ? itemIndex : detailFeed.initialIndex
+                });
+              }
               setDetailFeed(null);
               setSelectedProfile(user);
-              if (job) setReturnToJob(job);
+              if (item && detailFeed?.type === 'job') setReturnToJob(item);
               setActiveTab('profile');
             }}
           />

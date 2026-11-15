@@ -10,6 +10,7 @@ import { useAppContext } from '../../contexts/AppContext';
 import { sanitizeInput } from '../../lib/utils/sanitize';
 import { isJobPoster, isUserAdmin } from '../../lib/utils/roleUtils';
 import { SkeletonJobCardCompact, SkeletonJobCard, SkeletonApplicationCard } from '../ui';
+import { RecedeCard } from '../common/RecedeCard';
 import { SuggestedCandidates } from './missions/SuggestedCandidates';
 import { DetailFeedPage } from './DetailFeedPage';
 import {
@@ -675,15 +676,16 @@ export function MissionsView({
                       <p className="text-sm font-bold text-slate-400">لا توجد وظائف مطابقة</p>
                     </div>
                   ) : filteredJobs.map(({ job, score }, i) => (
-                    <JobCard 
-                      key={job.id} 
-                      job={job} 
-                      onClick={handleOpenJobDetail} 
-                      delay={i * 0.04} 
-                      compact={filteredJobs.length >= 3}
-                      matchScore={score > 0 ? score : calculateMatchScore(job.requirements || job.description || '')}
-                      onPublisherClick={onPublisherClick}
-                    />
+                    <RecedeCard key={job.id}>
+                      <JobCard 
+                        job={job} 
+                        onClick={handleOpenJobDetail} 
+                        delay={Math.min(i * 0.02, 0.2)} 
+                        compact={filteredJobs.length >= 3}
+                        matchScore={score > 0 ? score : calculateMatchScore(job.requirements || job.description || '')}
+                        onPublisherClick={onPublisherClick}
+                      />
+                    </RecedeCard>
                   ))}
                 </div>
               </>

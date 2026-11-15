@@ -24,6 +24,7 @@ interface SearchViewProps {
   onDeletePost?: (id: string) => void;
   onSelectGroup?: (group: any) => void;
   setSelectedPostDetail?: (post: Post) => void;
+  onJobClick?: (job: Job) => void;
 }
 
 type FilterTab = 'all' | 'people' | 'jobs' | 'groups';
@@ -46,7 +47,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
   handleAddComment,
   onDeletePost,
   onSelectGroup,
-  setSelectedPostDetail
+  setSelectedPostDetail,
+  onJobClick
 }) => {
   const [activeFilter, setActiveFilter] = useState<FilterTab>('all');
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -202,7 +204,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
               </div>
               <div className="space-y-3">
                 {(activeFilter === 'all' ? filteredJobs.slice(0, 3) : filteredJobs).map(j => (
-                  <div key={j.id} onClick={() => { setActiveTab('jobs'); setSearchQuery(''); }} className="group flex items-center gap-4 hover:bg-slate-50 p-4 rounded-3xl cursor-pointer border border-slate-50 hover:border-slate-100 transition-all active:scale-[0.98]">
+                  <div key={j.id} onClick={() => { if (onJobClick) { onJobClick(j); } else { setActiveTab('jobs'); } }} className="group flex items-center gap-4 hover:bg-slate-50 p-4 rounded-3xl cursor-pointer border border-slate-50 hover:border-slate-100 transition-all active:scale-[0.98]">
                     <div className="p-4 bg-emerald-50 text-emerald-600 rounded-2xl group-hover:bg-emerald-600 group-hover:text-white transition-colors shadow-sm ring-2 ring-white"><Briefcase size={22} /></div>
                     <div className="flex-1 min-w-0">
                       <p className="font-black text-slate-800 text-sm group-hover:text-emerald-600 transition-colors">{j.title}</p>

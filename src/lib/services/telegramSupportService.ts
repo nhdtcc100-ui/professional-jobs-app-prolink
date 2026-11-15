@@ -19,6 +19,21 @@ export interface TelegramConfig {
 }
 
 export const telegramSupportService = {
+  /**
+   * مسح رسائل الدعم الفني المنتهية إذا مرّ عليها أكثر من يومين (48 ساعة) دون أي تفاعل
+   */
+  async purgeIdleSupportMessages(): Promise<void> {
+    try {
+      const twoDaysAgoISO = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+      await (supabase as any)
+        .from('support_messages')
+        .delete()
+        .lt('created_at', twoDaysAgoISO);
+    } catch (e) {
+      console.warn('purgeIdleSupportMessages error:', e);
+    }
+  },
+
   getDefaultHandle(): string {
     return DEFAULT_HANDLE;
   },
