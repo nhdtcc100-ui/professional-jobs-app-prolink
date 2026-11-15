@@ -3,7 +3,7 @@ import { motion, AnimatePresence, type Variants } from 'motion/react';
 import { 
   ArrowRight, Briefcase, MapPin, DollarSign, 
   Tag, Clock, Send, Calendar, ExternalLink, Sparkles,
-  FileText, Home, Newspaper, ChevronDown
+  FileText, Home, Newspaper, ChevronDown, ChevronLeft, ChevronRight, Edit2, Trash2, AlertTriangle
 } from 'lucide-react';
 import { Job, AppUser } from '../../types';
 import { safeTimeAgo } from '../../lib/utils/formatDate';
@@ -26,6 +26,8 @@ interface DetailFeedPageProps {
   onAddComment?: (id: string, c: string) => void;
   allUsers?: any[];
   onPublisherClick?: (user: any, item?: any, currentIndex?: number) => void;
+  onEditPost?: (post: any) => void;
+  onDeletePost?: (id: string) => void;
 }
 
 export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
@@ -39,6 +41,8 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
   appUser,
   allUsers = [],
   onPublisherClick,
+  onEditPost,
+  onDeletePost,
 }) => {
   const { setSelectedProfile, allUsers: contextAllUsers } = useAppContext();
   const allUsersList = allUsers.length > 0 ? allUsers : contextAllUsers;
@@ -54,6 +58,22 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
   }, [initialIndex]);
 
   const isTransitioning = useRef(false);
+  const [showPostDeleteConfirm, setShowPostDeleteConfirm] = useState(false);
+
+  // Keyboard navigation for desktop users
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        goToNext();
+      } else if (e.key === 'ArrowRight') {
+        goToPrev();
+      } else if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentIndex, items.length]);
 
   const goToNext = () => {
     if (isTransitioning.current) return;
@@ -227,10 +247,28 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
         </button>
 
         {/* عدد الوظائف (كما في تفاصيل الرئيسية) */}
-        <div className="flex items-center justify-center">
-          <span className="text-xs font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 px-3.5 py-1 rounded-full shadow-xs">
+        <div className="flex items-center gap-1.5 justify-center">
+          <button
+            onClick={goToNext}
+            disabled={currentIndex >= items.length - 1}
+            className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-100 transition-all active:scale-90 cursor-pointer"
+            title="التالي"
+            aria-label="التالي"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span className="text-xs font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 px-3.5 py-1 rounded-full shadow-xs select-none">
             {itemLabel} {currentIndex + 1} من {items.length}
           </span>
+          <button
+            onClick={goToPrev}
+            disabled={currentIndex <= 0}
+            className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-100 transition-all active:scale-90 cursor-pointer"
+            title="السابق"
+            aria-label="السابق"
+          >
+            <ChevronRight size={16} />
+          </button>
         </div>
 
         {/* زر العودة للرئيسية الثابت دائماً في الشريط العلوي */}
@@ -285,16 +323,15 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
             animate="center"
             exit="exit"
             drag="x"
-            dragDirectionLock
             dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.15}
+            dragElastic={0.65}
             onDragEnd={(e, { offset, velocity }) => {
               const swipe = offset.x;
-              if (swipe < -40 || velocity.x < -250) {
-                // In RTL: swipe left goes to next job
+              if (swipe < -25 || velocity.x < -120) {
+                // In RTL: swipe left goes to next item
                 goToNext();
-              } else if (swipe > 40 || velocity.x > 250) {
-                // In RTL: swipe right goes to previous job
+              } else if (swipe > 25 || velocity.x > 120) {
+                // In RTL: swipe right goes to previous item
                 goToPrev();
               }
             }}
@@ -514,6 +551,51 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
             ) : !isCurNews ? (
               /* ── Post View: الجزء العلوي ثابت والتفاصيل سكرول ── */
               <div className="flex flex-col h-full w-full overflow-hidden">
+                {/* Professional Delete Confirmation in Detail View */}
+                <AnimatePresence>
+                  {showPostDeleteConfirm && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.96 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.96 }}
+                      className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md rounded-3xl"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl space-y-4">
+                        <div className="w-12 h-12 mx-auto rounded-2xl bg-red-100 dark:bg-red-950/60 border border-red-200 dark:border-red-800 flex items-center justify-center text-red-600 dark:text-red-400">
+                          <AlertTriangle size={24} />
+                        </div>
+                        <div>
+                          <h4 className="font-black text-slate-900 dark:text-white text-base mb-1">تأكيد حذف المنشور</h4>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">هل أنت متأكد من رغبتك في حذف هذا المنشور؟ لن تتمكن من استرجاعه لاحقاً.</p>
+                        </div>
+                        <div className="flex items-center gap-2 pt-2">
+                          <button
+                            onClick={() => setShowPostDeleteConfirm(false)}
+                            className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-black transition-all active:scale-95 cursor-pointer"
+                          >
+                            إلغاء
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (onDeletePost) onDeletePost(currentItem.id);
+                              setShowPostDeleteConfirm(false);
+                              if (items.length <= 1) {
+                                onClose();
+                              } else {
+                                goToNext();
+                              }
+                            }}
+                            className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black shadow-lg shadow-red-600/30 transition-all active:scale-95 cursor-pointer"
+                          >
+                            نعم، احذف
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {/* Fixed Post Author Bar */}
                 <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10">
                   <div 
@@ -535,17 +617,56 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                       </p>
                     </div>
                   </div>
-                  <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 bg-slate-100 dark:bg-slate-800/60 px-2.5 py-1 rounded-full">
-                    <Clock size={11} />
-                    {timeAgo(currentItem.timestamp || currentItem.created_at)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {(() => {
+                      const isPostOwner = !!(appUser && (currentItem.authorId === appUser.id || currentItem.author_id === appUser.id));
+                      const isPostAdmin = !!((appUser as any)?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
+                      if (!isPostOwner && !isPostAdmin) return null;
+                      return (
+                        <div className="flex items-center gap-1.5 ml-1">
+                          {onEditPost && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditPost(currentItem);
+                              }}
+                              className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-xs active:scale-95 border border-blue-200/60 dark:border-blue-800/50 cursor-pointer"
+                              title="تعديل المنشور"
+                            >
+                              <Edit2 size={13} />
+                            </button>
+                          )}
+                          {onDeletePost && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowPostDeleteConfirm(true);
+                              }}
+                              className="p-1.5 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-xs active:scale-95 border border-red-200/60 dark:border-red-800/50 cursor-pointer"
+                              title="حذف المنشور"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 bg-slate-100 dark:bg-slate-800/60 px-2.5 py-1 rounded-full">
+                      <Clock size={11} />
+                      {timeAgo(currentItem.timestamp || currentItem.created_at)}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Scrollable Post Content */}
                 <div 
                   ref={scrollContainerRef}
                   onScroll={onScroll}
-                  className="flex-1 min-h-0 overflow-y-auto pro-scrollbar px-5 py-4 space-y-4"
+                  className="flex-1 min-h-0 overflow-y-auto pro-scrollbar overscroll-y-contain px-5 py-4 space-y-4"
+                  style={{
+                    WebkitOverflowScrolling: 'touch',
+                    touchAction: 'pan-y',
+                  }}
                 >
                   {currentItem.imageUrl && (
                     <div className="rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-100 dark:border-slate-800">

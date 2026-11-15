@@ -452,7 +452,7 @@ export function NewsView({
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
 
-  const isAdmin = !!(appUser?.isAdmin || appUser?.role === 'admin');
+  const isAdmin = !!(appUser?.isAdmin || appUser?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin || (appUser as any)?.hasSupportAccess);
   const [showAdminSources, setShowAdminSources] = useState(false);
 
   // Unified sources config key (shared with NewsSourcesAdmin)
@@ -824,10 +824,43 @@ export function NewsView({
               <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
               <span>تحديث الأخبار</span>
             </button>
-
-            
           </div>
         </div>
+
+        {/* ── لوحة إدارة قنوات ومصادر الأخبار وتيليجرام للأدمن ── */}
+        <AnimatePresence>
+          {showAdminSources && isAdmin && (
+            <motion.div
+              initial={{ opacity: 0, y: -12, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -12, height: 0 }}
+              transition={{ duration: 0.25 }}
+              className="overflow-hidden mb-6"
+            >
+              <div className="bg-slate-900/95 dark:bg-slate-900/95 text-white rounded-3xl p-4 sm:p-6 border border-blue-500/30 shadow-2xl backdrop-blur-xl">
+                <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-800">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-md">
+                      <Globe size={16} />
+                    </div>
+                    <div>
+                      <h3 className="font-black text-sm text-white">إدارة قنوات ومصادر الأخبار وتيليجرام</h3>
+                      <p className="text-[10px] font-bold text-slate-400">يمكنك إضافة قنوات تيليجرام أو روابط RSS أو خلاصات API ليتم سحب الأخبار منها فورياً</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowAdminSources(false)}
+                    className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-black transition-all cursor-pointer"
+                  >
+                    إغلاق ✕
+                  </button>
+                </div>
+
+                <NewsSourcesAdmin addToast={addToast} />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* ── بطاقات تصنيفات الأخبار المربعة الأنيقة بنفس تصميم سوق المهن ── */}
         <div className="overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none" dir="rtl" style={{ scrollbarWidth: 'none' }}>

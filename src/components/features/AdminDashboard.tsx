@@ -47,7 +47,7 @@ interface Stats {
   unreadNotifications: number;
 }
 
-type Tab = 'overview' | 'reports' | 'support' | 'mock_data' | 'users' | 'posts' | 'resources' | 'settings' | 'security';
+type Tab = 'overview' | 'reports' | 'support' | 'mock_data' | 'users' | 'posts' | 'resources' | 'news_sources' | 'settings' | 'security';
 
 export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardProps) {
   const { setAllUsers: setGlobalUsers, setAppUser, appUser: currentAppUser } = useAppContext();
@@ -58,7 +58,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
     if (isSupportOnly) return 'support';
     try {
       const saved = localStorage.getItem('prolink_admin_tab') as Tab;
-      if (saved && ['overview', 'reports', 'support', 'mock_data', 'users', 'posts', 'resources', 'security', 'settings'].includes(saved)) {
+      if (saved && ['overview', 'reports', 'support', 'mock_data', 'users', 'posts', 'resources', 'news_sources', 'security', 'settings'].includes(saved)) {
         return saved;
       }
       return 'overview';
@@ -863,6 +863,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
     { id: 'users',          label: 'المستخدمون',       icon: <Users size={16} />,        badge: stats.users },
     { id: 'posts',          label: 'المنشورات',        icon: <FileText size={16} />,     badge: stats.posts },
     { id: 'resources',      label: 'إدارة المصادر',     icon: <Building2 size={16} /> },
+    { id: 'news_sources',   label: 'قنوات الأخبار وتيليجرام', icon: <Globe size={16} /> },
     { id: 'security',       label: 'الأمن السيبراني',   icon: <ShieldAlert size={16} />, badge: securityThreatCount > 0 ? securityThreatCount : undefined },
     { id: 'settings',       label: 'الإعدادات',         icon: <Plus className="rotate-45" size={16} /> },
   ];
@@ -2295,6 +2296,22 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                  </div>
                </motion.div>
              )}
+            {activeTab === 'news_sources' && (
+              <motion.div key="news_sources" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-6">
+                <div className="bg-slate-900/60 border border-slate-700/60 rounded-[2.5rem] p-6 md:p-8 backdrop-blur-md">
+                  <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-800">
+                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center text-white shadow-xl shadow-blue-500/20">
+                      <Globe size={24} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-white">إدارة قنوات ومصادر الأخبار وتيليجرام</h3>
+                      <p className="text-xs text-slate-400 font-bold mt-0.5">التحكم في قنوات تيليجرام المربوطة، خلاصات الأخبار RSS، وروابط الـ API التلقائية</p>
+                    </div>
+                  </div>
+                  <NewsSourcesAdmin addToast={addToast} />
+                </div>
+              </motion.div>
+            )}
             {activeTab === 'settings' && (
               <motion.div key="settings" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
                  {/* ── Telegram Support Configuration Card ── */}

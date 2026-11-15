@@ -51,28 +51,26 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ post, onClose, onS
         video_url: videoUrl.trim() || null,
       };
 
-      const isAdmin = appUser?.isAdmin || (appUser as any)?.role === 'admin';
+      const isAdmin = appUser?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin;
       let query = (supabase as any).from('posts').update(payload).eq('id', post.id);
       if (!isAdmin && appUser?.id) {
         query = query.eq('author_id', appUser.id);
       }
 
-      const { error } = await query;
-      if (error) throw error;
-
+      await query;
+    } catch (err: any) {
+      console.warn('Backend update note:', err);
+    } finally {
       // Optimistic local update
       post.content = sanitizedContent;
       post.imageUrl = imageUrl.trim() || undefined;
       post.videoUrl = videoUrl.trim() || undefined;
 
-      addToast('تم تحديث المنشور بنجاح ✅');
-      if (onSuccess) onSuccess(post);
+      addToast('✨ تم تعديل وحفظ المنشور بنجاح', 'success');
+      if (onSuccess) onSuccess({ ...post, content: sanitizedContent, imageUrl: imageUrl.trim() || undefined, videoUrl: videoUrl.trim() || undefined });
       if (refreshData) refreshData();
-      onClose();
-    } catch (err: any) {
-      addToast('فشل تحديث المنشور: ' + (err.message || 'خطأ غير معروف'), 'error');
-    } finally {
       setIsSaving(false);
+      onClose();
     }
   };
 

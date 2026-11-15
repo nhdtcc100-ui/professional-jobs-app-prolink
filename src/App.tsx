@@ -1106,12 +1106,8 @@ function App() {
                               post={item}
                               delay={Math.min(idx * 0.03, 0.3)}
                               onClick={() => {
-                                const isItemArticle = (item as any).post_type === 'article' || (item as any).type === 'article' || item.content?.startsWith('# ');
                                 const feedPosts = memoizedCombinedFeed.filter((it: any) => it.feedType === 'post');
-                                const relevantItems = isItemArticle 
-                                  ? feedPosts.filter((p: any) => p.post_type === 'article' || p.type === 'article' || p.content?.startsWith('# '))
-                                  : feedPosts;
-                                const targetList = relevantItems.length > 0 ? relevantItems : feedPosts;
+                                const targetList = feedPosts.length > 0 ? feedPosts : [item];
                                 const postIdx = Math.max(0, targetList.findIndex((p: any) => p.id === item.id));
                                 setDetailFeed({
                                   type: 'post',
@@ -1125,6 +1121,7 @@ function App() {
                               }}
                               allUsers={allUsers}
                               onEditPost={(p) => setEditingFeedPost(p)}
+                              onDeletePost={(id) => setPosts(prev => prev.filter(p => p.id !== id))}
                             />
                           ) : (
                             <div className="px-1">
@@ -1645,6 +1642,11 @@ function App() {
               setIsApplying(false);
             }}
             appUser={appUser}
+            onEditPost={(p: any) => setEditingFeedPost(p)}
+            onDeletePost={(id: string) => {
+              setPosts(prev => prev.filter(p => p.id !== id));
+              addToast('🗑️ تم حذف المنشور بنجاح', 'success');
+            }}
             onLike={handleLike}
             onDislike={handleDislike}
             onAddComment={handleAddComment}
@@ -1723,7 +1725,10 @@ function App() {
         <EditPostModal
           post={editingFeedPost}
           onClose={() => setEditingFeedPost(null)}
-          onSuccess={() => setEditingFeedPost(null)}
+          onSuccess={(updated) => {
+            setPosts(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p));
+            setEditingFeedPost(null);
+          }}
         />
       )}
     </div>

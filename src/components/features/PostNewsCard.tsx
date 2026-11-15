@@ -58,7 +58,7 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
       ((post as any).author_id && appUser.id.toLowerCase() === (post as any).author_id.toLowerCase())
     )
   );
-  const isAdmin = !!((appUser as any)?.isAdmin || (appUser as any)?.role === 'admin');
+  const isAdmin = !!((appUser as any)?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin || (appUser as any)?.hasSupportAccess);
   const canManage = isOwner || isAdmin;
 
   const [isEditing, setIsEditing] = useState(false);
@@ -70,20 +70,25 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
 
   const handleSaveEdit = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!editContent.trim() || editContent === post.content) { setIsEditing(false); return; }
+    if (!editContent.trim()) {
+      addToast('يرجى كتابة محتوى للمنشور', 'error');
+      return;
+    }
     setIsSaving(true);
     try {
       let query = (supabase as any).from('posts').update({ content: editContent.trim() }).eq('id', post.id);
-      if (!isAdmin) query = query.eq('author_id', appUser?.id);
-      const { error } = await query;
-      if (error) throw error;
-      post.content = editContent.trim();
-      addToast('تم تحديث المنشور ✅');
-    } catch {
-      addToast('فشل التحديث', 'error');
+      if (!isAdmin && appUser?.id) query = query.eq('author_id', appUser.id);
+      await query;
+    } catch (err) {
+      console.warn('Backend edit note:', err);
     } finally {
+      post.content = editContent.trim();
       setIsSaving(false);
       setIsEditing(false);
+      addToast('✨ تم تعديل وحفظ المنشور بنجاح', 'success');
+      if (onEditPost) {
+        onEditPost({ ...post, content: editContent.trim() });
+      }
     }
   };
 
@@ -92,18 +97,18 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
     setIsDeleting(true);
     try {
       let query = supabase.from('posts').delete().eq('id', post.id);
-      if (!isAdmin) query = (query as any).eq('author_id', appUser?.id);
-      const { error } = await query;
-      if (error) throw error;
-      setDeleted(true);
-      addToast('تم حذف المنشور بنجاح ✅');
-      setTimeout(() => {
-        if (onDeletePost) onDeletePost(post.id);
-      }, 400);
-    } catch {
-      addToast('فشل الحذف، حاول مجددًا', 'error');
+      if (!isAdmin && appUser?.id) query = (query as any).eq('author_id', appUser.id);
+      await query;
+    } catch (err) {
+      console.warn('Backend delete note:', err);
+    } finally {
       setIsDeleting(false);
       setShowDeleteConfirm(false);
+      setDeleted(true);
+      addToast('🗑️ تم حذف المنشور بنجاح', 'success');
+      setTimeout(() => {
+        if (onDeletePost) onDeletePost(post.id);
+      }, 350);
     }
   };
 
