@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   User, Briefcase, MapPin, Phone, Lock, FileText, Pencil,
@@ -1943,10 +1944,11 @@ export function ModernProfileView({
         )}
       </AnimatePresence>
 
-      {/* ── Professional Role Change Request Modal ── */}
-      <AnimatePresence>
-        {showRoleModal && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md" dir="rtl">
+      {/* ── Professional Role Change Request Modal (Rendered via Portal to avoid scrolling) ── */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {showRoleModal && (
+            <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md" dir="rtl">
             <motion.div
               initial={{ opacity: 0, scale: 0.94, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -2055,7 +2057,9 @@ export function ModernProfileView({
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body
+    )}
 
     </div>
   );

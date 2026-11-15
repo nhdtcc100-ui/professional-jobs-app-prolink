@@ -319,11 +319,13 @@ export const postService = {
    * ✅ Delete post with ownership verification
    * RLS on Supabase also enforces this at the DB level.
    */
-  async deletePost(postId: string, authorId: string) {
+  async deletePost(postId: string, authorId?: string, isAdmin = false) {
     this.invalidateCache();
-    return (supabase.from('posts') as any)
-      .delete()
-      .eq('id', postId)
-      .eq('author_id', authorId); // ✅ Ownership guard — only author can delete
+    let query = (supabase.from('posts') as any).delete().eq('id', postId);
+    // If not admin and authorId provided, enforce ownership guard at query level
+    if (!isAdmin && authorId) {
+      query = query.eq('author_id', authorId);
+    }
+    return query;
   },
 };

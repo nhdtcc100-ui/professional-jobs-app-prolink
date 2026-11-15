@@ -91,7 +91,7 @@ function App() {
     addToast, handleGoogleLogin, handleEmailLogin, handleEmailSignUp, handlePhoneAuth, logout,
     handleApplyJob, setAppUser, selectRole, handleSyncSignal, handleAcceptSync,
     handleAcceptConnection, handleRejectConnection,
-    handleLike, handleDislike, handleAddComment, handleEchoPost, handleRelocateToUser, toggleProRank,
+    handleLike, handleDislike, handleAddComment, handleEchoPost, handleDeletePost, handleRelocateToUser, toggleProRank,
     setNotifications, readNotifIds, setReadNotifIds, setAllUsers, setMessages,
     authEmail, setAuthEmail, authPhone, setAuthPhone, authName, setAuthName, authPassword, setAuthPassword,
     myGroups, fetchMyGroups, allGroups, fetchGroups,
@@ -1042,9 +1042,7 @@ function App() {
                       setDetailFeed({ type: 'job', items: jobs.length > 0 ? jobs : [job], initialIndex: idx });
                     }}
                   />
-                  {canUserPostAndInteract(appUser) && (
-                    <PostBox avatar={appUser?.avatar} appUser={appUser} addToast={addToast} />
-                  )}
+
 
                   {/* ── Feed Control & Refresh Bar ── */}
                   <div className="flex items-center justify-between px-4 py-2.5 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm">
@@ -1121,7 +1119,7 @@ function App() {
                               }}
                               allUsers={allUsers}
                               onEditPost={(p) => setEditingFeedPost(p)}
-                              onDeletePost={(id) => setPosts(prev => prev.filter(p => p.id !== id))}
+                              onDeletePost={handleDeletePost}
                             />
                           ) : (
                             <div className="px-1">
@@ -1643,10 +1641,7 @@ function App() {
             }}
             appUser={appUser}
             onEditPost={(p: any) => setEditingFeedPost(p)}
-            onDeletePost={(id: string) => {
-              setPosts(prev => prev.filter(p => p.id !== id));
-              addToast('🗑️ تم حذف المنشور بنجاح', 'success');
-            }}
+            onDeletePost={handleDeletePost}
             onLike={handleLike}
             onDislike={handleDislike}
             onAddComment={handleAddComment}

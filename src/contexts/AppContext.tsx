@@ -104,6 +104,7 @@ interface AppContextType {
   dislikedPosts: Set<string>;
   handleAddComment: (postId: string, commentContent: string) => Promise<void>;
   handleEchoPost: (post: Post) => Promise<void>;
+  handleDeletePost: (postId: string) => Promise<boolean>;
   handleRelocateToUser: (targetUser: AppUser, post: Post) => Promise<void>;
   toggleProRank: () => Promise<void>;
   fetchMyGroups: () => Promise<void>;
@@ -1541,6 +1542,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) { addToast('فشل تسجيل الصدى', 'error'); }
   };
 
+  const handleDeletePost = async (postId: string): Promise<boolean> => {
+    try {
+      const isAdmin = !!(appUser?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
+      const { error } = await postService.deletePost(postId, appUser?.id, isAdmin);
+      if (error) {
+        console.error('[handleDeletePost] DB Error:', error);
+        addToast('تعذر حذف المنشور من قاعدة البيانات: ' + (error.message || 'خطأ في الصلاحيات'), 'error');
+        return false;
+      }
+
+      // Success from DB! Invalidate cache & update state + localStorage
+      postService.invalidateCache();
+      setPosts(prev => {
+        const next = prev.filter(p => p.id !== postId);
+        try { localStorage.setItem('prolink_cached_posts', JSON.stringify(next.slice(0, 60))); } catch {}
+        return next;
+      });
+      addToast('🗑️ تم حذف المنشور نهائياً من قاعدة البيانات بنجاح', 'success');
+      return true;
+    } catch (err: any) {
+      console.error('[handleDeletePost] Exception:', err);
+      addToast('فشل حذف المنشور: ' + (err?.message || 'خطأ غير معروف'), 'error');
+      return false;
+    }
+  };
+
   const handleRelocateToUser = async (targetUser: AppUser, post: Post) => {
     if (!appUser) return;
     try {
@@ -2254,7 +2281,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAppUser(u);
     },
     setNotifications, setAllUsers, setPosts, setMessages, setMyGroups,
-    selectRole, handleSyncSignal, handleAcceptSync, handleAcceptConnection, handleRejectConnection, handleLike, likedPosts, handleDislike, dislikedPosts, handleAddComment, handleEchoPost, handleRelocateToUser, toggleProRank,
+    selectRole, handleSyncSignal, handleAcceptSync, handleAcceptConnection, handleRejectConnection, handleLike, likedPosts, handleDislike, dislikedPosts, handleAddComment, handleEchoPost, handleDeletePost, handleRelocateToUser, toggleProRank,
     authEmail, setAuthEmail, authPhone, setAuthPhone, authName, setAuthName, authPassword, setAuthPassword,
     fetchMyGroups,
     allGroups,

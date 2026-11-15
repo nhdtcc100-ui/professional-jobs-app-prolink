@@ -1,4 +1,5 @@
 ﻿import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Clock, 
@@ -23,7 +24,7 @@ interface PostNewsCardProps {
   onClick: () => void;
   onAuthorClick?: (e: React.MouseEvent) => void;
   allUsers: any[];
-  onDeletePost?: (id: string) => void;
+  onDeletePost?: (id: string) => Promise<boolean> | void;
   onEditPost?: (post: Post) => void;
 }
 
@@ -96,19 +97,29 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
     e.stopPropagation();
     setIsDeleting(true);
     try {
-      let query = supabase.from('posts').delete().eq('id', post.id);
-      if (!isAdmin && appUser?.id) query = (query as any).eq('author_id', appUser.id);
-      await query;
-    } catch (err) {
-      console.warn('Backend delete note:', err);
+      if (onDeletePost) {
+        const ok = await onDeletePost(post.id);
+        if (ok !== false) {
+          setDeleted(true);
+          setShowDeleteConfirm(false);
+        }
+      } else {
+        let query = supabase.from('posts').delete().eq('id', post.id);
+        if (!isAdmin && appUser?.id) query = (query as any).eq('author_id', appUser.id);
+        const { error } = await query;
+        if (error) {
+          console.error('[handleDelete] Supabase error:', error);
+          throw new Error(error.message || 'فشل حذف المنشور من قاعدة البيانات');
+        }
+        setDeleted(true);
+        setShowDeleteConfirm(false);
+        addToast('🗑️ تم حذف المنشور نهائياً من قاعدة البيانات بنجاح', 'success');
+      }
+    } catch (err: any) {
+      console.error('[handleDelete] Failed:', err);
+      addToast('فشل حذف المنشور: ' + (err?.message || 'خطأ في قاعدة البيانات'), 'error');
     } finally {
       setIsDeleting(false);
-      setShowDeleteConfirm(false);
-      setDeleted(true);
-      addToast('🗑️ تم حذف المنشور بنجاح', 'success');
-      setTimeout(() => {
-        if (onDeletePost) onDeletePost(post.id);
-      }, 350);
     }
   };
 
@@ -131,55 +142,85 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
       transition={{ delay }}
       className="group relative overflow-hidden rounded-[2rem]"
     >
-      {/* ── Professional Delete Confirmation Overlay ── */}
-      <AnimatePresence>
-        {showDeleteConfirm && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.96, backdropFilter: 'blur(0px)' }}
-            animate={{ opacity: 1, scale: 1, backdropFilter: 'blur(12px)' }}
-            exit={{ opacity: 0, scale: 0.96 }}
-            transition={{ duration: 0.22, ease: 'easeOut' }}
-            className="absolute inset-0 z-30 flex items-center justify-center rounded-[2rem] bg-white/90 dark:bg-slate-900/95 backdrop-blur-xl border border-red-200/60 dark:border-red-900/40 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex flex-col items-center gap-4 px-6 text-center">
-              {/* Icon */}
-              <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-900/40 flex items-center justify-center border border-red-200 dark:border-red-800/50 shadow-lg">
-                <AlertTriangle size={26} className="text-red-600 dark:text-red-400" />
-              </div>
+      {/* ── Global Centered Delete Confirmation Modal (Rendered via Portal) ── */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {showDeleteConfirm && (
+            <div
+              className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+              dir="rtl"
+              onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(false); }}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92, y: 15 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.92, y: 15 }}
+                transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-md bg-white dark:bg-slate-900 border border-red-500/30 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 text-center relative overflow-hidden"
+              >
+                {/* Glowing red accent line */}
+                <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-red-600 via-rose-500 to-amber-500" />
 
-              {/* Title */}
-              <div>
-                <p className="text-sm font-black text-slate-900 dark:text-white mb-1">حذف المنشور؟</p>
-                <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
-                  لا يمكن التراجع عن هذا الإجراء بعد تأكيده
-                </p>
-              </div>
+                {/* Warning Icon Badge */}
+                <div className="w-16 h-16 mx-auto rounded-3xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800/60 flex items-center justify-center text-red-600 dark:text-red-400 shadow-xl shadow-red-500/10">
+                  <Trash2 size={28} />
+                </div>
 
-              {/* Buttons */}
-              <div className="flex items-center gap-3 w-full">
-                <button
-                  onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(false); }}
-                  disabled={isDeleting}
-                  className="flex-1 py-2.5 rounded-2xl text-xs font-black bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-                >
-                  إلغاء
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={isDeleting}
-                  className="flex-1 py-2.5 rounded-2xl text-xs font-black bg-red-600 hover:bg-red-700 text-white border border-transparent shadow-lg shadow-red-500/25 transition-all active:scale-95 disabled:opacity-60 flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  {isDeleting
-                    ? <><Loader2 size={13} className="animate-spin" /> جاري الحذف...</>
-                    : <><Trash2 size={13} /> تأكيد الحذف</>
-                  }
-                </button>
-              </div>
+                {/* Title & Description */}
+                <div>
+                  <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1.5">
+                    تأكيد حذف المنشور نهائياً
+                  </h3>
+                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed px-2">
+                    سيتم حذف هذا المنشور بالكامل من قاعدة البيانات فوراً ولن تتمكن من استرجاعه لاحقاً. هل أنت متأكد من الحذف؟
+                  </p>
+                </div>
+
+                {/* Post Snippet Preview */}
+                {(post.content || articleTitle) && (
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-700/60 text-right max-h-24 overflow-y-auto">
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 line-clamp-2 leading-relaxed">
+                      "{articleTitle || post.content}"
+                    </p>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-black hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                  >
+                    إلغاء الأمر
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={handleDelete}
+                    className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white text-xs font-black shadow-lg shadow-red-500/30 transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {isDeleting ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>جاري الحذف...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 size={14} />
+                        <span>نعم، حذف نهائي</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* ── Main Foreground Card ── */}
       <motion.div

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, type Variants } from 'motion/react';
 import { 
   ArrowRight, Briefcase, MapPin, DollarSign, 
@@ -27,7 +28,7 @@ interface DetailFeedPageProps {
   allUsers?: any[];
   onPublisherClick?: (user: any, item?: any, currentIndex?: number) => void;
   onEditPost?: (post: any) => void;
-  onDeletePost?: (id: string) => void;
+  onDeletePost?: (id: string) => Promise<boolean> | void;
 }
 
 export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
@@ -551,50 +552,72 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
             ) : !isCurNews ? (
               /* ── Post View: الجزء العلوي ثابت والتفاصيل سكرول ── */
               <div className="flex flex-col h-full w-full overflow-hidden">
-                {/* Professional Delete Confirmation in Detail View */}
-                <AnimatePresence>
-                  {showPostDeleteConfirm && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 0.96 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.96 }}
-                      className="absolute inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md rounded-3xl"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl space-y-4">
-                        <div className="w-12 h-12 mx-auto rounded-2xl bg-red-100 dark:bg-red-950/60 border border-red-200 dark:border-red-800 flex items-center justify-center text-red-600 dark:text-red-400">
-                          <AlertTriangle size={24} />
-                        </div>
-                        <div>
-                          <h4 className="font-black text-slate-900 dark:text-white text-base mb-1">تأكيد حذف المنشور</h4>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">هل أنت متأكد من رغبتك في حذف هذا المنشور؟ لن تتمكن من استرجاعه لاحقاً.</p>
-                        </div>
-                        <div className="flex items-center gap-2 pt-2">
-                          <button
-                            onClick={() => setShowPostDeleteConfirm(false)}
-                            className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 text-xs font-black transition-all active:scale-95 cursor-pointer"
-                          >
-                            إلغاء
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (onDeletePost) onDeletePost(currentItem.id);
-                              setShowPostDeleteConfirm(false);
-                              if (items.length <= 1) {
-                                onClose();
-                              } else {
-                                goToNext();
-                              }
-                            }}
-                            className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black shadow-lg shadow-red-600/30 transition-all active:scale-95 cursor-pointer"
-                          >
-                            نعم، احذف
-                          </button>
-                        </div>
+                {/* Professional Global Delete Confirmation in Detail View */}
+                {typeof document !== 'undefined' && createPortal(
+                  <AnimatePresence>
+                    {showPostDeleteConfirm && (
+                      <div
+                        className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+                        dir="rtl"
+                        onClick={(e) => { e.stopPropagation(); setShowPostDeleteConfirm(false); }}
+                      >
+                        <motion.div
+                          initial={{ opacity: 0, scale: 0.92, y: 15 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.92, y: 15 }}
+                          transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="w-full max-w-md bg-white dark:bg-slate-900 border border-red-500/30 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 text-center relative overflow-hidden"
+                        >
+                          <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-red-600 via-rose-500 to-amber-500" />
+                          <div className="w-16 h-16 mx-auto rounded-3xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800/60 flex items-center justify-center text-red-600 dark:text-red-400 shadow-xl shadow-red-500/10">
+                            <Trash2 size={28} />
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1.5">
+                              تأكيد حذف المنشور نهائياً
+                            </h3>
+                            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed px-2">
+                              سيتم حذف هذا المنشور بالكامل من قاعدة البيانات فوراً ولن تتمكن من استرجاعه لاحقاً. هل تريد المتابعة؟
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => setShowPostDeleteConfirm(false)}
+                              className="flex-1 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-black hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-95 cursor-pointer"
+                            >
+                              إلغاء الأمر
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  if (onDeletePost) {
+                                    await onDeletePost(currentItem.id);
+                                  }
+                                  setShowPostDeleteConfirm(false);
+                                  if (items.length <= 1) {
+                                    onClose();
+                                  } else {
+                                    goToNext();
+                                  }
+                                } catch (e) {
+                                  console.error('Delete error:', e);
+                                }
+                              }}
+                              className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white text-xs font-black shadow-lg shadow-red-500/30 transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                              <Trash2 size={14} />
+                              <span>نعم، حذف نهائي</span>
+                            </button>
+                          </div>
+                        </motion.div>
                       </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                    )}
+                  </AnimatePresence>,
+                  document.body
+                )}
 
                 {/* Fixed Post Author Bar */}
                 <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10">
