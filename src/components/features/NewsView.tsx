@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { newsService } from '../../lib/services/newsService';
 import { DetailFeedPage } from './DetailFeedPage';
+import { NewsSourcesAdmin, NewsSourceItem } from './NewsSourcesAdmin';
 import { RecedeCard } from '../common/RecedeCard';
 import { safeTimeAgo } from '../../lib/utils/formatDate';
 import { useAppContext } from '../../contexts/AppContext';
@@ -450,30 +451,101 @@ export function NewsView({
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
-  const [tgInput, setTgInput] = useState('');
-  const [showSources, setShowSources] = useState(false);
 
-  // Allowed Telegram sources (admin-defined only)
-  const DEFAULT_TG_SOURCES = [
-    { id: '1', username: 'thekhana', label: 'الخانة', enabled: true },
-    { id: '2', username: 'Keko4444', label: 'الوسيط', enabled: true },
-    { id: '3', username: 'engahmad88', label: 'أحمد إنج', enabled: true },
+  const isAdmin = !!(appUser?.isAdmin || appUser?.role === 'admin');
+  const [showAdminSources, setShowAdminSources] = useState(false);
+
+  // Unified sources config key (shared with NewsSourcesAdmin)
+  const SOURCES_CONFIG_KEY = 'prolink_news_sources_config_v1';
+
+  const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
+    {
+      id: 'src-1',
+      name: 'قناة وظائف العراق (تيليجرام)',
+      type: 'telegram',
+      url: 'https://t.me/s/iraq_jobs_pro',
+      category: 'jobs',
+      enabled: true,
+    },
+    {
+      id: 'src-2',
+      name: 'الجزيرة نت - أخبار عامة (RSS)',
+      type: 'rss',
+      url: 'https://www.aljazeera.net/aljazeerarss/a7c186be-1baa-4bd4-9d80-a84db769f779/73d0e1b4-532f-45ef-b135-bfdff8b8cab9',
+      category: 'general',
+      enabled: true,
+    },
+    {
+      id: 'src-3',
+      name: 'يلا كورة - أخبار الرياضة (RSS)',
+      type: 'rss',
+      url: 'https://www.yallakora.com/rss',
+      category: 'sports',
+      enabled: true,
+    },
+    {
+      id: 'src-4',
+      name: 'أرقام - مال واقتصاد (RSS)',
+      type: 'rss',
+      url: 'https://www.argaam.com/rss',
+      category: 'economy',
+      enabled: true,
+    },
+    {
+      id: 'src-5',
+      name: 'سكاي نيوز عربية (RSS)',
+      type: 'rss',
+      url: 'https://www.skynewsarabia.com/web/rss',
+      category: 'general',
+      enabled: true,
+    },
+    {
+      id: 'src-6',
+      name: 'العربية - أخبار سياسية (RSS)',
+      type: 'rss',
+      url: 'https://www.alarabiya.net/tools/rss',
+      category: 'politics',
+      enabled: true,
+    },
+    {
+      id: 'src-7',
+      name: 'الجزيرة نت - رياضة (RSS)',
+      type: 'rss',
+      url: 'https://www.aljazeera.net/aljazeerarss/0be57742-7a9b-4a74-b7e7-daab0cd1be3b/5dcae4d3-3ef5-4ee3-bb9c-5b4bef94e0c9',
+      category: 'sports',
+      enabled: true,
+    },
+    {
+      id: 'src-8',
+      name: 'مباشر - اقتصاد وأسهم (RSS)',
+      type: 'rss',
+      url: 'https://www.mubasher.info/rss',
+      category: 'economy',
+      enabled: true,
+    }
   ];
 
-  const [sources, setSources] = useState<any[]>(() => {
+  const [sources, setSources] = useState<NewsSourceItem[]>(() => {
     try {
-      const saved = localStorage.getItem('prolink_news_sources_v1');
-      if (!saved) return DEFAULT_TG_SOURCES;
-      const parsed = JSON.parse(saved);
-      // Validate: only keep sources whose username matches known list or was explicitly saved
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      const saved = localStorage.getItem(SOURCES_CONFIG_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
     } catch {}
-    return DEFAULT_TG_SOURCES;
+    return DEFAULT_SOURCES_LIST;
   });
 
+  // Re-read sources whenever admin panel closes/updates
   useEffect(() => {
-    localStorage.setItem('prolink_news_sources_v1', JSON.stringify(sources));
-  }, [sources]);
+    try {
+      const saved = localStorage.getItem(SOURCES_CONFIG_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) setSources(parsed);
+      }
+    } catch {}
+  }, [showAdminSources]);
 
   const getCache = (): NewsItem[] | null => {
     try {
@@ -506,35 +578,74 @@ export function NewsView({
     try {
       const activeSources = sources.filter(s => s.enabled);
 
-      // Build allowed source labels for strict filtering
-      const allowedSources = new Set<string>([
-        ...activeSources.map(s => `@${s.username}`),
-        ...activeSources.map(s => s.username),
-      ]);
-
-      const allFeedPromises = [
-        // Telegram channels (only configured app sources)
-        ...activeSources.map(async (src) => {
-          try {
-            const items = await newsService.fetchRSS(newsService.getTelegramRssUrl(src.username), `@${src.username}`);
-            return items.map(item => {
-              const cleanContent = newsService.cleanText(item.content);
-              return { ...item, title: newsService.cleanText(item.title), content: cleanContent, description: cleanContent, region: 'iraq' as const, topic: 'وظائف', source: `@${src.username}` } as NewsItem;
+      const allFeedPromises = activeSources.map(async (src) => {
+        try {
+          if (src.type === 'rss') {
+            const items = await fetchFeed({
+              url: src.url,
+              label: src.name,
+              region: src.category === 'sports' || src.category === 'economy' ? 'arab' : 'global'
             });
-          } catch { return [] as NewsItem[]; }
-        }),
-      ];
+            return items.map(it => ({
+              ...it,
+              topic: src.category === 'sports' ? 'رياضة' :
+                     src.category === 'economy' ? 'اقتصاد' :
+                     src.category === 'politics' ? 'سياسة' :
+                     src.category === 'tech' ? 'تقنية' :
+                     src.category === 'jobs' ? 'وظائف' : it.topic || 'عام'
+            }));
+          } else if (src.type === 'telegram') {
+            const cleanUser = src.url.replace(/^.*t\.me\/s?\/?/, '').replace('@', '').split('/')[0].trim();
+            const items = await newsService.fetchRSS(newsService.getTelegramRssUrl(cleanUser), src.name || `@${cleanUser}`);
+            return items.map(it => ({
+              ...it,
+              topic: src.category === 'sports' ? 'رياضة' :
+                     src.category === 'economy' ? 'اقتصاد' :
+                     src.category === 'politics' ? 'سياسة' :
+                     src.category === 'tech' ? 'تقنية' :
+                     src.category === 'jobs' ? 'وظائف' : 'وظائف'
+            }));
+          } else if (src.type === 'api') {
+            const headers: Record<string, string> = {};
+            if (src.apiKey) {
+              headers['Authorization'] = `Bearer ${src.apiKey}`;
+              headers['X-Api-Key'] = src.apiKey;
+            }
+            const res = await fetch(src.url, { headers, signal: AbortSignal.timeout(5000) });
+            if (res.ok) {
+              const json = await res.json();
+              const articles = json.articles || json.items || json.data || (Array.isArray(json) ? json : []);
+              return articles.slice(0, 15).map((a: any) => ({
+                id: Math.random().toString(36).substr(2, 9),
+                title: newsService.cleanText(a.title || a.name || ''),
+                link: a.url || a.link || '#',
+                pubDate: a.publishedAt || a.pubDate || new Date().toISOString(),
+                content: newsService.cleanText(a.description || a.content || ''),
+                description: newsService.cleanText(a.description || a.content || ''),
+                author: a.source?.name || a.author || src.name,
+                thumbnail: a.urlToImage || a.thumbnail || a.image || APP_PLACEHOLDER,
+                region: 'arab' as const,
+                topic: src.category === 'sports' ? 'رياضة' :
+                       src.category === 'economy' ? 'اقتصاد' :
+                       src.category === 'politics' ? 'سياسة' :
+                       src.category === 'tech' ? 'تقنية' : 'عام',
+                source: src.name,
+              }));
+            }
+          }
+        } catch (err) {
+          console.error('Fetch source error for:', src.name, err);
+        }
+        return [] as NewsItem[];
+      });
 
       const results = await Promise.allSettled(allFeedPromises);
       const collected: NewsItem[] = results
         .filter(r => r.status === 'fulfilled')
-        .flatMap(r => (r as PromiseFulfilledResult<NewsItem[]>).value)
-        // ✅ Strict source filter: only keep items from registered sources
-        .filter(n => !n.source || allowedSources.has(n.source));
+        .flatMap(r => (r as PromiseFulfilledResult<NewsItem[]>).value);
 
-      // Always include political, sports, and economic news links so topic filters are rich and responsive
-      const nonJobFallbacks = FALLBACK.filter(f => f.topic !== 'وظائف');
-      const allNews = [...collected, ...nonJobFallbacks];
+      // Include curated fallbacks so every category has guaranteed rich content
+      const allNews = [...collected, ...FALLBACK];
 
       if (allNews.length > 0) {
         const seen = new Set<string>();
@@ -562,36 +673,6 @@ export function NewsView({
   }, [sources, appUser?.isAdmin, news]);
 
   useEffect(() => { fetchNews(); }, []);
-
-  const toggleSource = (id: string) => {
-    setSources(prev => prev.map(s => s.id === id ? { ...s, enabled: !s.enabled } : s));
-  };
-
-  const removeSource = (id: string) => {
-    setSources(prev => prev.filter(s => s.id !== id));
-  };
-
-  const handleAddSource = () => {
-    if (!tgInput.trim()) return;
-    let cleanChannel = tgInput.trim()
-      .replace(/^@/, '')
-      .replace(/^https?:\/\/t\.me\//, '')
-      .replace(/^t\.me\//, '')
-      .split('/')[0]
-      .trim();
-      
-    if (cleanChannel) {
-      if (sources.some(s => s.username === cleanChannel)) return;
-      const newSource = {
-        id: Math.random().toString(36).substr(2, 9),
-        username: cleanChannel,
-        label: cleanChannel,
-        enabled: true
-      };
-      setSources(prev => [...prev, newSource]);
-      setTgInput('');
-    }
-  };
 
   const NEWS_CATEGORIES = [
     {
@@ -712,18 +793,22 @@ export function NewsView({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 relative">
-            {appUser?.isAdmin && (
+          <div className="flex items-center gap-2 relative flex-wrap">
+            {isAdmin && (
               <button 
-                onClick={() => setShowSources(!showSources)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black transition-all border shadow-sm ${
-                  showSources 
-                    ? 'bg-blue-600 text-white border-transparent' 
-                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                onClick={() => setShowAdminSources(!showAdminSources)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-black transition-all border shadow-sm ${
+                  showAdminSources 
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-transparent shadow-blue-500/25' 
+                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-blue-500'
                 }`}
+                title="إدارة قنوات ومصادر الأخبار والـ API"
               >
-                <Globe size={14} />
-                إدارة مصادر التليجرام
+                <Globe size={15} className={showAdminSources ? 'text-white' : 'text-blue-500'} />
+                <span>إدارة قنوات الأخبار والـ API (للأدمن)</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-blue-500/20 text-blue-400">
+                  {showAdminSources ? 'إغلاق ✕' : 'إضافة وتعديل ⚙️'}
+                </span>
               </button>
             )}
 
@@ -740,64 +825,7 @@ export function NewsView({
               <span>تحديث الأخبار</span>
             </button>
 
-            {/* Sources Dashboard Dropdown (Admins only) */}
-            <AnimatePresence>
-              {appUser?.isAdmin && showSources && (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute left-0 top-full mt-2 w-72 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-100 dark:border-slate-800 z-50 p-4"
-                >
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-[11px] font-black text-slate-800 dark:text-white">تخصيص المصادر</h4>
-                    <span className="text-[9px] text-slate-400 font-bold">{sources.length} مصادر</span>
-                  </div>
-
-                  <div className="space-y-2 max-h-60 overflow-y-auto no-scrollbar mb-4">
-                    {sources.map(src => (
-                      <div key={src.id} className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-100 dark:border-slate-700">
-                        <div className="flex flex-col">
-                          <span className="text-[10px] font-black text-slate-700 dark:text-slate-200 truncate w-32">@{src.username}</span>
-                          <span className="text-[8px] text-slate-400 font-bold">{src.enabled ? 'مفعل' : 'متوقف'}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button 
-                            onClick={() => toggleSource(src.id)}
-                            className={`p-1.5 rounded-lg transition-all ${src.enabled ? 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400' : 'bg-slate-200 dark:bg-slate-700 text-slate-400'}`}
-                          >
-                            <Wifi size={12} />
-                          </button>
-                          <button 
-                            onClick={() => removeSource(src.id)}
-                            className="p-1.5 bg-red-50 dark:bg-red-950/50 text-red-500 rounded-lg hover:bg-red-100"
-                          >
-                            <Info size={12} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="relative pt-2 border-t border-slate-100 dark:border-slate-800">
-                    <input
-                      type="text"
-                      value={tgInput}
-                      onChange={(e) => setTgInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAddSource()}
-                      placeholder="أضف قناة (مثال: thekhana)"
-                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl px-3 py-2 text-[10px] font-bold focus:outline-none focus:border-blue-400 text-slate-800 dark:text-white"
-                    />
-                    <button 
-                      onClick={handleAddSource}
-                      className="absolute left-1 top-3 bottom-1 px-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[9px] font-black transition-colors"
-                    >
-                      إضافة
-                    </button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            
           </div>
         </div>
 
