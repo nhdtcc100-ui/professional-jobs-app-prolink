@@ -74,10 +74,10 @@ const DEFAULT_SOURCES: NewsSourceItem[] = [
   },
   {
     id: 'src-7',
-    name: 'beIN Sports - رياضة (RSS)',
-    type: 'rss',
-    url: 'https://www.beinsports.com/ar/rss',
-    category: 'sports',
+    name: 'وظائف العراق الهندسية والإدارية (تيليجرام)',
+    type: 'telegram',
+    url: 'https://t.me/s/engahmad88',
+    category: 'jobs',
     enabled: true,
   },
   {
@@ -130,11 +130,11 @@ export const NewsSourcesAdmin: React.FC<{ addToast: (msg: string, type?: 'succes
       apiKey: ''
     },
     {
-      label: '🏆 beIN Sports - رياضة عالمية (RSS)',
-      type: 'rss' as const,
-      category: 'sports' as const,
-      name: 'beIN Sports أخبار الرياضة',
-      url: 'https://www.beinsports.com/ar/rss',
+      label: '💼 وظائف العراق الهندسية والإدارية (تيليجرام)',
+      type: 'telegram' as const,
+      category: 'jobs' as const,
+      name: 'قناة أحمد إنج - وظائف هندسية',
+      url: 'https://t.me/s/engahmad88',
       apiKey: ''
     },
     {

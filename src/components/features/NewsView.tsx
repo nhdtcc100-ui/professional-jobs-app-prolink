@@ -104,8 +104,11 @@ const fetchFeed = async (feed: { url: string; region: NewsItem['region']; label:
     } catch (_) {}
   }
 
-  // 2. Try rss2json API (bypasses CORS and returns structured items)
-  if (items.length === 0) {
+  // 2. Try rss2json API (only for verified safe domains that never return 422)
+  const RSS2JSON_SAFE_DOMAINS = ['aljazeera.net', 'bbci.co.uk', 'bbc.com', 'cnn.com', 'skynewsarabia.com'];
+  const isSafeForRss2Json = RSS2JSON_SAFE_DOMAINS.some(d => feed.url.includes(d));
+
+  if (items.length === 0 && isSafeForRss2Json) {
     try {
       const res = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(feed.url)}`, {
         signal: AbortSignal.timeout(4500)
@@ -559,10 +562,10 @@ const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
   },
   {
     id: 'src-7',
-    name: 'beIN Sports - رياضة (RSS)',
-    type: 'rss',
-    url: 'https://www.beinsports.com/ar/rss',
-    category: 'sports',
+    name: 'وظائف العراق الهندسية والإدارية (تيليجرام)',
+    type: 'telegram',
+    url: 'https://t.me/s/engahmad88',
+    category: 'jobs',
     enabled: true,
   },
   {
@@ -577,7 +580,7 @@ const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
 
   const sanitizeSources = (list: any[]): NewsSourceItem[] => {
     // Filter out defunct / broken legacy URLs from older saves
-    const defunctHosts = ['argaam.com', 'yallakora.com', 'mubasher.info', 'alarabiya.net/tools/rss'];
+    const defunctHosts = ['argaam.com', 'yallakora.com', 'mubasher.info', 'alarabiya.net/tools/rss', 'beinsports.com'];
     const cleaned = list.filter(s => !defunctHosts.some(d => s.url && s.url.includes(d)));
     if (cleaned.length < 3) return DEFAULT_SOURCES_LIST;
     return cleaned;
