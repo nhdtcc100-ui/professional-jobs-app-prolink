@@ -50,7 +50,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
 
   // ⚡ Auto-expand single-item array to full collection so the total count always appears accurately!
   const resolvedItems = useMemo(() => {
-    if (items && resolvedItems.length > 1) return items;
+    if (items && items.length > 1) return items;
     const first = items?.[0];
     if (type === 'job' || first?.feedType === 'job' || (first?.company && !first?.authorId)) {
       if (contextJobs.length > 0) return contextJobs;
