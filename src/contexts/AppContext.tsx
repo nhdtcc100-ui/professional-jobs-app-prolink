@@ -105,6 +105,8 @@ interface AppContextType {
   handleAddComment: (postId: string, commentContent: string) => Promise<void>;
   handleEchoPost: (post: Post) => Promise<void>;
   handleDeletePost: (postId: string) => Promise<boolean>;
+  handleDeleteJob: (jobId: string) => Promise<boolean>;
+  setJobs: React.Dispatch<React.SetStateAction<Job[]>>;
   handleRelocateToUser: (targetUser: AppUser, post: Post) => Promise<void>;
   toggleProRank: () => Promise<void>;
   fetchMyGroups: () => Promise<void>;
@@ -495,15 +497,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [isMockEnabled, appUser?.id, user?.id]);
 
   const effectivePosts = React.useMemo(() => {
-    if (!isMockEnabled || !mockBundle) return posts;
-    const realIds = new Set(posts.map(p => p.id));
-    return [...posts, ...mockBundle.posts.filter(p => !realIds.has(p.id))];
+    const delSet = getDeletedPostIds();
+    const base = posts.filter(p => !delSet.has(p.id));
+    if (!isMockEnabled || !mockBundle) return base;
+    const realIds = new Set(base.map(p => p.id));
+    return [...base, ...mockBundle.posts.filter(p => !realIds.has(p.id) && !delSet.has(p.id))];
   }, [posts, isMockEnabled, mockBundle]);
 
   const effectiveJobs = React.useMemo(() => {
-    if (!isMockEnabled || !mockBundle) return jobs;
-    const realIds = new Set(jobs.map(j => j.id));
-    return [...jobs, ...mockBundle.jobs.filter(j => !realIds.has(j.id))];
+    const delSet = getDeletedJobIds();
+    const base = jobs.filter(j => !delSet.has(j.id));
+    if (!isMockEnabled || !mockBundle) return base;
+    const realIds = new Set(base.map(j => j.id));
+    return [...base, ...mockBundle.jobs.filter(j => !realIds.has(j.id) && !delSet.has(j.id))];
   }, [jobs, isMockEnabled, mockBundle]);
 
   const effectiveAllUsers = React.useMemo(() => {
@@ -975,7 +981,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return scoreB - scoreA;
         });
 
-        setPosts(sorted as any);
+        const delPostIds = getDeletedPostIds();
+        const filteredPosts = (sorted as any[]).filter(p => !delPostIds.has(p.id));
+        setPosts(filteredPosts as any);
         // ✅ Cache posts in localStorage for instant load next time
         try { localStorage.setItem('prolink_cached_posts', JSON.stringify(sorted.slice(0, 60))); } catch {}
       }
@@ -1009,7 +1017,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           employerName: j.company,
           postedAt: { toDate: () => new Date(j.created_at) }
         }));
-        setJobs(mappedJobs as any);
+        const delJobIds = getDeletedJobIds();
+        const filteredJobs = (mappedJobs as any[]).filter(j => !delJobIds.has(j.id));
+        setJobs(filteredJobs as any);
         // ✅ Cache jobs in localStorage for instant load next time
         try { localStorage.setItem('prolink_cached_jobs', JSON.stringify(mappedJobs.slice(0, 60))); } catch {}
       }
@@ -1588,6 +1598,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) { addToast('فشل تسجيل الصدى', 'error'); }
   };
 
+
+  const handleDeleteJob = async (jobId: string): Promise<boolean> => {
+    try {
+      const isAdmin = !!(appUser?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
+      
+      // 1. Delete from Supabase DB
+      let query = (supabase.from('jobs') as any).delete().eq('id', jobId);
+      if (!isAdmin && appUser?.id) {
+        query = query.eq('employer_id', appUser.id);
+      }
+      const { error } = await query;
+      if (error) {
+        console.error('[handleDeleteJob] Supabase DB Error:', error);
+      }
+
+      // 2. Persist deleted job ID in localStorage so it never returns on refresh
+      try {
+        const rawDel = localStorage.getItem('prolink_deleted_jobs');
+        const deletedArr = rawDel ? JSON.parse(rawDel) : [];
+        if (!deletedArr.includes(jobId)) {
+          deletedArr.push(jobId);
+          localStorage.setItem('prolink_deleted_jobs', JSON.stringify(deletedArr.slice(-300)));
+        }
+      } catch {}
+
+      // 3. Update state & cached jobs in localStorage
+      setJobs(prev => {
+        const next = prev.filter(j => j.id !== jobId);
+        try { localStorage.setItem('prolink_cached_jobs', JSON.stringify(next.slice(0, 60))); } catch {}
+        return next;
+      });
+
+      addToast('🗑️ تم حذف الوظيفة نهائياً من قاعدة البيانات بنجاح', 'success');
+      return true;
+    } catch (err: any) {
+      console.error('[handleDeleteJob] Exception:', err);
+      addToast('فشل حذف الوظيفة: ' + (err?.message || 'خطأ غير معروف'), 'error');
+      return false;
+    }
+  };
+
   const handleDeletePost = async (postId: string): Promise<boolean> => {
     try {
       const isAdmin = !!(appUser?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
@@ -1597,6 +1648,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addToast('تعذر حذف المنشور من قاعدة البيانات: ' + (error.message || 'خطأ في الصلاحيات'), 'error');
         return false;
       }
+
+      // Persist deleted post ID in localStorage so it never returns on refresh
+      try {
+        const rawDel = localStorage.getItem('prolink_deleted_posts');
+        const deletedArr = rawDel ? JSON.parse(rawDel) : [];
+        if (!deletedArr.includes(postId)) {
+          deletedArr.push(postId);
+          localStorage.setItem('prolink_deleted_posts', JSON.stringify(deletedArr.slice(-300)));
+        }
+      } catch {}
 
       // Success from DB! Invalidate cache & update state + localStorage
       postService.invalidateCache();
@@ -2327,7 +2388,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setAppUser(u);
     },
     setNotifications, setAllUsers, setPosts, setMessages, setMyGroups,
-    selectRole, handleSyncSignal, handleAcceptSync, handleAcceptConnection, handleRejectConnection, handleLike, likedPosts, handleDislike, dislikedPosts, handleAddComment, handleEchoPost, handleDeletePost, handleRelocateToUser, toggleProRank,
+    selectRole, handleSyncSignal, handleAcceptSync, handleAcceptConnection, handleRejectConnection, handleLike, likedPosts, handleDislike, dislikedPosts, handleAddComment, handleEchoPost, handleDeletePost, handleDeleteJob, setJobs, handleRelocateToUser, toggleProRank,
     authEmail, setAuthEmail, authPhone, setAuthPhone, authName, setAuthName, authPassword, setAuthPassword,
     fetchMyGroups,
     allGroups,

@@ -298,9 +298,19 @@ export function ModernProfileView({
     fetchProfilePosts();
   }, [fetchProfilePosts]);
 
-  const handleDeletePostInProfile = (postId: string) => {
+  const handleDeletePostInProfile = async (postId: string) => {
     setProfilePosts(prev => prev.filter(p => p.id !== postId));
     setContextPosts?.(prev => prev.filter(p => p.id !== postId));
+    if (handleDeletePost) {
+      return await handleDeletePost(postId);
+    } else {
+      const { error } = await (supabase as any).from('posts').delete().eq('id', postId);
+      if (error) {
+        addToast('فشل حذف المنشور من قاعدة البيانات', 'error');
+        return false;
+      }
+      return true;
+    }
   };
 
   // ─── فتح نافذة CV (معاينة حقيقية عبر Canvas بدون iframe أو جوجل دوكس) ────────

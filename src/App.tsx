@@ -92,7 +92,7 @@ function App() {
     addToast, handleGoogleLogin, handleEmailLogin, handleEmailSignUp, handlePhoneAuth, logout,
     handleApplyJob, setAppUser, selectRole, handleSyncSignal, handleAcceptSync,
     handleAcceptConnection, handleRejectConnection,
-    handleLike, handleDislike, handleAddComment, handleEchoPost, handleDeletePost, handleRelocateToUser, toggleProRank,
+    handleLike, handleDislike, handleAddComment, handleEchoPost, handleDeletePost, handleDeleteJob, handleRelocateToUser, toggleProRank,
     setNotifications, readNotifIds, setReadNotifIds, setAllUsers, setMessages,
     authEmail, setAuthEmail, authPhone, setAuthPhone, authName, setAuthName, authPassword, setAuthPassword,
     myGroups, fetchMyGroups, allGroups, fetchGroups,
@@ -1166,11 +1166,7 @@ function App() {
                                   setSelectedProfile(emp);
                                   setActiveTab('profile');
                                 }}
-                                onDeleteJob={async (jobId) => {
-                                   // JobCard already shows confirmation modal before calling this
-                                   const { error } = await (supabase as any).from('jobs').delete().eq('id', jobId);
-                                   if (error) throw new Error(error.message);
-                                 }}
+                                onDeleteJob={handleDeleteJob}
                               />
                             </div>
                           )}
