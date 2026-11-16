@@ -144,7 +144,7 @@ function getNotificationDisplay(n: AppNotification, sender: AppUser | null) {
         : (isRole ? 'إدارة ProLink' : (sender?.name || 'مستخدم في ProLink')));
 
   const senderAvatar = sender?.avatar || n.fromAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(senderName)}&background=0284c7&color=fff`;
-  const senderTitle = sender?.title || sender?.job_title || '';
+  const senderTitle = sender?.title || sender?.displayTitle || (sender as any)?.job_title || '';
 
   let headline = '';
   let bodyText = '';
