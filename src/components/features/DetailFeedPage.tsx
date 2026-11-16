@@ -268,7 +268,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
           <span>رجوع</span>
         </button>
 
-        {/* عداد العناصر الإخباري والمهني الثابت والبارز (وظيفة / منشور / خبر X من Y) */}
+        {/* أزرار التنقل بين العناصر */}
         <div className="flex items-center gap-1.5 justify-center shrink-0">
           <button
             onClick={goToNext}
@@ -279,10 +279,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
           >
             <ChevronLeft size={16} />
           </button>
-          <span className="text-xs font-black text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/90 border border-blue-200 dark:border-blue-800/60 px-3.5 py-1.5 rounded-full shadow-xs select-none whitespace-nowrap flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-            <span>{itemLabel} {currentIndex + 1} من {resolvedItems.length}</span>
-          </span>
           <button
             onClick={goToPrev}
             disabled={currentIndex <= 0}
@@ -415,9 +411,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                               <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
                               {isActive ? 'التوظيف متاح الآن' : 'التوظيف مغلق'}
                             </div>
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black bg-blue-500/30 border border-blue-400/40 text-blue-200 backdrop-blur-md">
-                              🏷️ {itemLabel} {currentIndex + 1} من {resolvedItems.length}
-                            </span>
                           </div>
                           
                           <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md line-clamp-2">
@@ -797,9 +790,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                           <Calendar size={11} />
                           <span>{currentItem.pubDate ? new Date(currentItem.pubDate).toLocaleDateString('ar-EG') : 'اليوم'}</span>
                         </div>
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/30 border border-emerald-400/40 text-emerald-200 backdrop-blur-md">
-                          📰 {itemLabel} {currentIndex + 1} من {resolvedItems.length}
-                        </span>
                       </div>
                       
                       <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md line-clamp-2">
