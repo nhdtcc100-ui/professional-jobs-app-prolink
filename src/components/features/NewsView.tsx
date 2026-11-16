@@ -306,42 +306,49 @@ export function NewsCarousel({
   const [selectedNews, setSelectedNews] = useState<NewsItem | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const loadNews = async () => {
-      try {
-        const cached = localStorage.getItem('prolink_news_cache_v2') || sessionStorage.getItem('prolink_news_v4');
-        if (cached) {
-          try {
-            const parsedObj = JSON.parse(cached);
-            const parsed: NewsItem[] = Array.isArray(parsedObj) ? parsedObj : (parsedObj.data || []);
-            const jobNews = parsed.filter(n => n.topic === 'وظائف' || /فرصة|وظيفة|وظائف|تعيين|توظيف|شواغر|سيرة ذاتية|التقديم على/i.test(n.title + ' ' + (n.description || '')));
-            if (jobNews.length > 0) {
-              setItems(jobNews.slice(0, 8));
-              setLoading(false);
-              return;
-            }
-          } catch {}
-        }
+      useEffect(() => {
+      const loadNews = async (force = false) => {
+        try {
+          const cached = localStorage.getItem('prolink_news_cache_v2') || sessionStorage.getItem('prolink_news_v4');
+          if (cached && !force) {
+            try {
+              const parsedObj = JSON.parse(cached);
+              const ts = parsedObj.ts || 0;
+              const isFresh = (Date.now() - ts) < (15 * 60 * 1000); // 15 mins
+              const parsed: NewsItem[] = Array.isArray(parsedObj) ? parsedObj : (parsedObj.data || []);
+              const jobNews = parsed.filter(n => n.topic === 'وظائف' || /فرصة|وظيفة|وظائف|تعيين|توظيف|شواغر|سيرة ذاتية|التقديم على/i.test(n.title + ' ' + (n.description || '')));
+              if (jobNews.length > 0) {
+                setItems(jobNews.slice(0, 8));
+                setLoading(false);
+                if (isFresh) return; // Only skip fetch if younger than 15 mins
+              }
+            } catch {}
+          }
 
-        const sources = newsService.getDefaultSources();
-        const results = await Promise.all(sources.map(s => newsService.fetchRSS(s.url, s.name)));
-        const flat = results.flat().sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
-        const jobNews = flat.filter(n => n.topic === 'وظائف' || /فرصة|وظيفة|وظائف|تعيين|توظيف|شواغر|سيرة ذاتية|التقديم على/i.test(n.title + ' ' + (n.description || '')));
-        
-        if (jobNews.length > 0) {
-          setItems(jobNews.slice(0, 8));
-          sessionStorage.setItem('prolink_news_v4', JSON.stringify(jobNews));
-        } else if (flat.length > 0) {
-          setItems(flat.slice(0, 8));
+          const sources = newsService.getDefaultSources();
+          const results = await Promise.all(sources.map(s => newsService.fetchRSS(s.url, s.name)));
+          const flat = results.flat().sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+          const jobNews = flat.filter(n => n.topic === 'وظائف' || /فرصة|وظيفة|وظائف|تعيين|توظيف|شواغر|سيرة ذاتية|التقديم على/i.test(n.title + ' ' + (n.description || '')));
+          
+          if (jobNews.length > 0) {
+            setItems(jobNews.slice(0, 8));
+            sessionStorage.setItem('prolink_news_v4', JSON.stringify({ ts: Date.now(), data: jobNews }));
+          } else if (flat.length > 0) {
+            setItems(flat.slice(0, 8));
+          }
+        } catch (e) {
+          console.error("NewsCarousel error:", e);
+        } finally {
+          setLoading(false);
         }
-      } catch (e) {
-        console.error("NewsCarousel error:", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadNews();
-  }, []);
+      };
+      loadNews();
+      // ⚡ Auto-refresh carousel news every 15 minutes (ربع ساعة)
+      const interval = setInterval(() => {
+        loadNews(true);
+      }, 15 * 60 * 1000);
+      return () => clearInterval(interval);
+    }, []);
 
   useEffect(() => {
     if (items.length <= 1) return;
@@ -608,13 +615,24 @@ const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
     } catch {}
   }, [showAdminSources]);
 
+  // ⚡ Cache expires strictly after 15 minutes (CACHE_TTL_MS)
   const getCache = (): NewsItem[] | null => {
     try {
       const raw = localStorage.getItem(CACHE_KEY_MAIN) || sessionStorage.getItem(CACHE_KEY_MAIN);
       if (!raw) return null;
       const { ts, data } = JSON.parse(raw);
-      if (Date.now() - ts > CACHE_TTL_MS && (!data || data.length === 0)) return null;
-      return data;
+      if (Date.now() - ts > CACHE_TTL_MS) return null; // Cache is expired!
+      return Array.isArray(data) && data.length > 0 ? data : null;
+    } catch { return null; }
+  };
+
+  // Get stale cached news for instant render while revalidating
+  const getStaleCache = (): NewsItem[] | null => {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY_MAIN) || sessionStorage.getItem(CACHE_KEY_MAIN);
+      if (!raw) return null;
+      const { data } = JSON.parse(raw);
+      return Array.isArray(data) && data.length > 0 ? data : null;
     } catch { return null; }
   };
 
@@ -627,13 +645,24 @@ const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
   };
 
   const fetchNews = useCallback(async (force = false) => {
-    const cached = getCache();
-    if (cached && !force) {
-      setNews(cached);
+    const cachedValid = getCache();
+    const stale = getStaleCache();
+
+    // Show existing data immediately so user never sees empty screen
+    if (stale && (!news || news.length === 0)) {
+      setNews(stale);
+      setIsLive(true);
+    }
+
+    // If cache is still fresh (< 15 mins) and not a forced refresh, no need to query network
+    if (cachedValid && !force) {
+      setNews(cachedValid);
       setIsLive(true);
       setLoading(false);
-      return; // ⚡ Instant cache return - avoid blasting network requests repeatedly
-    } else if (!cached) {
+      return;
+    }
+
+    if (!stale) {
       setLoading(true);
     }
 
@@ -738,7 +767,14 @@ const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
     setLoading(false);
   }, [sources, appUser?.isAdmin]);
 
-  useEffect(() => { fetchNews(); }, []);
+  useEffect(() => { 
+    fetchNews(); 
+    // ⚡ Auto-refresh news every 15 minutes (تحديث الأخبار تلقائياً كل ربع ساعة)
+    const interval = setInterval(() => {
+      fetchNews(true);
+    }, CACHE_TTL_MS);
+    return () => clearInterval(interval);
+  }, [fetchNews]);
 
   const NEWS_CATEGORIES = [
     {
