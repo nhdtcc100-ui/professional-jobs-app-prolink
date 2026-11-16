@@ -819,14 +819,19 @@ function App() {
   const handleConfirmDeleteFeedJob = async () => {
     if (!jobToDeleteFromFeed) return;
     setDeletingFeedJob(true);
+    const idToDelete = jobToDeleteFromFeed;
+    // إغلاق المودال فوراً
+    setJobToDeleteFromFeed(null);
     try {
-      await (supabase as any).from('jobs').delete().eq('id', jobToDeleteFromFeed);
-      setJobs((prev: any[]) => prev.filter((j: any) => j.id !== jobToDeleteFromFeed));
+      const { error } = await (supabase as any).from('jobs').delete().eq('id', idToDelete);
+      if (error) throw error;
+      // الـ realtime subscription في AppContext سيحذف الوظيفة من القائمة تلقائياً
+      addToast('تم حذف الوظيفة بنجاح ✅');
     } catch (err: any) {
       console.error('Delete job error:', err);
+      addToast('فشل حذف الوظيفة: ' + (err?.message || 'خطأ غير معروف'), 'error');
     } finally {
       setDeletingFeedJob(false);
-      setJobToDeleteFromFeed(null);
     }
   };
 
