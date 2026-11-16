@@ -1167,9 +1167,10 @@ function App() {
                                   setActiveTab('profile');
                                 }}
                                 onDeleteJob={async (jobId) => {
-                                  if (!window.confirm('هل أنت متأكد من حذف هذه الوظيفة؟')) return;
-                                  await (supabase as any).from('jobs').delete().eq('id', jobId);
-                                }}
+                                   // JobCard already shows confirmation modal before calling this
+                                   const { error } = await (supabase as any).from('jobs').delete().eq('id', jobId);
+                                   if (error) throw new Error(error.message);
+                                 }}
                               />
                             </div>
                           )}
