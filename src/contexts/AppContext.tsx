@@ -92,7 +92,6 @@ interface AppContextType {
   setNotifications: React.Dispatch<React.SetStateAction<AppNotification[]>>;
   setAllUsers: React.Dispatch<React.SetStateAction<AppUser[]>>;
   setPosts: React.Dispatch<React.SetStateAction<Post[]>>;
-  setJobs: React.Dispatch<React.SetStateAction<Job[]>>;
   setMessages: React.Dispatch<React.SetStateAction<any[]>>;
   selectRole: (role: 'seeker' | 'employer' | 'freelancer', extraData?: Record<string, any>) => Promise<void>;
   handleSyncSignal: (targetUser: AppUser) => Promise<void>;
@@ -106,7 +105,6 @@ interface AppContextType {
   handleAddComment: (postId: string, commentContent: string) => Promise<void>;
   handleEchoPost: (post: Post) => Promise<void>;
   handleDeletePost: (postId: string) => Promise<boolean>;
-  handleDeleteJob: (jobId: string) => Promise<boolean>;
   handleRelocateToUser: (targetUser: AppUser, post: Post) => Promise<void>;
   toggleProRank: () => Promise<void>;
   fetchMyGroups: () => Promise<void>;
@@ -1616,30 +1614,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const handleDeleteJob = async (jobId: string): Promise<boolean> => {
-    try {
-      const isAdmin = !!(appUser?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
-      const { error } = await jobService.deleteJob(jobId, appUser?.id, isAdmin);
-      if (error) {
-        console.error('[handleDeleteJob] DB Error:', error);
-        addToast('تعذر حذف الوظيفة من قاعدة البيانات: ' + (error.message || 'خطأ في الصلاحيات'), 'error');
-        return false;
-      }
-      jobService.invalidateCache();
-      setJobs(prev => {
-        const next = prev.filter(j => j.id !== jobId);
-        try { localStorage.setItem('prolink_cached_jobs', JSON.stringify(next.slice(0, 60))); } catch {}
-        return next;
-      });
-      addToast('🗑️ تم حذف الوظيفة نهائياً من قاعدة البيانات بنجاح', 'success');
-      return true;
-    } catch (err: any) {
-      console.error('[handleDeleteJob] Exception:', err);
-      addToast('فشل حذف الوظيفة: ' + (err?.message || 'خطأ غير معروف'), 'error');
-      return false;
-    }
-  };
-
   const handleRelocateToUser = async (targetUser: AppUser, post: Post) => {
     if (!appUser) return;
     try {
@@ -2352,8 +2326,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAppUser: (u: any) => {
       setAppUser(u);
     },
-    setNotifications, setAllUsers, setPosts, setJobs, setMessages, setMyGroups,
-    selectRole, handleSyncSignal, handleAcceptSync, handleAcceptConnection, handleRejectConnection, handleLike, likedPosts, handleDislike, dislikedPosts, handleAddComment, handleEchoPost, handleDeletePost, handleDeleteJob, handleRelocateToUser, toggleProRank,
+    setNotifications, setAllUsers, setPosts, setMessages, setMyGroups,
+    selectRole, handleSyncSignal, handleAcceptSync, handleAcceptConnection, handleRejectConnection, handleLike, likedPosts, handleDislike, dislikedPosts, handleAddComment, handleEchoPost, handleDeletePost, handleRelocateToUser, toggleProRank,
     authEmail, setAuthEmail, authPhone, setAuthPhone, authName, setAuthName, authPassword, setAuthPassword,
     fetchMyGroups,
     allGroups,

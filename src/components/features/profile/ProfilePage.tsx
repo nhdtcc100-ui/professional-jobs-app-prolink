@@ -21,7 +21,6 @@ interface ProfilePageProps {
   onMessageClick?: () => void;
   onCallClick?: (u: any) => void;
   onGoToSettings?: () => void;
-  onPostClick?: (post: Post, posts: Post[]) => void;
   returnToJob?: any;
   onReturnToJob?: (job: any) => void;
   [key: string]: any;
@@ -36,7 +35,6 @@ export function ProfilePage({
   setAppUser,
   onMessageClick,
   onCallClick,
-  onPostClick,
   returnToJob,
   onReturnToJob,
 }: ProfilePageProps) {
@@ -50,7 +48,6 @@ export function ProfilePage({
       setAppUser={setAppUser}
       onMessageClick={onMessageClick}
       onCallClick={() => onCallClick?.(profile)}
-      onPostClick={onPostClick}
       showCallButton={!isMe}
       returnToJob={returnToJob}
       onReturnToJob={onReturnToJob}

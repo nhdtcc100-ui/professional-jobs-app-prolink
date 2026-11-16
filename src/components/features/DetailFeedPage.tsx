@@ -729,22 +729,14 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
 
                 {/* ── Fixed Post Bottom Bar: ثابت أسفل كارد المنشور ── */}
                 <div className="shrink-0 p-3 sm:px-5 sm:py-3.5 border-t border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-b-3xl z-20">
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      onClick={onClose}
-                      className="py-2.5 px-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-md shadow-blue-500/20"
-                      title="الرجوع إلى حيث كنت"
-                    >
-                      <ArrowRight size={14} />
-                      <span>رجوع</span>
-                    </button>
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={handleGoHome}
                       className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
                       title="العودة للرئيسية"
                     >
                       <Home size={14} className="text-blue-500" />
-                      <span>الرئيسية</span>
+                      <span>العودة للرئيسية</span>
                     </button>
                     <button
                       onClick={handleGoSection}

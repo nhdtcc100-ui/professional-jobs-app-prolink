@@ -462,30 +462,6 @@ input[type="text"]:focus, input[type="search"]:focus, textarea:focus {
 }
 
 /* Animations */
-/* ══════════════════════════════════════════════════════════════════════
-   Page-to-Page Navigation Transition (Matching Glassy Sidebar V5 Spring)
-   ══════════════════════════════════════════════════════════════════════ */
-@keyframes pageSlideInSidebarLike {
-  0% {
-    opacity: 0;
-    transform: translate3d(-26px, 0, 0) scale(0.985);
-  }
-  65% {
-    opacity: 1;
-    transform: translate3d(2px, 0, 0) scale(1.002);
-  }
-  100% {
-    opacity: 1;
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-}
-
-.page-transition-sidebar {
-  animation: pageSlideInSidebarLike 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: transform, opacity;
-  transform: translateZ(0);
-}
-
 @keyframes float {
   0% { transform: translateY(0px); }
   50% { transform: translateY(-10px); }

@@ -16,6 +16,7 @@ import { mobileUploadService } from '../../../lib/services/mobileUploadService';
 import { AppUser, Post, Job } from '../../../types';
 import { useAppContext } from '../../../contexts/AppContext';
 import { PostNewsCard } from '../PostNewsCard';
+import { DetailFeedPage } from '../DetailFeedPage';
 
 interface ModernProfileViewProps {
   profile: AppUser;
@@ -29,7 +30,6 @@ interface ModernProfileViewProps {
   showCallButton?: boolean;
   returnToJob?: Job | null;
   onReturnToJob?: (job: Job) => void;
-  onPostClick?: (post: Post, allProfilePosts: Post[]) => void;
 }
 
 // ─── Fast Client-Side Image Resizer (Canvas-based, RAM efficient) ───────────
@@ -114,10 +114,10 @@ export function ModernProfileView({
   showCallButton = false,
   returnToJob,
   onReturnToJob,
-  onPostClick,
 }: ModernProfileViewProps) {
   const effectiveUserId = user?.id || profile?.id;
   // ─── Form State ───────────────────────────────────────────────────────────────
+  const [profilePostDetail, setProfilePostDetail] = useState<{ items: any[]; index: number } | null>(null);
   const [name, setName] = useState(profile?.name || '');
   const [title, setTitle] = useState(profile?.display_title || profile?.title || (profile as any)?.industry || '');
   const [location, setLocation] = useState(profile?.location || '');
@@ -240,7 +240,7 @@ export function ModernProfileView({
 
   // ─── Profile Tabs & Posts State ──────────────────────────────────────────────
   const [activeProfileTab, setActiveProfileTab] = useState<'info' | 'posts'>('info');
-  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast } = useAppContext();
+  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast, appUser } = useAppContext();
   const notify = useCallback((msg: string, type: any = 'success') => {
     if (typeof addToast === 'function') addToast(msg, type);
     else if (typeof contextAddToast === 'function') contextAddToast(msg, type);
@@ -1455,50 +1455,50 @@ export function ModernProfileView({
         </div>
       </motion.div>
 
-      {/* ─── Profile Sub-Navigation Tabs with Luxury Glass Pill ─── */}
-      <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl rounded-2xl p-1.5 border border-slate-200/80 dark:border-slate-800/80 shadow-md flex items-center gap-2 relative select-none">
+      {/* ─── Profile Sub-Navigation Tabs with Animated Sliding Pill ─── */}
+      <div className="bg-white dark:bg-slate-900 rounded-2xl p-1.5 border border-slate-100 dark:border-slate-800 shadow-sm flex items-center gap-1.5 relative select-none">
         <button
           type="button"
           onClick={() => setActiveProfileTab('info')}
-          className={`flex-1 py-3 px-3 rounded-xl text-xs font-black transition-all duration-300 relative z-10 flex items-center justify-center gap-2 cursor-pointer active:scale-95 ${
+          className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all relative z-10 flex items-center justify-center gap-2 cursor-pointer ${
             activeProfileTab === 'info'
               ? 'text-white'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           {activeProfileTab === 'info' && (
             <motion.div
               layoutId="profile-tab-indicator"
-              className="absolute inset-0 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-xl shadow-lg shadow-blue-500/25 z-[-1]"
+              className="absolute inset-0 bg-gradient-to-r from-[#0a66c2] to-[#004182] rounded-xl shadow-md z-[-1]"
               transition={{ type: 'spring', stiffness: 450, damping: 32 }}
             />
           )}
-          <User size={16} className={activeProfileTab === 'info' ? 'text-white' : 'text-blue-500'} />
+          <User size={15} />
           <span>الملف الشخصي</span>
         </button>
 
         <button
           type="button"
           onClick={() => setActiveProfileTab('posts')}
-          className={`flex-1 py-3 px-3 rounded-xl text-xs font-black transition-all duration-300 relative z-10 flex items-center justify-center gap-2.5 cursor-pointer active:scale-95 group/posttab ${
+          className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all relative z-10 flex items-center justify-center gap-2 cursor-pointer ${
             activeProfileTab === 'posts'
               ? 'text-white'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
           }`}
         >
           {activeProfileTab === 'posts' && (
             <motion.div
               layoutId="profile-tab-indicator"
-              className="absolute inset-0 bg-gradient-to-r from-indigo-600 via-blue-600 to-purple-600 rounded-xl shadow-lg shadow-indigo-500/30 z-[-1]"
+              className="absolute inset-0 bg-gradient-to-r from-[#0a66c2] to-[#004182] rounded-xl shadow-md z-[-1]"
               transition={{ type: 'spring', stiffness: 450, damping: 32 }}
             />
           )}
-          <FileText size={16} className={activeProfileTab === 'posts' ? 'text-amber-300 animate-pulse' : 'text-indigo-500 group-hover/posttab:scale-110 transition-transform'} />
-          <span className="tracking-tight">المنشورات والمقالات</span>
-          <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-mono font-black transition-all shadow-xs ${
+          <FileText size={15} />
+          <span>المنشورات والمقالات</span>
+          <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
             activeProfileTab === 'posts'
-              ? 'bg-white/25 text-white border border-white/30 backdrop-blur-sm'
-              : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/40'
+              ? 'bg-white/20 text-white'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
           }`}>
             {profilePosts.length}
           </span>
@@ -1892,17 +1892,31 @@ export function ModernProfileView({
           ) : (
             <div className="space-y-4">
               {profilePosts.map((post, idx) => (
-                <PostNewsCard
+                <div
                   key={post.id || idx}
-                  post={post}
-                  allUsers={contextUsers || []}
+                  className="relative group cursor-pointer transition-all duration-200 hover:-translate-y-0.5"
                   onClick={() => {
-                    if (onPostClick) {
-                      onPostClick(post, profilePosts);
-                    }
+                    const postIdx = profilePosts.findIndex((p: any) => p.id === post.id);
+                    setProfilePostDetail({ items: profilePosts, index: Math.max(0, postIdx) });
                   }}
-                  onDeletePost={isMe ? handleDeletePostInProfile : undefined}
-                />
+                >
+                  <PostNewsCard
+                    post={post}
+                    allUsers={contextUsers || []}
+                    onClick={(p: any) => {
+                      const postIdx = profilePosts.findIndex((pp: any) => pp.id === p.id);
+                      setProfilePostDetail({ items: profilePosts, index: Math.max(0, postIdx) });
+                    }}
+                    onDeletePost={isMe ? handleDeletePostInProfile : undefined}
+                  />
+                  {/* Open indicator */}
+                  <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                    <div className="bg-[#0a66c2] text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1">
+                      <Eye size={10} />
+                      <span>فتح</span>
+                    </div>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -2066,6 +2080,20 @@ export function ModernProfileView({
       </AnimatePresence>,
       document.body
     )}
+
+      {/* ── Post Detail Feed (opens from profile posts tab) ── */}
+      {profilePostDetail && createPortal(
+        <DetailFeedPage
+          type="post"
+          items={profilePostDetail.items}
+          initialIndex={profilePostDetail.index}
+          onClose={() => setProfilePostDetail(null)}
+          onDeletePost={isMe ? handleDeletePostInProfile : undefined}
+          appUser={appUser}
+          allUsers={contextUsers || []}
+        />,
+        document.body
+      )}
 
     </div>
   );

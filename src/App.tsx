@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, Suspense, lazy, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy, useCallback, useMemo, createPortal } from 'react';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import {
   loadMissionsView,
@@ -24,7 +24,6 @@ import {
   EmailVerificationScreen, DetailFeedPage, EditPostModal
 } from './components/features';
 import { SmartJobBanner } from './components/features/SmartJobBanner';
-import { pageTransition } from './lib/motion/transitions';
 import { mapProfile, useAppContext } from './contexts/AppContext';
 import { IcyBackground, HomeSidebar, IntelligenceCenter, NotificationPanel, GlobalPostModal, MobileNav, Navbar } from './components/layout';
 import { callService } from './lib/services/callService';
@@ -92,7 +91,7 @@ function App() {
     addToast, handleGoogleLogin, handleEmailLogin, handleEmailSignUp, handlePhoneAuth, logout,
     handleApplyJob, setAppUser, selectRole, handleSyncSignal, handleAcceptSync,
     handleAcceptConnection, handleRejectConnection,
-    handleLike, handleDislike, handleAddComment, handleEchoPost, handleDeletePost, handleDeleteJob, handleRelocateToUser, toggleProRank,
+    handleLike, handleDislike, handleAddComment, handleEchoPost, handleDeletePost, handleRelocateToUser, toggleProRank,
     setNotifications, readNotifIds, setReadNotifIds, setAllUsers, setMessages,
     authEmail, setAuthEmail, authPhone, setAuthPhone, authName, setAuthName, authPassword, setAuthPassword,
     myGroups, fetchMyGroups, allGroups, fetchGroups,
@@ -153,6 +152,8 @@ function App() {
   const [editingFeedJob, setEditingFeedJob] = useState<Job | null>(null);
   const [editingFeedPost, setEditingFeedPost] = useState<Post | null>(null);
   const [isRefreshingFeed, setIsRefreshingFeed] = useState(false);
+  const [jobToDeleteFromFeed, setJobToDeleteFromFeed] = useState<string | null>(null);
+  const [deletingFeedJob, setDeletingFeedJob] = useState(false);
   const [detailFeed, setDetailFeed] = useState<{
     type: 'job' | 'news' | 'post';
     items: any[];
@@ -255,7 +256,6 @@ function App() {
     items: any[];
     initialIndex: number;
   } | null>(null);
-  const [returnToProfile, setReturnToProfile] = useState<AppUser | null>(null);
   const [initialJobForMissions, setInitialJobForMissions] = useState<Job | null>(null);
   const webRTCServiceRef = useRef<WebRTCService | null>(null);
   
@@ -816,6 +816,20 @@ function App() {
     );
   }
 
+  const handleConfirmDeleteFeedJob = async () => {
+    if (!jobToDeleteFromFeed) return;
+    setDeletingFeedJob(true);
+    try {
+      await (supabase as any).from('jobs').delete().eq('id', jobToDeleteFromFeed);
+      setJobs((prev: any[]) => prev.filter((j: any) => j.id !== jobToDeleteFromFeed));
+    } catch (err: any) {
+      console.error('Delete job error:', err);
+    } finally {
+      setDeletingFeedJob(false);
+      setJobToDeleteFromFeed(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f3f2ef] dark:bg-[#0d1117] text-slate-800 dark:text-slate-100 selection:bg-blue-100 dark:selection:bg-blue-900 font-sans transition-colors duration-500" dir="rtl">
       <IcyBackground />
@@ -993,7 +1007,7 @@ function App() {
               {/* ⚡ Keep-Alive: Home Feed */}
               <div
                 key="keepalive-tab-home"
-                className={activeTab === 'home' ? 'space-y-4 page-transition-sidebar' : 'hidden'}
+                className={activeTab === 'home' ? 'space-y-4' : 'hidden'}
                 aria-hidden={activeTab !== 'home'}
               >
                 <>
@@ -1147,7 +1161,8 @@ function App() {
                                   setActiveTab('profile');
                                 }}
                                 onDeleteJob={async (jobId) => {
-                                  await handleDeleteJob(jobId);
+                                  if (!window.confirm('هل أنت متأكد من حذف هذه الوظيفة؟')) return;
+                                  await (supabase as any).from('jobs').delete().eq('id', jobId);
                                 }}
                               />
                             </div>
@@ -1165,7 +1180,7 @@ function App() {
               {visitedTabs.jobs && (
                 <div
                   key="keepalive-tab-jobs"
-                  className={activeTab === 'jobs' ? 'pb-safe-bottom px-1 md:px-0 page-transition-sidebar' : 'hidden'}
+                  className={activeTab === 'jobs' ? 'pb-safe-bottom px-1 md:px-0 animate-in fade-in duration-150' : 'hidden'}
                   aria-hidden={activeTab !== 'jobs'}
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1216,10 +1231,10 @@ function App() {
               )}
               {activeTab === 'post-job' && (
                 <motion.div
-                  variants={pageTransition}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
                 >
                   {!isJobPoster(appUser) ? (
                     <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-lg mx-auto shadow-xl" dir="rtl">
@@ -1251,7 +1266,7 @@ function App() {
               {visitedTabs.network && (
                 <div
                   key="keepalive-tab-network"
-                  className={activeTab === 'network' ? 'pb-safe-bottom px-1 md:px-0 page-transition-sidebar' : 'hidden'}
+                  className={activeTab === 'network' ? 'pb-safe-bottom px-1 md:px-0 animate-in fade-in duration-150' : 'hidden'}
                   aria-hidden={activeTab !== 'network'}
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1287,10 +1302,10 @@ function App() {
 
               {activeTab === 'calls' && appUser?.isAdmin && (
                 <motion.div
-                  variants={pageTransition}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
                   className="pb-safe-bottom px-1 md:px-0"
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1333,7 +1348,7 @@ function App() {
                 ) : (
                   <div
                     key="keepalive-tab-messages"
-                    className={activeTab === 'messages' ? 'pb-safe-bottom md:pb-0 h-full page-transition-sidebar' : 'hidden'}
+                    className={activeTab === 'messages' ? 'pb-safe-bottom md:pb-0 h-full' : 'hidden'}
                     aria-hidden={activeTab !== 'messages'}
                   >
                     <MessagingView 
@@ -1359,10 +1374,10 @@ function App() {
 
               {activeTab === 'groups' && (
                 <motion.div
-                  variants={pageTransition}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.13, ease: 'easeOut' }}
                   className="pb-safe-bottom px-1 md:px-0"
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1383,7 +1398,7 @@ function App() {
               {visitedTabs.news && (
                 <div
                   key="keepalive-tab-news"
-                  className={activeTab === 'news' ? 'pb-safe-bottom px-1 md:px-0 page-transition-sidebar' : 'hidden'}
+                  className={activeTab === 'news' ? 'pb-safe-bottom px-1 md:px-0 animate-in fade-in duration-150' : 'hidden'}
                   aria-hidden={activeTab !== 'news'}
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1405,10 +1420,10 @@ function App() {
 
               {activeTab === 'services' && (
                 <motion.div
-                  variants={pageTransition}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.13, ease: 'easeOut' }}
                   className="pb-safe-bottom px-1 md:px-0"
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1426,10 +1441,10 @@ function App() {
 
               {activeTab === 'erp' && (
                 <motion.div
-                  variants={pageTransition}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.13, ease: 'easeOut' }}
                   className="pb-safe-bottom px-1 md:px-0"
                 >
                   {appUser?.isAdmin ? (
@@ -1452,10 +1467,10 @@ function App() {
 
               {activeTab === 'about' && (
                 <motion.div
-                  variants={pageTransition}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
                   className="pb-safe-bottom px-1 md:px-0"
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1533,16 +1548,6 @@ function App() {
                         setSelectedProfile(null);
                       }}
                       onCallClick={startCall}
-                      onPostClick={(post: any, profilePostsList?: any[]) => {
-                        setReturnToProfile(selectedProfile || appUser);
-                        const items = profilePostsList && profilePostsList.length > 0 ? profilePostsList : [post];
-                        const idx = Math.max(0, items.findIndex((p: any) => p.id === post.id));
-                        setDetailFeed({
-                          type: 'post',
-                          items,
-                          initialIndex: idx,
-                        });
-                      }}
                       onGoToSettings={() => setActiveTab('settings')}
                       onSave={async (updates: any) => {
                         if (appUser) {
@@ -1641,22 +1646,13 @@ function App() {
             type={detailFeed.type}
             items={detailFeed.items}
             initialIndex={detailFeed.initialIndex}
-            onClose={() => {
-              setDetailFeed(null);
-              if (returnToProfile) {
-                setSelectedProfile(returnToProfile);
-                setActiveTab('profile');
-                setReturnToProfile(null);
-              }
-            }}
+            onClose={() => setDetailFeed(null)}
             onNavigateHome={() => {
               setDetailFeed(null);
-              setReturnToProfile(null);
               setActiveTab('home');
             }}
             onNavigateTab={(tab) => {
               setDetailFeed(null);
-              setReturnToProfile(null);
               setActiveTab(tab);
             }}
             onApplyJob={(job) => {
@@ -1764,6 +1760,65 @@ function App() {
             setEditingFeedPost(null);
           }}
         />
+      )}
+
+      {/* ══ Confirm Delete Job Modal ══ */}
+      {jobToDeleteFromFeed && createPortal(
+        <AnimatePresence>
+          <div
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+            dir="rtl"
+            onClick={() => setJobToDeleteFromFeed(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+              className="bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800/60 rounded-3xl p-6 max-w-xs w-full shadow-2xl text-center space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto shadow-sm">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+                  <line x1="10" y1="11" x2="10" y2="17"></line>
+                  <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-base font-black text-slate-900 dark:text-white">حذف الوظيفة</h3>
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+                  هل أنت متأكد من حذف هذه الوظيفة؟<br/>لا يمكن التراجع عن هذا الإجراء.
+                </p>
+              </div>
+              <div className="flex gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setJobToDeleteFromFeed(null)}
+                  disabled={deletingFeedJob}
+                  className="flex-1 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-black text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-all active:scale-95 cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDeleteFeedJob}
+                  disabled={deletingFeedJob}
+                  className="flex-1 py-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black text-sm shadow-lg shadow-red-600/30 transition-all active:scale-95 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {deletingFeedJob && (
+                    <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                      <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                    </svg>
+                  )}
+                  {deletingFeedJob ? 'جارٍ الحذف...' : 'نعم، احذف'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        </AnimatePresence>,
+        document.body
       )}
     </div>
   );

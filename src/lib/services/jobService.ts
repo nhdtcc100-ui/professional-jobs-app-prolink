@@ -16,15 +16,6 @@ const ALLOWED_JOB_TYPES = ['دوام كامل', 'دوام جزئي', 'عن بُ�
 const ALLOWED_STATUSES = ['pending', 'active', 'closed'];
 
 export const jobService = {
-  /**
-   * Invalidate local cached jobs
-   */
-  invalidateCache() {
-    try {
-      localStorage.removeItem('prolink_cached_jobs');
-    } catch {}
-  },
-
   async fetchJobs(limit = 50) {
     // ✅ Parameterized query via Supabase SDK — safe from SQL injection
     const res = await supabase
@@ -144,12 +135,12 @@ export const jobService = {
     }
   },
 
-  async deleteJob(jobId: string, employerId?: string, isAdmin: boolean = false) {
-    let query = (supabase.from('jobs') as any).delete().eq('id', jobId);
-    if (!isAdmin && employerId) {
-      query = query.eq('employer_id', employerId); // 🔒 Ownership guard: only the poster can delete
-    }
-    return query;
+  async deleteJob(jobId: string, employerId: string) {
+    return supabase
+      .from('jobs')
+      .delete()
+      .eq('id', jobId)
+      .eq('employer_id', employerId); // 🔒 Ownership guard: only the poster can delete
   },
 
   async updateJob(jobId: string, employerId: string, data: any) {
