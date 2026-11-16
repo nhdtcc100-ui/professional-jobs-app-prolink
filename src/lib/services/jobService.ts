@@ -16,6 +16,15 @@ const ALLOWED_JOB_TYPES = ['دوام كامل', 'دوام جزئي', 'عن بُ�
 const ALLOWED_STATUSES = ['pending', 'active', 'closed'];
 
 export const jobService = {
+  /**
+   * Invalidate local cached jobs
+   */
+  invalidateCache() {
+    try {
+      localStorage.removeItem('prolink_cached_jobs');
+    } catch {}
+  },
+
   async fetchJobs(limit = 50) {
     // ✅ Parameterized query via Supabase SDK — safe from SQL injection
     const res = await supabase
