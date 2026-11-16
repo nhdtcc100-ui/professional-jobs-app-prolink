@@ -50,11 +50,19 @@ export const newsService = {
     if (url.includes('telesco.pe') || url.includes('telegram.org') || url.includes('cdn4.telegram') || url.includes('cdn.telegram')) {
       return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1200&fit=inside&we`;
     }
-    // 3. BBC news image resolution upgrade (e.g. /news/240/ -> /news/1024/)
+    // 3. BBC news image resolution upgrade (converts tiny 240px thumbnails to 1024px Full HD)
     if (url.includes('bbci.co.uk') || url.includes('bbc.com')) {
-      return url.replace(/\/news\/\d+\//, '/news/1024/').replace(/\/live\/\d+\//, '/live/1024/');
+      let upgraded = url.replace(/\/(ws|news|standard|live)\/\d+\//i, '/$1/1024/');
+      if (upgraded === url) {
+        upgraded = url.replace(/\/cpsprodpb\//i, '/1024/cpsprodpb/');
+      }
+      return upgraded;
     }
-    // 4. High-res upgrade for unsplash or common web CDN images
+    // 4. Al Jazeera image resolution upgrade
+    if (url.includes('aljazeera.net')) {
+      return url.replace(/w=\d+/, 'w=1200').replace(/\/resize\/\d+\//i, '/resize/1200/');
+    }
+    // 5. High-res upgrade for unsplash or common web CDN images
     if (url.includes('unsplash.com')) {
       return url.replace(/w=\d+/, 'w=1200').replace(/h=\d+/, 'h=800');
     }
