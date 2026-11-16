@@ -194,6 +194,20 @@ export const mapProfile = (p: any): any => {
   };
 };
 
+export const getDeletedPostIds = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem('prolink_deleted_posts');
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch { return new Set(); }
+};
+
+export const getDeletedJobIds = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem('prolink_deleted_jobs');
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch { return new Set(); }
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<any | null>(null);
   
