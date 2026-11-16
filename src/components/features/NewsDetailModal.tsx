@@ -7,6 +7,7 @@ import { safeTimeAgo } from '../../lib/utils/formatDate';
 import { BilingualSmartText } from '../../lib/utils/bilingualText';
 import { canUserPostAndInteract } from '../../lib/utils/roleUtils';
 import { DEFAULT_NEWS_PLACEHOLDER, handleImageError } from '../../lib/utils/placeholders';
+import { newsService } from '../../lib/services/newsService';
 
 interface NewsDetailModalProps {
   item: any;
@@ -110,7 +111,7 @@ export default function NewsDetailModal({ item, appUser, onClose, onNavigateHome
             <div className="relative group">
               <div className="absolute inset-0 bg-blue-600/20 blur-3xl opacity-0 group-hover:opacity-100 transition-opacity rounded-full" />
               <img 
-                src={item.thumbnail || DEFAULT_NEWS_PLACEHOLDER} 
+                src={newsService.proxyImage(item.thumbnail || DEFAULT_NEWS_PLACEHOLDER)} 
                 alt={item.title}
                 className="relative w-full h-auto max-h-[400px] object-cover rounded-[2rem] shadow-2xl border border-white/10"
                 onError={handleImageError}

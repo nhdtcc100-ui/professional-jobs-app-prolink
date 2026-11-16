@@ -60,7 +60,7 @@ const DEFAULT_SOURCES: NewsSourceItem[] = [
     id: 'src-5',
     name: 'سكاي نيوز عربية (RSS)',
     type: 'rss',
-    url: 'https://www.skynewsarabia.com/web/rss',
+    url: 'https://www.skynewsarabia.com/rss',
     category: 'general',
     enabled: true,
   },
@@ -166,7 +166,7 @@ export const NewsSourcesAdmin: React.FC<{ addToast: (msg: string, type?: 'succes
       type: 'rss' as const,
       category: 'general' as const,
       name: 'سكاي نيوز عربية',
-      url: 'https://www.skynewsarabia.com/web/rss',
+      url: 'https://www.skynewsarabia.com/rss',
       apiKey: ''
     },
     {

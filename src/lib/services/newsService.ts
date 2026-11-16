@@ -38,15 +38,27 @@ async function fetchWithTimeout(url: string, timeoutMs = 4500, options: RequestI
 export const newsService = {
   proxyImage(url: string): string {
     if (!url) return '';
-    // Telegram image resolution upgrade & CORS bypass
+    // 1. Sky News Arabia: upgrade 95x53 / 100x56 low-res thumbnails to 1416x800 crystal-clear Full HD
+    if (url.includes('skynewsarabia.com')) {
+      let upgraded = url.replace(/\/\d+\/\d+\/([^/?#]+)(\?.*)?$/, '/1416/800/$1$2');
+      if (upgraded === url) {
+        upgraded = url.replace(/(images\/v1\/\d+\/\d+\/\d+\/\d+\/)\d+\/\d+\//, '$11416/800/');
+      }
+      return upgraded;
+    }
+    // 2. Telegram image resolution upgrade & CORS bypass
     if (url.includes('telesco.pe') || url.includes('telegram.org') || url.includes('cdn4.telegram') || url.includes('cdn.telegram')) {
       return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=1200&fit=inside&we`;
     }
-    // High-res upgrade for unsplash or common web CDN images
+    // 3. BBC news image resolution upgrade (e.g. /news/240/ -> /news/1024/)
+    if (url.includes('bbci.co.uk') || url.includes('bbc.com')) {
+      return url.replace(/\/news\/\d+\//, '/news/1024/').replace(/\/live\/\d+\//, '/live/1024/');
+    }
+    // 4. High-res upgrade for unsplash or common web CDN images
     if (url.includes('unsplash.com')) {
       return url.replace(/w=\d+/, 'w=1200').replace(/h=\d+/, 'h=800');
     }
-    // Remove thumbnail downsizing parameters if present
+    // 5. Remove thumbnail downsizing parameters if present
     if (url.includes('?w=') || url.includes('&w=') || url.includes('?width=') || url.includes('&width=')) {
       try {
         const u = new URL(url);

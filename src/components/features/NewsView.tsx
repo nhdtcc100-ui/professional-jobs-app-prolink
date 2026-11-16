@@ -216,7 +216,7 @@ const openLink = (link: string) => {
 };
 
 const NewsCard = ({ item, featured = false, onSelect }: { item: NewsItem; featured?: boolean, onSelect?: (item: NewsItem) => void }) => {
-  const img = item.thumbnail ||
+  const img = newsService.proxyImage(item.thumbnail) ||
     TOPIC_IMGS[item.topic] ||
     REGION_IMGS[item.region] ||
     APP_PLACEHOLDER;
@@ -548,7 +548,7 @@ const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
     id: 'src-5',
     name: 'سكاي نيوز عربية (RSS)',
     type: 'rss',
-    url: 'https://www.skynewsarabia.com/web/rss',
+    url: 'https://www.skynewsarabia.com/rss',
     category: 'general',
     enabled: true,
   },

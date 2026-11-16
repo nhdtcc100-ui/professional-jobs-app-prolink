@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Bell, X, CheckCheck, Briefcase, Heart, MessageSquare, 
@@ -629,23 +630,26 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
     handleClosePanel();
   };
 
-  return (
-    <>
-      {/* Background Overlay */}
-      <div className="fixed inset-0 z-[55] bg-black/10 dark:bg-black/30 backdrop-blur-xs" onClick={handleClosePanel} />
+  const panelContent = (
+    <div className="fixed inset-0 z-[9999] pointer-events-none" dir="rtl">
+      {/* Background Overlay - ثابت دائماً في الشاشة أينما كان السكرول */}
+      <div 
+        className="fixed inset-0 bg-black/25 dark:bg-black/50 backdrop-blur-xs pointer-events-auto transition-opacity" 
+        onClick={handleClosePanel} 
+      />
       
+      {/* نافذة الإشعارات العائمة - مثبتة في أعلى مجال الرؤية الحالي بغض النظر عن صعود أو نزول السكرول */}
       <motion.div
-        initial={{ opacity: 0, y: -10, scale: 0.96 }}
+        initial={{ opacity: 0, y: -12, scale: 0.95 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: -10, scale: 0.96 }}
-        transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-        className="absolute top-[68px] right-4 z-[60] w-[420px] max-w-[calc(100vw-1.5rem)]"
-        dir="rtl"
+        exit={{ opacity: 0, y: -12, scale: 0.95 }}
+        transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+        className="fixed top-16 sm:top-[70px] left-3 sm:left-auto right-3 sm:right-6 md:right-10 z-[10000] w-auto sm:w-[420px] max-w-[calc(100vw-1.5rem)] pointer-events-auto shadow-2xl"
       >
-        <div className="bg-white/98 dark:bg-slate-900/98 backdrop-blur-2xl rounded-[2rem] shadow-2xl border border-slate-200/90 dark:border-slate-800 overflow-hidden ring-1 ring-black/5">
+        <div className="bg-white/98 dark:bg-slate-900/98 backdrop-blur-2xl rounded-[2rem] shadow-2xl border border-slate-200/90 dark:border-slate-800 overflow-hidden ring-1 ring-black/10 max-h-[calc(100dvh-5.5rem)] flex flex-col">
           
           {/* Header */}
-          <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+          <div className="px-5 pt-4 pb-3 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
             <div>
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-black">
@@ -732,7 +736,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
           </div>
 
           {/* Notifications List with Seen-On-View Tracking */}
-          <div className="max-h-[440px] overflow-y-auto custom-chat-scroll divide-y divide-slate-100/80 dark:divide-slate-800/60">
+          <div className="max-h-[min(480px,calc(100dvh-13.5rem))] overflow-y-auto custom-chat-scroll divide-y divide-slate-100/80 dark:divide-slate-800/60 flex-1">
             {filteredNotifs.length === 0 ? (
               <div className="py-16 text-center px-4 space-y-3">
                 <div className="w-16 h-16 bg-blue-50 dark:bg-slate-800 rounded-3xl flex items-center justify-center mx-auto text-blue-500 dark:text-blue-400 shadow-sm">
@@ -787,12 +791,14 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
           </div>
 
           {/* Footer stats bar */}
-          <div className="px-5 py-2.5 bg-slate-50 dark:bg-slate-950/60 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] font-bold text-slate-400">
+          <div className="px-5 py-2.5 bg-slate-50 dark:bg-slate-950/60 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-[10px] font-bold text-slate-400 shrink-0">
             <span>إجمالي التنبيهات: {notifications.length}</span>
             <span>المقروءة: {readCount} • الجديدة: {unreadCount}</span>
           </div>
         </div>
       </motion.div>
-    </>
+    </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(panelContent, document.body) : panelContent;
 };

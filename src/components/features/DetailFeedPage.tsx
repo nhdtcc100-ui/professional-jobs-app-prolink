@@ -12,6 +12,7 @@ import { BilingualSmartText } from '../../lib/utils/bilingualText';
 import { useAppContext } from '../../contexts/AppContext';
 import { getJobCategory, cleanJobDescription } from '../../lib/utils/jobCategoryUtils';
 import { DEFAULT_NEWS_PLACEHOLDER, handleImageError } from '../../lib/utils/placeholders';
+import { newsService } from '../../lib/services/newsService';
 
 interface DetailFeedPageProps {
   type: 'job' | 'news' | 'post';
@@ -178,11 +179,11 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
 
   const heroCover = useMemo(() => {
     if (!currentItem) return DEFAULT_NEWS_PLACEHOLDER;
-    let cover = currentItem.image_url || currentItem.imageUrl || pubUser?.coverUrl || (pubUser as any)?.cover_url || DEFAULT_NEWS_PLACEHOLDER;
+    let cover = currentItem.image_url || currentItem.imageUrl || currentItem.thumbnail || pubUser?.coverUrl || (pubUser as any)?.cover_url || DEFAULT_NEWS_PLACEHOLDER;
     if (cover && pubAvatar && cover === pubAvatar) {
       cover = pubUser?.coverUrl || (pubUser as any)?.cover_url || DEFAULT_NEWS_PLACEHOLDER;
     }
-    return cover;
+    return newsService.proxyImage(cover);
   }, [currentItem?.id, pubUser, pubAvatar]);
 
   // ── Scroll Progress & Visual Indicator State (مؤشر التمرير ونسبة التقدم) ──
@@ -771,7 +772,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                 <div className="shrink-0 relative overflow-hidden rounded-t-3xl border-b border-slate-200/80 dark:border-slate-800 z-10 bg-slate-950">
                   <div className={`relative overflow-hidden ${heroCover ? 'h-48 sm:h-56' : 'h-40 sm:h-48'} shrink-0`}>
                     <img
-                      src={currentItem.thumbnail || currentItem.imageUrl || heroCover}
+                      src={newsService.proxyImage(currentItem.thumbnail || currentItem.imageUrl || heroCover)}
                       alt={currentItem.title}
                       className="w-full h-full object-cover"
                       onError={(e) => handleImageError(e, DEFAULT_NEWS_PLACEHOLDER)}
