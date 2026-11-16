@@ -135,12 +135,12 @@ export const jobService = {
     }
   },
 
-  async deleteJob(jobId: string, employerId: string) {
-    return supabase
-      .from('jobs')
-      .delete()
-      .eq('id', jobId)
-      .eq('employer_id', employerId); // 🔒 Ownership guard: only the poster can delete
+  async deleteJob(jobId: string, employerId?: string, isAdmin: boolean = false) {
+    let query = (supabase.from('jobs') as any).delete().eq('id', jobId);
+    if (!isAdmin && employerId) {
+      query = query.eq('employer_id', employerId); // 🔒 Ownership guard: only the poster can delete
+    }
+    return query;
   },
 
   async updateJob(jobId: string, employerId: string, data: any) {

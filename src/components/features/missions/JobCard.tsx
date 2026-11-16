@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   MapPin, DollarSign, Clock, ArrowLeft, Building2, 
@@ -23,7 +24,7 @@ interface JobCardProps {
 }
 
 export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, matchScore = 0, onEditJob, onDeleteJob, onPublisherClick }: JobCardProps) => {
-  const { allUsers, appUser, addToast, refreshData } = useAppContext();
+  const { allUsers, appUser, addToast, refreshData, handleDeleteJob } = useAppContext();
   
   const employer = React.useMemo(() => allUsers.find(u => u.id === job.employer_id), [allUsers, job.employer_id]);
   const avatarUrl = (job as any).employer_avatar || (job as any).employerAvatar || employer?.avatar || (employer as any)?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(job.company)}&background=0a66c2&color=fff`;
@@ -114,20 +115,44 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
     }
   };
 
-  const handleDeleteJobCard = async (e: React.MouseEvent) => {
+  // ── Delete State & Custom Confirmation Modal ────────────────
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleted, setIsDeleted] = useState(false);
+
+  const confirmDelete = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!appUser) return;
-    if (!window.confirm('هل أنت متأكد من حذف هذه الوظيفة؟')) return;
-    if (onDeleteJob) { onDeleteJob(job.id); return; }
+    if (isDeleting) return;
+    setIsDeleting(true);
     try {
-      const { error } = await (supabase as any).from('jobs').delete().eq('id', job.id);
-      if (error) throw error;
-      if (refreshData) refreshData();
-      if (addToast) addToast('تم حذف الوظيفة بنجاح ✅');
+      if (onDeleteJob) {
+        await onDeleteJob(job.id);
+      } else if (handleDeleteJob) {
+        await handleDeleteJob(job.id);
+      } else {
+        const { error } = await (supabase as any).from('jobs').delete().eq('id', job.id);
+        if (error) throw error;
+        if (refreshData) refreshData();
+        if (addToast) addToast('تم حذف الوظيفة بنجاح ✅');
+      }
+      setShowDeleteConfirm(false);
+      setIsDeleted(true);
     } catch (err: any) {
       if (addToast) addToast('فشل حذف الوظيفة: ' + err.message, 'error');
+      setIsDeleting(false);
     }
   };
+
+  if (isDeleted) {
+    return (
+      <motion.div
+        initial={{ opacity: 1, height: 'auto', marginBottom: '1.25rem' }}
+        animate={{ opacity: 0, height: 0, marginBottom: 0 }}
+        transition={{ duration: 0.35, ease: 'easeInOut' }}
+        className="overflow-hidden pointer-events-none"
+      />
+    );
+  }
 
   if (compact) {
     return (
@@ -275,10 +300,11 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
             {/* Edit & Delete Buttons — Next to Job Title */}
             {isPublisherOrAdmin && (
               <div
-                className="flex items-center gap-1 shrink-0 bg-white/90 dark:bg-slate-800/90 p-1 rounded-xl border border-slate-200/80 dark:border-slate-700 shadow-xs"
+                className="flex items-center gap-1.5 shrink-0 bg-white/95 dark:bg-slate-800/95 p-1 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm"
                 onClick={(e) => e.stopPropagation()}
               >
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     if (onEditJob) {
@@ -287,17 +313,23 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
                       handleInlineEditOpen(e);
                     }
                   }}
-                  className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white rounded-lg transition-all shadow-xs active:scale-95 border border-blue-100 dark:border-blue-800/40 cursor-pointer"
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-xs active:scale-95 border border-blue-200/60 dark:border-blue-800/40 cursor-pointer font-bold text-xs"
                   title="تعديل الوظيفة"
                 >
                   <Edit2 size={13} />
+                  <span className="hidden sm:inline">تعديل</span>
                 </button>
                 <button
-                  onClick={handleDeleteJobCard}
-                  className="p-1.5 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white rounded-lg transition-all shadow-xs active:scale-95 border border-red-100 dark:border-red-800/40 cursor-pointer"
-                  title="حذف الوظيفة"
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowDeleteConfirm(true);
+                  }}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-red-500/10 hover:bg-red-600 text-red-600 dark:text-red-400 hover:text-white rounded-xl transition-all shadow-xs hover:shadow-red-500/25 active:scale-95 border border-red-200/60 dark:border-red-800/40 cursor-pointer font-bold text-xs group/del"
+                  title="حذف الوظيفة نهائياً"
                 >
-                  <Trash2 size={13} />
+                  <Trash2 size={13} className="transition-transform group-hover/del:scale-110" />
+                  <span className="hidden sm:inline">حذف</span>
                 </button>
               </div>
             )}          </div>
@@ -485,6 +517,82 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
         </div>
 
       </div>
+
+      {/* ── Luxury Delete Confirmation Modal (Portaled) ── */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {showDeleteConfirm && (
+            <div
+              className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md"
+              dir="rtl"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!isDeleting) setShowDeleteConfirm(false);
+              }}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.92, y: 14 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.92, y: 14 }}
+                transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-md bg-white dark:bg-slate-900 rounded-[2rem] border border-red-100 dark:border-red-900/40 shadow-2xl overflow-hidden p-6 text-center space-y-4"
+              >
+                <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto border border-red-200 dark:border-red-800/50 shadow-inner">
+                  <Trash2 size={28} className="animate-bounce" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <h3 className="text-lg font-black text-slate-800 dark:text-white">
+                    تأكيد حذف الوظيفة
+                  </h3>
+                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed">
+                    هل أنت متأكد من حذف هذه الوظيفة نهائياً؟ سيتم إزالتها فوراً من قاعدة البيانات وإشعار المتقدمين.
+                  </p>
+                </div>
+
+                <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 text-right">
+                  <div className="text-xs font-black text-slate-800 dark:text-white line-clamp-1">{job.title}</div>
+                  <div className="text-[11px] font-bold text-slate-400 mt-0.5">{job.company} • {job.location || 'عن بُعد'}</div>
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowDeleteConfirm(false);
+                    }}
+                    className="flex-1 py-3 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-black hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeleting}
+                    onClick={confirmDelete}
+                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white text-xs font-black shadow-lg shadow-red-500/30 transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    {isDeleting ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        <span>جاري الحذف...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 size={14} />
+                        <span>نعم، حذف نهائياً</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </motion.div>
   );
 });

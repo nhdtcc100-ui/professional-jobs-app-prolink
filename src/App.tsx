@@ -24,6 +24,7 @@ import {
   EmailVerificationScreen, DetailFeedPage, EditPostModal
 } from './components/features';
 import { SmartJobBanner } from './components/features/SmartJobBanner';
+import { pageTransition } from './lib/motion/transitions';
 import { mapProfile, useAppContext } from './contexts/AppContext';
 import { IcyBackground, HomeSidebar, IntelligenceCenter, NotificationPanel, GlobalPostModal, MobileNav, Navbar } from './components/layout';
 import { callService } from './lib/services/callService';
@@ -91,7 +92,7 @@ function App() {
     addToast, handleGoogleLogin, handleEmailLogin, handleEmailSignUp, handlePhoneAuth, logout,
     handleApplyJob, setAppUser, selectRole, handleSyncSignal, handleAcceptSync,
     handleAcceptConnection, handleRejectConnection,
-    handleLike, handleDislike, handleAddComment, handleEchoPost, handleDeletePost, handleRelocateToUser, toggleProRank,
+    handleLike, handleDislike, handleAddComment, handleEchoPost, handleDeletePost, handleDeleteJob, handleRelocateToUser, toggleProRank,
     setNotifications, readNotifIds, setReadNotifIds, setAllUsers, setMessages,
     authEmail, setAuthEmail, authPhone, setAuthPhone, authName, setAuthName, authPassword, setAuthPassword,
     myGroups, fetchMyGroups, allGroups, fetchGroups,
@@ -254,6 +255,7 @@ function App() {
     items: any[];
     initialIndex: number;
   } | null>(null);
+  const [returnToProfile, setReturnToProfile] = useState<AppUser | null>(null);
   const [initialJobForMissions, setInitialJobForMissions] = useState<Job | null>(null);
   const webRTCServiceRef = useRef<WebRTCService | null>(null);
   
@@ -991,7 +993,7 @@ function App() {
               {/* ⚡ Keep-Alive: Home Feed */}
               <div
                 key="keepalive-tab-home"
-                className={activeTab === 'home' ? 'space-y-4' : 'hidden'}
+                className={activeTab === 'home' ? 'space-y-4 page-transition-sidebar' : 'hidden'}
                 aria-hidden={activeTab !== 'home'}
               >
                 <>
@@ -1145,8 +1147,7 @@ function App() {
                                   setActiveTab('profile');
                                 }}
                                 onDeleteJob={async (jobId) => {
-                                  if (!window.confirm('هل أنت متأكد من حذف هذه الوظيفة؟')) return;
-                                  await (supabase as any).from('jobs').delete().eq('id', jobId);
+                                  await handleDeleteJob(jobId);
                                 }}
                               />
                             </div>
@@ -1164,7 +1165,7 @@ function App() {
               {visitedTabs.jobs && (
                 <div
                   key="keepalive-tab-jobs"
-                  className={activeTab === 'jobs' ? 'pb-safe-bottom px-1 md:px-0 animate-in fade-in duration-150' : 'hidden'}
+                  className={activeTab === 'jobs' ? 'pb-safe-bottom px-1 md:px-0 page-transition-sidebar' : 'hidden'}
                   aria-hidden={activeTab !== 'jobs'}
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1215,10 +1216,10 @@ function App() {
               )}
               {activeTab === 'post-job' && (
                 <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  variants={pageTransition}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
                 >
                   {!isJobPoster(appUser) ? (
                     <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-lg mx-auto shadow-xl" dir="rtl">
@@ -1250,7 +1251,7 @@ function App() {
               {visitedTabs.network && (
                 <div
                   key="keepalive-tab-network"
-                  className={activeTab === 'network' ? 'pb-safe-bottom px-1 md:px-0 animate-in fade-in duration-150' : 'hidden'}
+                  className={activeTab === 'network' ? 'pb-safe-bottom px-1 md:px-0 page-transition-sidebar' : 'hidden'}
                   aria-hidden={activeTab !== 'network'}
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1286,10 +1287,10 @@ function App() {
 
               {activeTab === 'calls' && appUser?.isAdmin && (
                 <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  variants={pageTransition}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
                   className="pb-safe-bottom px-1 md:px-0"
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1332,7 +1333,7 @@ function App() {
                 ) : (
                   <div
                     key="keepalive-tab-messages"
-                    className={activeTab === 'messages' ? 'pb-safe-bottom md:pb-0 h-full' : 'hidden'}
+                    className={activeTab === 'messages' ? 'pb-safe-bottom md:pb-0 h-full page-transition-sidebar' : 'hidden'}
                     aria-hidden={activeTab !== 'messages'}
                   >
                     <MessagingView 
@@ -1358,10 +1359,10 @@ function App() {
 
               {activeTab === 'groups' && (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.13, ease: 'easeOut' }}
+                  variants={pageTransition}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
                   className="pb-safe-bottom px-1 md:px-0"
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1382,7 +1383,7 @@ function App() {
               {visitedTabs.news && (
                 <div
                   key="keepalive-tab-news"
-                  className={activeTab === 'news' ? 'pb-safe-bottom px-1 md:px-0 animate-in fade-in duration-150' : 'hidden'}
+                  className={activeTab === 'news' ? 'pb-safe-bottom px-1 md:px-0 page-transition-sidebar' : 'hidden'}
                   aria-hidden={activeTab !== 'news'}
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1404,10 +1405,10 @@ function App() {
 
               {activeTab === 'services' && (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.13, ease: 'easeOut' }}
+                  variants={pageTransition}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
                   className="pb-safe-bottom px-1 md:px-0"
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1425,10 +1426,10 @@ function App() {
 
               {activeTab === 'erp' && (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.13, ease: 'easeOut' }}
+                  variants={pageTransition}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
                   className="pb-safe-bottom px-1 md:px-0"
                 >
                   {appUser?.isAdmin ? (
@@ -1451,10 +1452,10 @@ function App() {
 
               {activeTab === 'about' && (
                 <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  variants={pageTransition}
+                  initial="initial"
+                  animate="animate"
+                  exit="exit"
                   className="pb-safe-bottom px-1 md:px-0"
                 >
                   <Suspense fallback={<TabSkeleton />}>
@@ -1532,6 +1533,16 @@ function App() {
                         setSelectedProfile(null);
                       }}
                       onCallClick={startCall}
+                      onPostClick={(post: any, profilePostsList?: any[]) => {
+                        setReturnToProfile(selectedProfile || appUser);
+                        const items = profilePostsList && profilePostsList.length > 0 ? profilePostsList : [post];
+                        const idx = Math.max(0, items.findIndex((p: any) => p.id === post.id));
+                        setDetailFeed({
+                          type: 'post',
+                          items,
+                          initialIndex: idx,
+                        });
+                      }}
                       onGoToSettings={() => setActiveTab('settings')}
                       onSave={async (updates: any) => {
                         if (appUser) {
@@ -1630,13 +1641,22 @@ function App() {
             type={detailFeed.type}
             items={detailFeed.items}
             initialIndex={detailFeed.initialIndex}
-            onClose={() => setDetailFeed(null)}
+            onClose={() => {
+              setDetailFeed(null);
+              if (returnToProfile) {
+                setSelectedProfile(returnToProfile);
+                setActiveTab('profile');
+                setReturnToProfile(null);
+              }
+            }}
             onNavigateHome={() => {
               setDetailFeed(null);
+              setReturnToProfile(null);
               setActiveTab('home');
             }}
             onNavigateTab={(tab) => {
               setDetailFeed(null);
+              setReturnToProfile(null);
               setActiveTab(tab);
             }}
             onApplyJob={(job) => {

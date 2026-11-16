@@ -3,14 +3,28 @@
 import type { Variants } from 'motion/react';
 
 /**
- * 1. Page-to-Page / Tab Crossfade
- * Soft directionless fade for main tabs (Home, Jobs, News, Services, Network).
- * 130ms duration gives immediate responsiveness without spatial disorientation.
+ * 1. Page-to-Page / Tab Transition (Spring Lateral Motion matching Sidebar V5)
+ * Luxury spring motion (stiffness: 380, damping: 34) with subtle lateral slide and depth scale.
  */
 export const pageTransition: Variants = {
-  initial: { opacity: 0 },
-  animate: { opacity: 1, transition: { duration: 0.13, ease: 'easeOut' } },
-  exit: { opacity: 0, transition: { duration: 0.12, ease: 'easeIn' } },
+  initial: { opacity: 0, x: -26, scale: 0.985 },
+  animate: {
+    opacity: 1,
+    x: 0,
+    scale: 1,
+    transition: {
+      type: 'spring' as const,
+      stiffness: 380,
+      damping: 34,
+      mass: 0.75,
+    },
+  },
+  exit: {
+    opacity: 0,
+    x: 26,
+    scale: 0.985,
+    transition: { duration: 0.16, ease: [0.32, 0.72, 0, 1] },
+  },
 };
 
 export const fade = pageTransition;
