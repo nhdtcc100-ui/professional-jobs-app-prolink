@@ -1,3 +1,4 @@
+import { safeVibrate } from '../../lib/utils/haptics';
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Users, Plus } from 'lucide-react';
@@ -96,11 +97,7 @@ export function MobileNavItem({
   indicatorColor?: string;
 }) {
   const handleClick = () => {
-    try {
-      if (navigator && typeof navigator.vibrate === 'function') {
-        navigator.vibrate(10);
-      }
-    } catch (_) {}
+    safeVibrate(10);
     onClick();
   };
 

@@ -1,3 +1,4 @@
+import { safeVibrate } from '../../lib/utils/haptics';
 import React, { useState, useEffect, useMemo, useRef, startTransition } from 'react';
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import {
@@ -341,7 +342,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                   } else {
                     preloadTab(item.id);
                   }
-                  try { navigator.vibrate?.([8]); } catch (_) {}
+                  safeVibrate(8);
                 }}
                 onMouseEnter={() => {
                   if (item.id === 'more') {
@@ -355,7 +356,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  try { navigator.vibrate?.([8]); } catch (_) {}
+                  safeVibrate(8);
                   if (item.id === 'more') {
                     setShowMobileMenu(!showMobileMenu);
                   } else {
@@ -580,7 +581,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                         type="button"
                         onPointerDown={() => {
                           it.preload?.();
-                          try { navigator.vibrate?.([6]); } catch (_) {}
+                          safeVibrate(6);
                         }}
                         onPointerEnter={() => setHoverTab(it.id)}
                         onPointerLeave={() => setHoverTab(null)}

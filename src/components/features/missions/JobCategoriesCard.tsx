@@ -1,3 +1,4 @@
+import { safeVibrate } from '../../../lib/utils/haptics';
 import React, { useRef, useCallback, startTransition } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Layers, RotateCcw, Sparkles, Wrench } from 'lucide-react';
@@ -53,7 +54,7 @@ export const JobCategoriesCard: React.FC<JobCategoriesCardProps> = ({
   const allItems = [ALL_ITEM, SERVICES_ITEM, ...JOB_CATEGORIES];
 
   const handleSelect = useCallback((id: string) => {
-    try { navigator.vibrate?.([8]); } catch (_) {}
+    safeVibrate(8);
     const isCurrentlySelected = id === selectedCategory || (id !== 'الكل' && normalizeArabic(selectedCategory) === normalizeArabic(id));
     // استجابة فورية بصرية عبر startTransition
     startTransition(() => {

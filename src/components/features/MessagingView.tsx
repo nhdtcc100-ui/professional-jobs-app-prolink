@@ -1,3 +1,4 @@
+import { safeVibrate } from '../../lib/utils/haptics';
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { SkeletonConversationItem } from '../ui';
@@ -130,13 +131,7 @@ const playSendSound = () => {
   } catch (_) {}
 };
 
-const triggerHaptic = () => {
-  try {
-    if (typeof navigator !== 'undefined' && navigator.vibrate) {
-      navigator.vibrate(20);
-    }
-  } catch (_) {}
-};
+const triggerHaptic = () => { safeVibrate(20); };
 
 export function MessagingView({ 
   messages, 

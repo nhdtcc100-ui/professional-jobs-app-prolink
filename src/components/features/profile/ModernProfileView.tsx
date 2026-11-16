@@ -1,3 +1,4 @@
+import { safeVibrate } from '../../../lib/utils/haptics';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -693,7 +694,7 @@ export function ModernProfileView({
   // ─── تغيير نوع الحساب (التحويل بين صاحب عمل وباحث عن عمل يتطلب موافقة الأدمن) ─────────────
   const handleRoleChange = (newRole: 'seeker' | 'employer') => {
     if (!isMe || !effectiveUserId || savingRole || newRole === role) return;
-    try { navigator.vibrate?.([10]); } catch (_) {}
+    safeVibrate(10);
 
     // 🔒 إذا كان هناك طلب قيد المراجعة مسبقاً
     if (pendingRoleRequest && pendingRoleRequest.status === 'pending' && pendingRoleRequest.requested_role !== role) {
@@ -1114,7 +1115,7 @@ export function ModernProfileView({
         setPasswordSuccessBanner('تم تغيير كلمة المرور وتفعيل الرمز السري الجديد بنجاح! يمكنك الآن استخدامه لتسجيل الدخول.');
         setPasswordSuccessModal(true);
         notify('✅ تم حفظ وتحديث كلمة المرور بنجاح!', 'success');
-        try { navigator.vibrate?.([60, 40, 60]); } catch (_) {}
+        safeVibrate([60, 40, 60]);
       } else {
         // التحقق من صحة الرمز الحالي
         if (targetEmail && targetEmail.includes('@')) {
