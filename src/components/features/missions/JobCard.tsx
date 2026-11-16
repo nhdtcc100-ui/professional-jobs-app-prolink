@@ -1,4 +1,5 @@
-import React, { useState, useEffect , createPortal } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   MapPin, DollarSign, Clock, ArrowLeft, Building2, 

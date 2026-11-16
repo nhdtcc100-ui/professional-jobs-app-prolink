@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, Suspense, lazy, useCallback, useMemo, createPortal } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion, MotionConfig } from 'motion/react';
 import {
   loadMissionsView,
