@@ -172,9 +172,7 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
               {isActive ? 'مفتوح' : 'مغلق'}
             </span>
           </div>
-          <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm border border-transparent dark:border-slate-700">
-            <ArrowLeft size={14} />
-          </div>
+
         </div>
       </motion.div>
     );
@@ -476,12 +474,13 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
             )}
           </div>
           <div className="flex items-center gap-3">
-            <div className={`flex items-center gap-2 text-[11px] font-black transition-all duration-500 group-hover:gap-4 ${isActive ? 'text-[#0a66c2] dark:text-blue-400' : 'text-slate-400'}`}>
-              <span className="uppercase tracking-widest">{isActive ? 'تفاصيل العرض' : 'عرض البيانات'}</span>
-              <div className="p-2 bg-blue-600 text-white rounded-xl shadow-lg shadow-blue-500/30 group-hover:rotate-[-90deg] transition-transform duration-500">
-                <ArrowLeft size={16} />
-              </div>
-            </div>
+            <span className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all duration-300 ${
+              isActive 
+                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 group-hover:bg-blue-600 group-hover:text-white shadow-xs' 
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+            }`}>
+              {isActive ? 'تفاصيل العرض' : 'عرض البيانات'}
+            </span>
           </div>
         </div>
 

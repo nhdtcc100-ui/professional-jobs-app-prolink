@@ -45,8 +45,29 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
   onEditPost,
   onDeletePost,
 }) => {
-  const { setSelectedProfile, allUsers: contextAllUsers } = useAppContext();
+  const { setSelectedProfile, allUsers: contextAllUsers, jobs: contextJobs = [], posts: contextPosts = [] } = useAppContext();
   const allUsersList = allUsers.length > 0 ? allUsers : contextAllUsers;
+
+  // ⚡ Auto-expand single-item array to full collection so the total count always appears accurately!
+  const resolvedItems = useMemo(() => {
+    if (items && resolvedItems.length > 1) return items;
+    const first = items?.[0];
+    if (type === 'job' || first?.feedType === 'job' || (first?.company && !first?.authorId)) {
+      if (contextJobs.length > 0) return contextJobs;
+    } else if (type === 'post' || first?.feedType === 'post' || (first?.content && first?.authorId)) {
+      if (contextPosts.length > 0) return contextPosts;
+    } else if (type === 'news' || first?.feedType === 'news') {
+      try {
+        const raw = localStorage.getItem('prolink_news_cache_v2') || sessionStorage.getItem('prolink_news_cache_v2');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          const newsList = Array.isArray(parsed) ? parsed : (parsed.data || []);
+          if (newsList.length > 0) return newsList;
+        }
+      } catch {}
+    }
+    return items || [];
+  }, [items, type, contextJobs, contextPosts]);
   
   const [currentIndex, setCurrentIndex] = useState(
     Math.max(0, Math.min(initialIndex, (items?.length || 1) - 1))
@@ -74,11 +95,11 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, items.length]);
+  }, [currentIndex, resolvedItems.length]);
 
   const goToNext = () => {
     if (isTransitioning.current) return;
-    if (currentIndex < items.length - 1) {
+    if (currentIndex < resolvedItems.length - 1) {
       isTransitioning.current = true;
       setDirection(1);
       setCurrentIndex(prev => prev + 1);
@@ -136,9 +157,9 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
     }
   };
 
-  if (!items || items.length === 0) return null;
+  if (!items || resolvedItems.length === 0) return null;
 
-  const currentItem = items[currentIndex] || items[0];
+  const currentItem = resolvedItems[currentIndex] || items[0];
   const isCurJob = type !== 'post' && (currentItem?.feedType === 'job' || type === 'job' || (currentItem?.company !== undefined && !currentItem?.content && !currentItem?.authorId && !currentItem?.author_id));
   const isCurNews = type === 'news' || currentItem?.feedType === 'news';
   const itemLabel = isCurJob ? 'وظيفة' : isCurNews ? 'خبر' : 'منشور';
@@ -247,24 +268,25 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
           <span>رجوع</span>
         </button>
 
-        {/* عدد الوظائف (كما في تفاصيل الرئيسية) */}
-        <div className="flex items-center gap-1.5 justify-center">
+        {/* عداد العناصر الإخباري والمهني الثابت والبارز (وظيفة / منشور / خبر X من Y) */}
+        <div className="flex items-center gap-1.5 justify-center shrink-0">
           <button
             onClick={goToNext}
-            disabled={currentIndex >= items.length - 1}
-            className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-100 transition-all active:scale-90 cursor-pointer"
+            disabled={currentIndex >= resolvedItems.length - 1}
+            className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-100 transition-all active:scale-90 cursor-pointer shadow-xs"
             title="التالي"
             aria-label="التالي"
           >
             <ChevronLeft size={16} />
           </button>
-          <span className="text-xs font-black text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 px-3.5 py-1 rounded-full shadow-xs select-none">
-            {itemLabel} {currentIndex + 1} من {items.length}
+          <span className="text-xs font-black text-blue-600 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/90 border border-blue-200 dark:border-blue-800/60 px-3.5 py-1.5 rounded-full shadow-xs select-none whitespace-nowrap flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+            <span>{itemLabel} {currentIndex + 1} من {resolvedItems.length}</span>
           </span>
           <button
             onClick={goToPrev}
             disabled={currentIndex <= 0}
-            className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-100 transition-all active:scale-90 cursor-pointer"
+            className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-100 transition-all active:scale-90 cursor-pointer shadow-xs"
             title="السابق"
             aria-label="السابق"
           >
@@ -289,7 +311,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
         className="flex-1 min-h-0 w-full flex items-center justify-center relative overflow-hidden px-2 sm:px-4 py-2 bg-slate-100/70 dark:bg-slate-950"
       >
         {/* Peek Card: Next Card on Left (In RTL, Left is Next) */}
-        {currentIndex < items.length - 1 && (
+        {currentIndex < resolvedItems.length - 1 && (
           <div
             onClick={goToNext}
             className="hidden sm:flex absolute left-2 md:left-6 w-16 md:w-28 h-[88%] rounded-3xl opacity-35 hover:opacity-60 dark:opacity-20 dark:hover:opacity-40 scale-90 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer shadow-lg overflow-hidden transition-all z-0 items-center justify-center p-2 text-center"
@@ -386,11 +408,16 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                         </div>
 
                         <div className="absolute bottom-4 right-4 left-4 z-10">
-                          <div className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-md border mb-1.5 ${
-                            isActive ? 'bg-emerald-500/20 border-emerald-400/30 text-emerald-400' : 'bg-slate-700/40 border-slate-600/30 text-slate-300'
-                          }`}>
-                            <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
-                            {isActive ? 'التوظيف متاح الآن' : 'التوظيف مغلق'}
+                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                            <div className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-md border ${
+                              isActive ? 'bg-emerald-500/20 border-emerald-400/30 text-emerald-400' : 'bg-slate-700/40 border-slate-600/30 text-slate-300'
+                            }`}>
+                              <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
+                              {isActive ? 'التوظيف متاح الآن' : 'التوظيف مغلق'}
+                            </div>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black bg-blue-500/30 border border-blue-400/40 text-blue-200 backdrop-blur-md">
+                              🏷️ {itemLabel} {currentIndex + 1} من {resolvedItems.length}
+                            </span>
                           </div>
                           
                           <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md line-clamp-2">
@@ -597,7 +624,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                                     await onDeletePost(currentItem.id);
                                   }
                                   setShowPostDeleteConfirm(false);
-                                  if (items.length <= 1) {
+                                  if (resolvedItems.length <= 1) {
                                     onClose();
                                   } else {
                                     goToNext();
@@ -765,9 +792,14 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     </div>
 
                     <div className="absolute bottom-4 right-4 left-4 z-10">
-                      <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-md border mb-1.5 bg-blue-500/20 border-blue-400/30 text-blue-300">
-                        <Calendar size={11} />
-                        <span>{currentItem.pubDate ? new Date(currentItem.pubDate).toLocaleDateString('ar-EG') : 'اليوم'}</span>
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-md border bg-blue-500/20 border-blue-400/30 text-blue-300">
+                          <Calendar size={11} />
+                          <span>{currentItem.pubDate ? new Date(currentItem.pubDate).toLocaleDateString('ar-EG') : 'اليوم'}</span>
+                        </div>
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-500/30 border border-emerald-400/40 text-emerald-200 backdrop-blur-md">
+                          📰 {itemLabel} {currentIndex + 1} من {resolvedItems.length}
+                        </span>
                       </div>
                       
                       <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md line-clamp-2">

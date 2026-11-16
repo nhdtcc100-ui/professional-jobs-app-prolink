@@ -44,6 +44,7 @@ export const networkService = {
             from_avatar: requester.avatar,
             target_id: conn.id,
             read: false,
+            message: `وافق ${requester.name || 'صديقك'} على طلب التواصل المهني الخاص بك ✅`,
           },
         ]);
         return { data: conn, error: accErr };
@@ -78,6 +79,7 @@ export const networkService = {
         from_avatar: requester.avatar,
         target_id: (newConn as any).id,
         read: false,
+        message: `أرسل لك ${requester.name || 'مستخدم'} طلب تواصل مهني ومزامنة 🤝`,
       },
     ]);
 
