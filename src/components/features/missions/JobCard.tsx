@@ -71,6 +71,7 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
   const [isEditingInline, setIsEditingInline] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingCard, setIsDeletingCard] = useState(false);
+  const [deleted, setDeleted] = useState(false);
   const [editTitle, setEditTitle] = useState(job.title);
   const [editCompany, setEditCompany] = useState(job.company);
   const [editLocation, setEditLocation] = useState(job.location || '');
@@ -128,19 +129,33 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
     try {
       if (onDeleteJob) {
         await onDeleteJob(job.id);
+        setDeleted(true);
+        setShowDeleteConfirm(false);
       } else {
         const { error } = await (supabase as any).from('jobs').delete().eq('id', job.id);
         if (error) throw error;
-        if (refreshData) refreshData();
-        if (addToast) addToast('تم حذف الوظيفة بنجاح ✅');
+        setDeleted(true);
+        setShowDeleteConfirm(false);
+        if (addToast) addToast('🗑️ تم حذف الوظيفة نهائياً بنجاح', 'success');
       }
     } catch (err: any) {
       if (addToast) addToast('فشل حذف الوظيفة: ' + (err as any).message, 'error');
     } finally {
       setIsDeletingCard(false);
-      setShowDeleteConfirm(false);
     }
   };
+
+  // Animate out if deleted (same as PostNewsCard)
+  if (deleted) {
+    return (
+      <motion.div
+        initial={{ opacity: 1, scale: 1, height: 'auto' }}
+        animate={{ opacity: 0, scale: 0.95, height: 0, marginBottom: 0 }}
+        transition={{ duration: 0.35, ease: 'easeInOut' }}
+        className="overflow-hidden"
+      />
+    );
+  }
 
   if (compact) {
     return (
@@ -499,54 +514,83 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
 
       </div>
 
-        {/* ── Delete Confirmation Modal ── */}
-        <AnimatePresence>
-          {showDeleteConfirm && createPortal(
-            <div
-              className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-              dir="rtl"
-              onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(false); }}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                transition={{ type: 'spring', damping: 25, stiffness: 350 }}
-                className="bg-white dark:bg-slate-900 border border-red-200 dark:border-red-800/60 rounded-3xl p-6 max-w-xs w-full shadow-2xl text-center space-y-4"
-                onClick={(e) => e.stopPropagation()}
+        {/* ── Delete Confirmation Modal (Portal - same pattern as PostNewsCard) ── */}
+        {typeof document !== 'undefined' && createPortal(
+          <AnimatePresence>
+            {showDeleteConfirm && (
+              <div
+                className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+                dir="rtl"
+                onClick={(e) => { e.stopPropagation(); setShowDeleteConfirm(false); }}
               >
-                <div className="w-14 h-14 rounded-2xl bg-red-100 dark:bg-red-950/60 text-red-600 dark:text-red-400 flex items-center justify-center mx-auto shadow-sm">
-                  <Trash2 size={28} />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-900 dark:text-white">حذف الوظيفة</h3>
-                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
-                    هل أنت متأكد من حذف &quot;{job.title}&quot;؟<br/>لا يمكن التراجع عن هذا الإجراء.
-                  </p>
-                </div>
-                <div className="flex gap-3 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowDeleteConfirm(false)}
-                    className="flex-1 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-black text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-all active:scale-95 cursor-pointer"
-                  >
-                    إلغاء
-                  </button>
-                  <button
-                    type="button"
-                    onClick={confirmDeleteJobCard}
-                    disabled={isDeletingCard}
-                    className="flex-1 py-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black text-sm shadow-lg shadow-red-600/30 transition-all active:scale-95 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
-                  >
-                    {isDeletingCard && <Loader2 size={14} className="animate-spin" />}
-                    {isDeletingCard ? 'جارٍ الحذف...' : 'نعم، احذف'}
-                  </button>
-                </div>
-              </motion.div>
-            </div>,
-            document.body
-          )}
-        </AnimatePresence>
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.92, y: 15 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.92, y: 15 }}
+                  transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-full max-w-md bg-white dark:bg-slate-900 border border-red-500/30 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-5 text-center relative overflow-hidden"
+                >
+                  {/* خط أحمر علوي */}
+                  <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-red-600 via-rose-500 to-amber-500" />
+
+                  {/* أيقونة التحذير */}
+                  <div className="w-16 h-16 mx-auto rounded-3xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800/60 flex items-center justify-center text-red-600 dark:text-red-400 shadow-xl shadow-red-500/10">
+                    <Trash2 size={28} />
+                  </div>
+
+                  {/* العنوان والوصف */}
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 dark:text-white mb-1.5">
+                      تأكيد حذف الوظيفة نهائياً
+                    </h3>
+                    <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed px-2">
+                      سيتم حذف هذه الوظيفة بالكامل من قاعدة البيانات فوراً ولن تتمكن من استرجاعها لاحقاً. هل أنت متأكد من الحذف؟
+                    </p>
+                  </div>
+
+                  {/* معاينة اسم الوظيفة */}
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-700/60 text-right">
+                    <p className="text-xs font-black text-slate-700 dark:text-slate-200 line-clamp-2 leading-relaxed">
+                      "{job.title}" — {job.company}
+                    </p>
+                  </div>
+
+                  {/* أزرار الإجراء */}
+                  <div className="flex items-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      disabled={isDeletingCard}
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="flex-1 py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 text-xs font-black hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                    >
+                      إلغاء الأمر
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isDeletingCard}
+                      onClick={confirmDeleteJobCard}
+                      className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white text-xs font-black shadow-lg shadow-red-500/30 transition-all active:scale-95 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {isDeletingCard ? (
+                        <>
+                          <Loader2 size={14} className="animate-spin" />
+                          <span>جاري الحذف...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 size={14} />
+                          <span>نعم، حذف نهائي</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
     </motion.div>
   );
 });
