@@ -485,7 +485,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
   addToast
 }) => {
   const [filter, setFilter] = useState<'all' | 'unread' | 'connections' | 'jobs_social'>('all');
-  const { markNotificationAsRead, deleteReadNotifications, deleteAllNotifications, readNotifTimestamps, allUsers = [], setSelectedProfile, setSelectedChat } = useAppContext();
+  const { markNotificationAsRead, deleteReadNotifications, deleteAllNotifications, allUsers = [], setSelectedProfile, setSelectedChat } = useAppContext();
 
   // 👁️ Track unread notifications viewed in the current open session
   const seenThisSessionRef = useRef<Set<string>>(new Set());
@@ -518,22 +518,16 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
   const unreadCount = notifications.filter(n => !n.read && !readNotifIds.has(n.id)).length;
   const readCount = notifications.length - unreadCount;
 
-  const now = Date.now();
-  const oneHour = 60 * 60 * 1000;
-
-  // Filter logic across categories
+  // Filter logic across categories — ترتيب الإشعارات يبقى كما جاء من قاعدة البيانات (أحدث أولاً)
   const filteredNotifs = useMemo(() => {
     return notifications.filter(n => {
-      const readAt = readNotifTimestamps?.[n.id];
-      if (readAt && (now - readAt) > oneHour) return false;
-
       const isRead = n.read || readNotifIds.has(n.id);
       if (filter === 'unread') return !isRead;
       if (filter === 'connections') return n.type === 'follow_request' || n.type === 'sync_approval';
       if (filter === 'jobs_social') return n.type === 'job_application' || n.type === 'like' || n.type === 'comment' || n.type === 'message';
       return true;
     });
-  }, [notifications, readNotifIds, readNotifTimestamps, filter]);
+  }, [notifications, readNotifIds, filter]);
 
   const markAllRead = async () => {
     const unread = notifications.filter(n => !n.read || !readNotifIds.has(n.id)).map(n => n.id);
