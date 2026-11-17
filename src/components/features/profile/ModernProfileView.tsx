@@ -243,7 +243,7 @@ export function ModernProfileView({
 
   // ─── Profile Tabs & Posts State ──────────────────────────────────────────────
   const [activeProfileTab, setActiveProfileTab] = useState<'info' | 'posts'>('info');
-  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast, appUser, handleDeletePost, canUseMessaging } = useAppContext();
+  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast, appUser, handleDeletePost, canUseMessaging, canUseAccountSwitch } = useAppContext();
   const notify = useCallback((msg: string, type: any = 'success') => {
     if (typeof addToast === 'function') addToast(msg, type);
     else if (typeof contextAddToast === 'function') contextAddToast(msg, type);
@@ -1157,6 +1157,8 @@ export function ModernProfileView({
           </div>
 
           {/* ── نوع الحساب (Account Type Segmented Control) ── */}
+          {/* يظهر فقط للأدمن أو عند تفعيل خاصية تبديل الحساب من الإدارة */}
+          {canUseAccountSwitch && (
           <div className="pt-1 pb-5 mb-6 border-b border-slate-100 dark:border-slate-800/80 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1218,6 +1220,7 @@ export function ModernProfileView({
               })}
             </div>
           </div>
+          )}
 
           {/* ── Seeker Availability Toggle Card ── */}
           {role === 'seeker' && (
