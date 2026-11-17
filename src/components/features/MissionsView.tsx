@@ -433,12 +433,13 @@ export function MissionsView({
   const handleApplicationAction = async (appId: string, jobTitle: string, status: 'approved' | 'rejected' | 'pending') => {
     if (!appUser) return;
     try {
-      const { error } = await (supabase as any).from('job_applications').update({ status }).eq('id', appId);
+      const { data: updatedRows, error } = await (supabase as any).from('job_applications').update({ status }).eq('id', appId).select('id');
       if (error) throw error;
-      
-      // Zero notifications, zero calls — completely silent and clean status change
-      fetchApplications();
+      if (!updatedRows || updatedRows.length === 0) throw new Error('لا تملك صلاحية تعديل هذا الطلب');
+
+      setIncomingApplications(prev => prev.map((a: any) => a.id === appId ? { ...a, status } : a));
       addToast(status === 'approved' ? '✅ تم قبول الطلب بنجاح' : status === 'rejected' ? 'تم الرفض' : '🔄 تمت الإعادة للمراجعة');
+      await fetchApplications();
     } catch (e: any) {
       addToast('خطأ: ' + e.message, 'error');
     }

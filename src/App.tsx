@@ -825,10 +825,7 @@ function App() {
     // إغلاق المودال فوراً
     setJobToDeleteFromFeed(null);
     try {
-      const { error } = await (supabase as any).from('jobs').delete().eq('id', idToDelete);
-      if (error) throw error;
-      // الـ realtime subscription في AppContext سيحذف الوظيفة من القائمة تلقائياً
-      addToast('تم حذف الوظيفة بنجاح ✅');
+      await handleDeleteJob(idToDelete);
     } catch (err: any) {
       console.error('Delete job error:', err);
       addToast('فشل حذف الوظيفة: ' + (err?.message || 'خطأ غير معروف'), 'error');

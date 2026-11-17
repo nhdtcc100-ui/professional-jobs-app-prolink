@@ -62,6 +62,8 @@ interface AppContextType {
   canUseSupportChat: boolean;
   canUseGroups: boolean;
   canUseNetwork: boolean;
+  canUseAccountSwitch: boolean;
+  canUseKhakiTheme: boolean;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   selectedProfile: AppUser | null;
@@ -80,8 +82,8 @@ interface AppContextType {
   isPublishingArticle: boolean;
   setIsPublishingArticle: (is: boolean) => void;
   // Theme State
-  theme: 'light' | 'dark';
-  setTheme: (t: 'light' | 'dark') => void;
+  theme: 'light' | 'dark' | 'khaki';
+  setTheme: (t: 'light' | 'dark' | 'khaki') => void;
   toggleTheme: () => void;
   isMockEnabled?: boolean;
   
@@ -293,14 +295,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [posts, setPosts] = useState<Post[]>(() => {
     try {
       const c = localStorage.getItem('prolink_cached_posts');
-      return c ? JSON.parse(c) : [];
+      const arr: Post[] = c ? JSON.parse(c) : [];
+      const del: string[] = JSON.parse(localStorage.getItem('prolink_deleted_posts') || '[]');
+      return del.length ? arr.filter(p => !del.includes(p.id)) : arr;
     } catch { return []; }
   });
 
   const [jobs, setJobs] = useState<Job[]>(() => {
     try {
       const c = localStorage.getItem('prolink_cached_jobs');
-      return c ? JSON.parse(c) : [];
+      const arr: Job[] = c ? JSON.parse(c) : [];
+      const del: string[] = JSON.parse(localStorage.getItem('prolink_deleted_jobs') || '[]');
+      return del.length ? arr.filter(j => !del.includes(j.id)) : arr;
     } catch { return []; }
   });
 
@@ -538,6 +544,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const canUseSupportChat = Boolean(isAdminUser || platformSettings.supportChatEnabled);
   const canUseGroups = Boolean(isAdminUser || platformSettings.groupsEnabled);
   const canUseNetwork = Boolean(isAdminUser || platformSettings.networkEnabled);
+  const canUseAccountSwitch = Boolean(isAdminUser || platformSettings.accountSwitchEnabled);
+  const canUseKhakiTheme = Boolean(isAdminUser || platformSettings.khakiThemeEnabled);
 
   const mockBundle = React.useMemo(() => {
     if (!isMockEnabled) return null;
@@ -642,7 +650,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .update({ read: true })
         .eq('user_id', user.id)
         .eq('type', 'message')
-        .eq('from_user_id', senderId);
+        .eq('from_id', senderId);
     } catch (err) {
       console.warn('markChatMessagesAsRead DB error:', err);
     }
@@ -820,25 +828,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
   const [isPublishingArticle, setIsPublishingArticle] = useState(false);
 
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+  const [theme, setTheme] = useState<'light' | 'dark' | 'khaki'>(() => {
     const saved = localStorage.getItem('prolink_theme');
-    if (saved === 'dark' || saved === 'light') return saved as any;
+    if (saved === 'dark' || saved === 'light' || saved === 'khaki') return saved;
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
 
   useEffect(() => {
     localStorage.setItem('prolink_theme', theme);
     // Remove all theme classes first
-    document.documentElement.classList.remove('light', 'dark', 'milky', 'pink');
+    document.documentElement.classList.remove('light', 'dark', 'khaki', 'milky', 'pink');
     // Add the current one
     document.documentElement.classList.add(theme);
   }, [theme]);
+
+  // 🔒 الثيم الكاكي حصري للأدمن (أو عند فتحه من الإعدادات) — يُعاد للفاتح إذا أُقفل
+  useEffect(() => {
+    if (theme === 'khaki' && !canUseKhakiTheme) setTheme('light');
+  }, [theme, canUseKhakiTheme]);
 
   const toggleTheme = (e?: any) => {
     const x = e && typeof e.clientX === 'number' && e.clientX > 0 ? e.clientX : (typeof window !== 'undefined' ? window.innerWidth / 2 : 200);
     const y = e && typeof e.clientY === 'number' && e.clientY > 0 ? e.clientY : 40;
     revealTheme(x, y, () => {
-      setTheme(prev => prev === 'light' ? 'dark' : 'light');
+      setTheme(prev => {
+        if (prev === 'light') return 'dark';
+        if (prev === 'dark') return canUseKhakiTheme ? 'khaki' : 'light';
+        return 'light';
+      });
     });
   };
 
@@ -1002,8 +1019,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const fetchAllData = async (silent = false, explicitUserId?: string) => {
-    if (isFetchingAllData.current) return;
+  // 🔄 Immediate role refresh without a page reload (fallback when realtime is disconnected)
+  useEffect(() => {
+    const onRoleUpdated = async () => {
+      const uid = user?.id;
+      if (!uid) return;
+      try {
+        const { data: profile } = await profileService.getProfileById(uid);
+        if (profile) {
+          setAppUser(mapProfile(profile));
+          fetchAllData(true, uid, true);
+        }
+      } catch {}
+    };
+    window.addEventListener('prolink_role_updated', onRoleUpdated);
+    return () => window.removeEventListener('prolink_role_updated', onRoleUpdated);
+  }, [user?.id]);
+
+  const fetchAllData = async (silent = false, explicitUserId?: string, force = false) => {
+    if (isFetchingAllData.current) {
+      if (!force) return;
+      const waitStart = Date.now();
+      while (isFetchingAllData.current && Date.now() - waitStart < 5000) {
+        await new Promise(r => setTimeout(r, 150));
+      }
+      if (isFetchingAllData.current) return;
+    }
     const effectiveUserId = explicitUserId || user?.id;
     isFetchingAllData.current = true;
 
@@ -1048,7 +1089,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const filteredPosts = (sorted as any[]).filter(p => !delPostIds.has(p.id));
         setPosts(filteredPosts as any);
         // ✅ Cache posts in localStorage for instant load next time
-        try { localStorage.setItem('prolink_cached_posts', JSON.stringify(sorted.slice(0, 60))); } catch {}
+        try { localStorage.setItem('prolink_cached_posts', JSON.stringify(filteredPosts.slice(0, 60))); } catch {}
       }
 
       // 📊 جلب دقيق ومباشر لعدد منشورات المستخدم الحالي من قاعدة البيانات
@@ -1084,7 +1125,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const filteredJobs = (mappedJobs as any[]).filter(j => !delJobIds.has(j.id));
         setJobs(filteredJobs as any);
         // ✅ Cache jobs in localStorage for instant load next time
-        try { localStorage.setItem('prolink_cached_jobs', JSON.stringify(mappedJobs.slice(0, 60))); } catch {}
+        try { localStorage.setItem('prolink_cached_jobs', JSON.stringify(filteredJobs.slice(0, 60))); } catch {}
       }
 
       if (uid) {
@@ -1666,14 +1707,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const isAdmin = !!(appUser?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
       
-      // 1. Delete from Supabase DB
+      // 1. Delete from Supabase DB (return deleted rows to detect silent RLS 0-row failures)
       let query = (supabase.from('jobs') as any).delete().eq('id', jobId);
       if (!isAdmin && appUser?.id) {
         query = query.eq('employer_id', appUser.id);
       }
-      const { error } = await query;
+      const { data: deletedRows, error } = await query.select('id');
       if (error) {
         console.error('[handleDeleteJob] Supabase DB Error:', error);
+        addToast('تعذر حذف الوظيفة: ' + (error.message || 'خطأ في الصلاحيات'), 'error');
+        return false;
+      }
+      if (!deletedRows || deletedRows.length === 0) {
+        addToast('تعذر حذف الوظيفة: لا تملك صلاحية حذفها أو لم تعد موجودة', 'error');
+        return false;
       }
 
       // 2. Persist deleted job ID in localStorage so it never returns on refresh
@@ -1705,10 +1752,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const handleDeletePost = async (postId: string): Promise<boolean> => {
     try {
       const isAdmin = !!(appUser?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
-      const { error } = await postService.deletePost(postId, appUser?.id, isAdmin);
+      const { data: deletedRows, error } = await postService.deletePost(postId, appUser?.id, isAdmin);
       if (error) {
         console.error('[handleDeletePost] DB Error:', error);
         addToast('تعذر حذف المنشور من قاعدة البيانات: ' + (error.message || 'خطأ في الصلاحيات'), 'error');
+        return false;
+      }
+      if (!deletedRows || (deletedRows as any[]).length === 0) {
+        addToast('تعذر حذف المنشور: لا تملك صلاحية حذفه أو لم يعد موجوداً', 'error');
         return false;
       }
 
@@ -2439,7 +2490,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     messages: effectiveMessages, isMockEnabled, readMessageIds, readChatSenders, reports, myGroups,
     unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount,
     activeTab, setActiveTab, searchQuery, setSearchQuery,
-    platformSettings, canUseMessaging, canUseSupportChat, canUseGroups, canUseNetwork,
+    platformSettings, canUseMessaging, canUseSupportChat, canUseGroups, canUseNetwork, canUseAccountSwitch, canUseKhakiTheme,
     selectedProfile, setSelectedProfile, isEditingProfile, setIsEditingProfile,
     toasts, showNotifications, setShowNotifications, showAdmin, setShowAdmin,
     selectedChat, setSelectedChat,
@@ -2447,7 +2498,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isPublishingArticle, setIsPublishingArticle,
     theme, setTheme, toggleTheme,
     addToast, handleGoogleLogin, handleEmailLogin, handleEmailSignUp, handlePhoneAuth, logout,
-    refreshData: fetchAllData, handleApplyJob, 
+    refreshData: (silent?: boolean, userId?: string) => fetchAllData(silent, userId, true), handleApplyJob, 
     setAppUser: (u: any) => {
       setAppUser(u);
     },

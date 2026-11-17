@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef, startTransition } from 're
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import {
   Home, Briefcase, Globe, MessageSquare, MoreHorizontal,
-  Users, Info, LogOut, Shield, Phone, Building2, Moon, Sun, Wrench, LogIn, Settings
+  Users, Info, LogOut, Shield, Phone, Building2, Moon, Sun, Wrench, LogIn, Settings, Palette
 } from 'lucide-react';
 import { AppUser } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
@@ -23,7 +23,7 @@ interface MobileNavProps {
   toggleProRank: () => void;
   logout: () => void;
   setShowAdmin: (show: boolean) => void;
-  theme?: 'light' | 'dark';
+  theme?: 'light' | 'dark' | 'khaki';
   toggleTheme?: () => void;
 }
 
@@ -67,7 +67,8 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   logout, setShowAdmin,
   theme, toggleTheme
 }) => {
-  const { posts, connections, unreadMessagesCount, pendingRequestsCount, userTotalPostsCount, isGuestMode, setShowNotifications, canUseMessaging, canUseNetwork, canUseGroups } = useAppContext();
+  const { posts, connections, unreadMessagesCount, pendingRequestsCount, userTotalPostsCount, isGuestMode, setShowNotifications, canUseMessaging, canUseNetwork, canUseGroups, platformSettings, canUseKhakiTheme } = useAppContext();
+  const navStyle = platformSettings.navStyle || 'dock';
 
   // Messages tab: guests never; members only when admin opened messaging (or they are admin)
   const visibleNavItems = useMemo(() => {
@@ -246,11 +247,15 @@ export const MobileNav: React.FC<MobileNavProps> = ({
     }
 
     if (toggleTheme) {
+      const nextLabel = theme === 'light' ? 'الوضع الليلي 🌙'
+        : theme === 'dark' ? (canUseKhakiTheme ? 'الثيم الكاكي 🎨' : 'الوضع الفاتح ☀️')
+        : 'الوضع الفاتح ☀️';
+      const NextIcon = theme === 'light' ? Moon : theme === 'dark' ? (canUseKhakiTheme ? Palette : Sun) : Sun;
       list.push({
         id: 'theme',
-        label: theme === 'dark' ? 'الوضع الفاتح ☀️' : 'الوضع الليلي 🌙',
-        icon: theme === 'dark' ? Sun : Moon,
-        color: theme === 'dark' ? 'text-amber-500' : 'text-indigo-500',
+        label: nextLabel,
+        icon: NextIcon,
+        color: theme === 'light' ? 'text-indigo-500' : theme === 'dark' ? (canUseKhakiTheme ? 'text-lime-600' : 'text-amber-500') : 'text-amber-500',
         onClick: () => toggleTheme(),
       });
     }
@@ -274,13 +279,14 @@ export const MobileNav: React.FC<MobileNavProps> = ({
     }
 
     return list;
-  }, [appUser, pendingRequestsCount, theme, toggleTheme, logout, setShowAdmin, setActiveTab, canUseNetwork, canUseGroups]);
+  }, [appUser, pendingRequestsCount, theme, toggleTheme, logout, setShowAdmin, setActiveTab, canUseNetwork, canUseGroups, canUseKhakiTheme]);
 
   return (
     <>
       {/* ══════════════════════════════════════════════════════════════════════
           Minimal Luxury Dock (10) — Compact Neumorphic Capsule & Floating Bubble
           ══════════════════════════════════════════════════════════════════════ */}
+      {navStyle === 'dock' && (
       <div
         className="md:hidden fixed bottom-0 left-0 right-0 z-[80] flex justify-center items-center pointer-events-none"
         style={{
@@ -462,6 +468,79 @@ export const MobileNav: React.FC<MobileNavProps> = ({
           })}
         </nav>
       </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          Compact Style — شريط سفلي مضغوط مسطّح بعرض الشاشة (بديل الكبسولة)
+          ══════════════════════════════════════════════════════════════════════ */}
+      {navStyle === 'compact' && (
+        <div
+          className="md:hidden fixed bottom-0 left-0 right-0 z-[80] pointer-events-none"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
+          <nav
+            className="pointer-events-auto flex items-stretch justify-around bg-white/95 dark:bg-[#0f172a]/95 backdrop-blur-xl border-t border-slate-200/70 dark:border-slate-800 shadow-[0_-4px_20px_rgba(0,0,0,0.06)]"
+            aria-label="شريط التنقل المضغوط"
+          >
+            {visibleNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeNavId === item.id || (item.id === 'more' && showMobileMenu);
+              const isMessages = item.id === 'messages';
+              const isJobs = item.id === 'jobs';
+              const badge = isMessages
+                ? unreadMessagesCount
+                : isJobs && isJobPoster(appUser) && applicantsCount > 0
+                  ? applicantsCount
+                  : 0;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    safeVibrate(8);
+                    if (item.id === 'more') {
+                      setShowMobileMenu(!showMobileMenu);
+                    } else {
+                      setActiveTab(item.id);
+                      setShowMobileMenu(false);
+                      setShowNotifications?.(false);
+                    }
+                  }}
+                  className={`relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 transition-all active:scale-95 ${isActive ? 'text-blue-600 dark:text-blue-400 bg-blue-50/70 dark:bg-blue-900/25' : 'text-slate-400 dark:text-slate-500'}`}
+                >
+                  <Icon size={19} strokeWidth={isActive ? 2.4 : 1.8} />
+                  <span className="text-[8.5px] font-black tracking-tight">{item.label}</span>
+                  {badge > 0 && (
+                    <span className="absolute top-1 right-1/2 translate-x-3 min-w-[15px] h-3.5 px-0.5 flex items-center justify-center rounded-full text-[7.5px] font-black text-white bg-red-500 border border-white dark:border-slate-800">
+                      {badge > 9 ? '9+' : badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          Drawer Style — زر عائم يفتح الدرج الجانبي فقط (بدون شريط سفلي)
+          ══════════════════════════════════════════════════════════════════════ */}
+      {navStyle === 'drawer' && (
+        <button
+          type="button"
+          onClick={() => { safeVibrate(8); setShowMobileMenu(!showMobileMenu); }}
+          className="md:hidden fixed bottom-5 right-5 z-[80] w-14 h-14 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/30 flex items-center justify-center active:scale-95 transition-all"
+          style={{ marginBottom: 'env(safe-area-inset-bottom, 0px)' }}
+          aria-label="فتح قائمة التنقل"
+        >
+          <MoreHorizontal size={26} />
+          {pendingRequestsCount > 0 && (
+            <span className="absolute -top-1 -right-1 min-w-[18px] h-4 px-1 flex items-center justify-center rounded-full text-[9px] font-black text-white bg-red-500 border-2 border-white">
+              {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
+            </span>
+          )}
+        </button>
+      )}
 
       {/* ══════════════════════════════════════════════════════════════════════
           Glassy Sidebar V5 — Floating Luxury Blur & Staggered Cascading Motion

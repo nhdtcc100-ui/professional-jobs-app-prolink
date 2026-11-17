@@ -305,7 +305,7 @@ END $$;
 
 CREATE POLICY "platform_settings_public_keys" ON public.platform_settings
   FOR SELECT USING (
-    key IN ('telegram_support_handle','mock_data_enabled','news_sources_config','support_whatsapp_number','messaging_enabled','support_chat_enabled','groups_enabled','network_enabled')
+    key IN ('telegram_support_handle','mock_data_enabled','news_sources_config','support_whatsapp_number','messaging_enabled','support_chat_enabled','groups_enabled','network_enabled','account_switch_enabled','nav_style','khaki_theme_enabled')
     OR public.prolink_is_admin()
   );
 
@@ -330,6 +330,9 @@ INSERT INTO public.platform_settings (key, value, updated_at) VALUES
   ('support_chat_enabled', 'false', NOW()),
   ('groups_enabled', 'false', NOW()),
   ('network_enabled', 'false', NOW()),
+  ('account_switch_enabled', 'false', NOW()),
+  ('khaki_theme_enabled', 'false', NOW()),
+  ('nav_style', 'dock', NOW()),
   ('telegram_support_handle', '@keko4444', NOW())
 ON CONFLICT (key) DO NOTHING;
 
@@ -703,3 +706,15 @@ CREATE POLICY "support_messages_update_gated" ON public.support_messages FOR UPD
     public.prolink_is_admin()
     OR (public.prolink_feature_open('support_chat_enabled') AND (sender_id = auth.uid() OR receiver_id = auth.uid()))
   );
+
+-- ─────────────────────────────────────────────────────────────
+-- 10. notifications: expand schema to match the client payload
+--     (fixes POST/PATCH 400 Bad Request on missing columns)
+-- ─────────────────────────────────────────────────────────────
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS from_name TEXT;
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS from_avatar TEXT;
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS target_id TEXT;
+ALTER TABLE public.notifications ALTER COLUMN message SET DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON public.notifications (user_id, read);
+CREATE INDEX IF NOT EXISTS idx_notifications_type ON public.notifications (type);

@@ -39,6 +39,7 @@ export const jobService = {
     const idempotencyKey = idempotencyEngine.generateKey('jobs', employerId, {
       title: data.title,
       company: data.company,
+      description: data.description,
       employer_id: employerId,
     });
 

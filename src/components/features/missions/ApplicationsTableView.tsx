@@ -269,12 +269,20 @@ function ApplicationsListViewContent({
       addToast('لا يوجد ملف سيرة ذاتية مرفق لهذا الطلب', 'error');
       return;
     }
-    await openCv(cvUrl);
+    try {
+      await openCv(cvUrl);
+    } catch (e: any) {
+      addToast(e?.message || 'تعذر فتح السيرة الذاتية', 'error');
+    }
   };
 
   const handleDownloadApplicantCV = async (cvUrl: string, name?: string) => {
     if (!cvUrl) return;
-    await downloadCv(cvUrl, name || 'applicant');
+    try {
+      await downloadCv(cvUrl, name || 'applicant');
+    } catch (e: any) {
+      addToast(e?.message || 'تعذر تنزيل السيرة الذاتية', 'error');
+    }
   };
 
   // Helper to reliably retrieve complete applicant profile

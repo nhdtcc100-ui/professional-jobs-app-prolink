@@ -174,6 +174,9 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   const [supportChatOpen, setSupportChatOpen] = useState(false);
   const [groupsOpen, setGroupsOpen] = useState(false);
   const [networkOpen, setNetworkOpen] = useState(false);
+  const [accountSwitchOpen, setAccountSwitchOpen] = useState(false);
+  const [khakiThemeOpen, setKhakiThemeOpen] = useState(false);
+  const [navStyleSel, setNavStyleSel] = useState('dock');
   const [savingPublicSettings, setSavingPublicSettings] = useState(false);
   const [gateMigrationMissing, setGateMigrationMissing] = useState(false);
 
@@ -183,6 +186,9 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
     setSupportChatOpen(platformSettings.supportChatEnabled);
     setGroupsOpen(platformSettings.groupsEnabled);
     setNetworkOpen(platformSettings.networkEnabled);
+    setAccountSwitchOpen(platformSettings.accountSwitchEnabled);
+    setKhakiThemeOpen(platformSettings.khakiThemeEnabled);
+    setNavStyleSel(platformSettings.navStyle || 'dock');
   }, [platformSettings]);
 
   useEffect(() => {
@@ -198,6 +204,9 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
         supportChatEnabled: supportChatOpen,
         groupsEnabled: groupsOpen,
         networkEnabled: networkOpen,
+        accountSwitchEnabled: accountSwitchOpen,
+        khakiThemeEnabled: khakiThemeOpen,
+        navStyle: navStyleSel,
       });
       if (res.success) {
         addToast('✅ تم حفظ إعدادات التواصل والميزات', 'success');
@@ -2410,6 +2419,8 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                             ['فتح دردشة الدعم داخل التطبيق', supportChatOpen, setSupportChatOpen, 'الدردشة المباشرة مع الدعم داخل التطبيق'],
                             ['فتح المجموعات المهنية', groupsOpen, setGroupsOpen, 'المجموعات المهنية'],
                             ['فتح شبكتي المهنية', networkOpen, setNetworkOpen, 'شبكة العلاقات المهنية'],
+                            ['فتح تبديل نوع الحساب', accountSwitchOpen, setAccountSwitchOpen, 'خاصية تبديل نوع الحساب (باحث/صاحب عمل)'],
+                            ['فتح ثيم الكاكي الفاتح', khakiThemeOpen, setKhakiThemeOpen, 'ثيم الكاكي المائل للبياض'],
                           ] as [string, boolean, React.Dispatch<React.SetStateAction<boolean>>, string][]).map(([label, val, setter, noun]) => (
                             <div key={label} className="flex items-center justify-between gap-4 p-4 bg-slate-800/50 border border-slate-700/50 rounded-2xl">
                               <div>
@@ -2429,6 +2440,27 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                               </button>
                             </div>
                           ))}
+
+                          <div className="p-4 bg-slate-800/50 border border-slate-700/50 rounded-2xl">
+                            <p className="text-xs font-black text-slate-200 mb-1">نمط التنقل الجانبي</p>
+                            <p className="text-[10px] text-slate-500 font-medium mb-3">اختر شكل التنقل الذي يظهر لجميع المستخدمين على الجوال.</p>
+                            <div className="grid grid-cols-3 gap-2">
+                              {([
+                                ['dock', 'كبسولة عائمة'],
+                                ['drawer', 'درج جانبي'],
+                                ['compact', 'شريط سفلي مضغوط'],
+                              ] as [string, string][]).map(([val, label]) => (
+                                <button
+                                  key={val}
+                                  type="button"
+                                  onClick={() => setNavStyleSel(val)}
+                                  className={`py-2.5 rounded-xl text-[11px] font-black border transition-all ${navStyleSel === val ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300' : 'bg-slate-900/40 border-slate-700/50 text-slate-400 hover:border-slate-600'}`}
+                                >
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
 
                           {gateMigrationMissing && (
                             <div className="p-4 bg-amber-500/10 border border-amber-500/40 rounded-2xl">

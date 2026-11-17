@@ -229,6 +229,20 @@ function getNotificationDisplay(n: AppNotification, sender: AppUser | null) {
   return { senderName, senderAvatar, senderTitle, headline, bodyText };
 }
 
+// ── تجميع الإشعارات حسب اليوم (كما في واتساب/تلكرام) ──────────────────────────
+function dayBucket(ts: any): string {
+  const d = ts?.toDate ? ts.toDate() : new Date(ts);
+  if (!d || isNaN(d.getTime())) return 'سابقاً';
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const startOfThat = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round((startOfToday.getTime() - startOfThat.getTime()) / 86400000);
+  if (diffDays <= 0) return 'اليوم';
+  if (diffDays === 1) return 'أمس';
+  if (diffDays < 7) return 'هذا الأسبوع';
+  return d.toLocaleDateString('ar', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
 const NotificationItemRow: React.FC<ItemRowProps> = ({
   notification: n,
   isRead,
@@ -531,6 +545,18 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
     });
   }, [notifications, readNotifIds, filter]);
 
+  // 🗓️ تجميع زمني يحافظ على ترتيب الأحدث أولاً مع فواصل أيام لاصقة
+  const groupedNotifs = useMemo(() => {
+    const groups: { label: string; items: AppNotification[] }[] = [];
+    for (const n of filteredNotifs) {
+      const label = dayBucket((n as any).created_at || (n as any).timestamp);
+      const last = groups[groups.length - 1];
+      if (last && last.label === label) last.items.push(n);
+      else groups.push({ label, items: [n] });
+    }
+    return groups;
+  }, [filteredNotifs]);
+
   const markAllRead = async () => {
     const unread = notifications.filter(n => !n.read || !readNotifIds.has(n.id)).map(n => n.id);
     if (!unread.length) return;
@@ -764,30 +790,40 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                 )}
               </div>
             ) : (
-              <AnimatePresence>
-                {filteredNotifs.map((n, idx) => {
-                  const isRead = n.read || readNotifIds.has(n.id);
-                  const sender = allUsers.find(u => u.id === (n.fromId || (n as any).from_id)) || null;
+              <>
+                {groupedNotifs.map((group) => (
+                  <div key={group.label}>
+                    {/* فاصل اليوم اللاصق — نمط واتساب/تلكرام */}
+                    <div className="sticky top-0 z-10 px-4 py-1.5 bg-slate-100/90 dark:bg-slate-800/90 backdrop-blur-md border-y border-slate-200/60 dark:border-slate-700/50">
+                      <span className="text-[10px] font-black text-slate-500 dark:text-slate-300 tracking-wide">{group.label}</span>
+                    </div>
+                    <AnimatePresence>
+                      {group.items.map((n, idx) => {
+                        const isRead = n.read || readNotifIds.has(n.id);
+                        const sender = allUsers.find(u => u.id === (n.fromId || (n as any).from_id)) || null;
 
-                  return (
-                    <NotificationItemRow
-                      key={n.id}
-                      notification={n}
-                      isRead={isRead}
-                      sender={sender}
-                      onAutoSeen={handleAutoSeen}
-                      onManualClick={handleManualClick}
-                      onToggleRead={toggleReadStatus}
-                      onAcceptSync={handleAcceptSync}
-                      onDelete={handleDeleteSingle}
-                      onOpenProfile={handleOpenSenderProfile}
-                      onSendMessage={handleSendMessageToSender}
-                      addToast={addToast}
-                      idx={idx}
-                    />
-                  );
-                })}
-              </AnimatePresence>
+                        return (
+                          <NotificationItemRow
+                            key={n.id}
+                            notification={n}
+                            isRead={isRead}
+                            sender={sender}
+                            onAutoSeen={handleAutoSeen}
+                            onManualClick={handleManualClick}
+                            onToggleRead={toggleReadStatus}
+                            onAcceptSync={handleAcceptSync}
+                            onDelete={handleDeleteSingle}
+                            onOpenProfile={handleOpenSenderProfile}
+                            onSendMessage={handleSendMessageToSender}
+                            addToast={addToast}
+                            idx={idx}
+                          />
+                        );
+                      })}
+                    </AnimatePresence>
+                  </div>
+                ))}
+              </>
             )}
           </div>
 

@@ -486,16 +486,20 @@ export const profileService = {
 
       // إرسال إشعار للإدارة في جدول notifications ليظهر فوراً للأدمن
       try {
-        await supabase.from('notifications').insert([{
-          user_id: 'admin',
-          type: 'role_change_request',
-          from_id: userId,
-          from_name: userName,
-          from_avatar: userAvatar,
-          target_id: JSON.stringify({ userId, requestedRole, requestId: data?.id }),
-          read: false,
-          message: `طلب تحويل الحساب إلى ${requestedRole === 'employer' ? 'صاحب عمل 🏢' : 'باحث عن عمل 👤'}${reason.trim() ? ': ' + reason.trim() : ''}`
-        }] as any);
+        const { data: admins } = await supabase.from('profiles').select('id').eq('is_admin', true);
+        const adminIds = (admins || []).map((a: any) => a.id).filter(Boolean);
+        if (adminIds.length) {
+          await supabase.from('notifications').insert(adminIds.map((adminId: string) => ({
+            user_id: adminId,
+            type: 'role_change_request',
+            from_id: userId,
+            from_name: userName,
+            from_avatar: userAvatar,
+            target_id: JSON.stringify({ userId, requestedRole, requestId: data?.id }),
+            read: false,
+            message: `طلب تحويل الحساب إلى ${requestedRole === 'employer' ? 'صاحب عمل 🏢' : 'باحث عن عمل 👤'}${reason.trim() ? ': ' + reason.trim() : ''}`
+          })) as any);
+        }
       } catch (notifErr) {
         logger.warn('Failed to insert admin notification:', notifErr);
       }
@@ -650,7 +654,7 @@ export const profileService = {
         await supabase.from('notifications').insert([{
           user_id: targetUserId,
           type: 'role_change_approved',
-          from_id: adminId || 'admin',
+          from_id: adminId || null,
           from_name: 'إدارة ProLink',
           from_avatar: 'https://ui-avatars.com/api/?name=Admin&background=0284c7&color=fff',
           target_id: JSON.stringify({ userId: targetUserId, newRole }),
@@ -728,7 +732,7 @@ export const profileService = {
         await supabase.from('notifications').insert([{
           user_id: targetUserId,
           type: 'role_change_rejected',
-          from_id: adminId || 'admin',
+          from_id: adminId || null,
           from_name: 'إدارة ProLink',
           from_avatar: 'https://ui-avatars.com/api/?name=Admin&background=ef4444&color=fff',
           target_id: JSON.stringify({ userId: targetUserId }),

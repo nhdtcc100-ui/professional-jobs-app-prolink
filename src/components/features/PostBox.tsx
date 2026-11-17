@@ -158,7 +158,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
     const rawContent = (uploadType === 'article' && articleTitle.trim())
       ? `# ${articleTitle.trim()}\n\n${content}`
       : content;
-    const postContent = sanitizeInput(rawContent, {
+    const postContent = sanitizeInput(rawContent, 20000, {
       id: appUser?.id,
       name: appUser?.name,
       email: appUser?.email

@@ -29,7 +29,7 @@ interface CachedRecord<T> {
   expiresAt: number;
 }
 
-const DEFAULT_TTL_MS = 30_000;
+const DEFAULT_TTL_MS = 5_000;
 const SESSION_PREFIX = 'prolink_idempotency_';
 
 class IdempotencyEngine {

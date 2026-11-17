@@ -33,7 +33,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ post, onClose, onS
   };
 
   const handleSave = async () => {
-    const sanitizedContent = sanitizeInput(content.trim());
+    const sanitizedContent = sanitizeInput(content.trim(), 20000);
     if (!sanitizedContent) {
       addToast('يرجى كتابة محتوى للمنشور', 'error');
       return;

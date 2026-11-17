@@ -327,12 +327,16 @@ export function ModernProfileView({
 
     if (pendingCVFile) {
       const u = URL.createObjectURL(pendingCVFile);
-      window.open(u, '_blank');
+      try { await openCv(u); } catch (e: any) { addToast(e?.message || 'تعذر فتح السيرة الذاتية', 'error'); }
       setTimeout(() => URL.revokeObjectURL(u), 60000);
       return;
     }
 
-    await openCv(targetCvUrl);
+    try {
+      await openCv(targetCvUrl);
+    } catch (e: any) {
+      addToast(e?.message || 'تعذر فتح السيرة الذاتية', 'error');
+    }
   };
 
   // ─── تحميل السيرة الذاتية بأمان وتنزيلها كملف بدون فضح روابط قواعد البيانات ────
@@ -420,7 +424,6 @@ export function ModernProfileView({
     userId: string
   ): Promise<string> => {
     const supabaseUrl = SUPABASE_URL;
-    const supabaseAnonKey = SUPABASE_ANON_KEY;
 
     // فحص أن حجم الملف أكبر من صفر
     if (!file || file.size === 0) {
@@ -443,99 +446,31 @@ export function ModernProfileView({
       throw new Error('تعذر قراءة بايتات الملف في ذاكرة الهاتف (0 بايت).');
     }
 
-    // 2. التحقق من توكن الجلسة مع مهلة 3 ثوانٍ فقط لمنع أي تعليق
-    let token = supabaseAnonKey;
-    try {
-      const sessRes = await withTimeout(supabase.auth.getSession(), 3000, 'فحص الجلسة');
-      if (sessRes?.data?.session?.access_token) {
-        token = sessRes.data.session.access_token;
-      }
-    } catch (authErr) {
-      console.warn('[DirectUpload] Session check timed out, falling back to anon key:', authErr);
-      token = supabaseAnonKey;
-    }
+    // 2. Ensure an authenticated session (Storage RLS requires the owner's JWT)
+    try { await withTimeout(supabase.auth.getSession(), 3000, 'فحص الجلسة'); } catch {}
 
-    // 3. تحديد الامتداد الآمن واسم الحاوية
+    // 3. Safe extension + bucket + owner-scoped path (foldername[1] = auth.uid())
     const rawExt = (file.name || '').split('.').pop()?.toLowerCase() || (fileCategory === 'cv' ? 'pdf' : 'jpg');
     const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx'].includes(rawExt)
       ? rawExt
       : (fileCategory === 'cv' ? 'pdf' : 'jpg');
 
     const bucketName = fileCategory === 'cv' ? 'resumes' : 'profiles';
-    const fileName = `${userId}_${fileCategory}_${Date.now()}.${safeExt}`;
+    const fileName = `${userId}/${fileCategory}_${Date.now()}.${safeExt}`;
     const contentType = file.type || (fileCategory === 'cv' ? 'application/pdf' : 'image/jpeg');
 
-    // 4. الرفع المباشر عبر fetch مع تكرار المحاولة على المسار المجلد والمسار المسطح
-    const candidatePaths = [
-      `${userId}/${fileName}`,
-      fileName,
-    ];
-
-    let uploadSuccess = false;
-    let finalPath = candidatePaths[0];
-    let lastErrorMsg = '';
-
-    for (const testPath of candidatePaths) {
-      const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucketName}/${testPath}`;
-      try {
-        const res = await withTimeout(
-          fetch(uploadUrl, {
-            method: 'POST',
-            headers: {
-              'apikey': supabaseAnonKey,
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': contentType,
-              'x-upsert': 'true',
-            },
-            body: buffer,
-          }),
-          15000,
-          `طلب الرفع عبر الشبكة (${testPath})`
-        );
-
-        if (res.ok) {
-          uploadSuccess = true;
-          finalPath = testPath;
-          break;
-        }
-
-        // إذا فشل التوكن المخصص، تجربة الرفع بـ Anon Key مباشرة مثل صفحة التشخيص الناجحة
-        if (token !== supabaseAnonKey) {
-          const resAnon = await withTimeout(
-            fetch(uploadUrl, {
-              method: 'POST',
-              headers: {
-                'apikey': supabaseAnonKey,
-                'Authorization': `Bearer ${supabaseAnonKey}`,
-                'Content-Type': contentType,
-                'x-upsert': 'true',
-              },
-              body: buffer,
-            }),
-            15000,
-            `طلب الرفع عبر Anon Key (${testPath})`
-          );
-
-          if (resAnon.ok) {
-            uploadSuccess = true;
-            finalPath = testPath;
-            break;
-          }
-          lastErrorMsg = await resAnon.text();
-        } else {
-          lastErrorMsg = await res.text();
-        }
-      } catch (netErr: any) {
-        lastErrorMsg = netErr?.message || String(netErr);
-      }
+    // 4. Authenticated SDK upload (no anon-key fallback — it would violate RLS)
+    const { error: upErr } = await withTimeout(
+      supabase.storage.from(bucketName).upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' }),
+      20000,
+      'رفع الملف إلى التخزين'
+    );
+    if (upErr) {
+      throw new Error(`تعذر الرفع إلى Supabase: ${upErr.message}`);
     }
 
-    if (!uploadSuccess) {
-      throw new Error(`تعذر الرفع إلى Supabase: ${lastErrorMsg}`);
-    }
-
-    const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${finalPath}?v=${Date.now()}`;
-    return publicUrl;
+    // Stable storage reference; cv.ts re-signs it for private buckets on open.
+    return `${supabaseUrl}/storage/v1/object/public/${bucketName}/${fileName}?v=${Date.now()}`;
   };
 
   // ─── Direct REST Database Update (تجاوز أقفال supabase-js وحفظ التعديل في 100ms) ───
@@ -1282,54 +1217,60 @@ export function ModernProfileView({
 
           {/* ── Seeker Availability Toggle Card ── */}
           {role === 'seeker' && (
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/20 dark:border-emerald-500/30 mb-6 flex items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
-                  isAvailable 
-                    ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30' 
-                    : 'bg-slate-200 dark:bg-slate-800 text-slate-400'
-                }`}>
-                  <Sparkles size={18} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-black text-slate-900 dark:text-white">
-                      حالة التوفر للعمل
-                    </h4>
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+            <div className={`p-5 rounded-3xl border mb-6 shadow-sm transition-colors ${
+              isAvailable
+                ? 'bg-gradient-to-br from-emerald-500/15 via-teal-500/10 to-transparent border-emerald-500/40'
+                : 'bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700'
+            }`}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+                    isAvailable
+                      ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-400'
+                  }`}>
+                    <Sparkles size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 dark:text-white">حالة التوفر للعمل</h4>
+                    <span className={`inline-flex items-center gap-1.5 mt-1 px-2.5 py-0.5 rounded-full text-[11px] font-black ${
                       isAvailable
                         ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40'
                         : 'bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
                     }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${isAvailable ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-                      {isAvailable ? 'متاح للعمل الآن 🟢' : 'غير متاح حالياً ⚪'}
+                      <span className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                      {isAvailable ? 'متاح للعمل الآن' : 'غير متاح حالياً'}
                     </span>
                   </div>
-                  <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mt-0.5">
-                    {isMe
-                      ? (isAvailable 
-                          ? 'ملفك يظهر لأصحاب العمل كباحث نشط ومستعد لتلقي عروض الوظائف' 
-                          : 'ملفك لا يظهر في قائمة المتاحين للعمل حتى تعيد تفعيلها')
-                      : (isAvailable ? 'هذا الباحث متاح حالياً للتوظيف وتلقي عروض العمل' : 'هذا الباحث غير متاح حالياً للعمل')}
-                  </p>
                 </div>
               </div>
+
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">
+                {isMe
+                  ? (isAvailable
+                      ? 'ملفك يظهر لأصحاب العمل كباحث نشط ومستعد لتلقي عروض الوظائف.'
+                      : 'ملفك لا يظهر في قائمة المتاحين للعمل حتى تعيد تفعيلها.')
+                  : (isAvailable ? 'هذا الباحث متاح حالياً للتوظيف وتلقي عروض العمل.' : 'هذا الباحث غير متاح حالياً للعمل.')}
+              </p>
 
               {isMe && (
                 <button
                   type="button"
                   disabled={isUpdatingAvailability}
                   onClick={handleToggleAvailability}
-                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden active:scale-95 ${
-                    isAvailable ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+                  className={`mt-4 w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-black text-sm transition-all active:scale-[0.98] disabled:opacity-60 shadow-md ${
+                    isAvailable
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30'
+                      : 'bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white shadow-slate-800/20'
                   }`}
-                  title={isAvailable ? 'تعطيل التوفر' : 'تفعيل التوفر للعمل'}
                 >
-                  <span
-                    className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                      isAvailable ? '-translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
+                  {isUpdatingAvailability ? (
+                    <><Loader2 size={18} className="animate-spin" /> جاري التحديث...</>
+                  ) : isAvailable ? (
+                    <>إيقاف التوفر عن العمل</>
+                  ) : (
+                    <>تفعيل التوفر للعمل 🟢</>
+                  )}
                 </button>
               )}
             </div>
@@ -1898,36 +1839,39 @@ export function ModernProfileView({
         </div>
       )}
 
-      {/* ── Modal تأكيد تغيير كلمة المرور ── */}
-      <AnimatePresence>
-        {passwordSuccessModal && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" dir="rtl">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white dark:bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl text-center space-y-4"
-            >
-              <div className="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
-                <CheckCircle2 size={36} />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-slate-800 dark:text-white">تم تغيير كلمة المرور بنجاح!</h3>
-                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
-                  تم تحديث وحفظ الرمز السري الجديد لحسابك بنجاح. يمكنك استخدامه لتسجيل الدخول في المرات القادمة.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPasswordSuccessModal(false)}
-                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-2xl shadow-lg shadow-emerald-600/30 active:scale-95 transition-all cursor-pointer"
+      {/* ── Modal تأكيد تغيير كلمة المرور (Portal حتى يظهر فوراً أمام المستخدم بغض النظر عن السكرول) ── */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {passwordSuccessModal && (
+            <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" dir="rtl">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="bg-white dark:bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl text-center space-y-4"
               >
-                حسناً، فهمت
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+                <div className="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+                  <CheckCircle2 size={36} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 dark:text-white">تم تغيير كلمة المرور بنجاح!</h3>
+                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                    تم تحديث وحفظ الرمز السري الجديد لحسابك بنجاح. يمكنك استخدامه لتسجيل الدخول في المرات القادمة.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPasswordSuccessModal(false)}
+                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-2xl shadow-lg shadow-emerald-600/30 active:scale-95 transition-all cursor-pointer"
+                >
+                  حسناً، فهمت
+                </button>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* ── Professional Role Change Request Modal (Rendered via Portal to avoid scrolling) ── */}
       {typeof document !== 'undefined' && createPortal(

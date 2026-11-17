@@ -5,6 +5,9 @@ export interface PlatformPublicSettings {
   supportChatEnabled: boolean;
   groupsEnabled: boolean;
   networkEnabled: boolean;
+  accountSwitchEnabled: boolean;
+  khakiThemeEnabled: boolean;
+  navStyle: string;
   supportWhatsapp: string;
   supportTelegram: string;
 }
@@ -13,9 +16,12 @@ const KEY_MESSAGING = 'messaging_enabled';
 const KEY_SUPPORT_CHAT = 'support_chat_enabled';
 const KEY_GROUPS = 'groups_enabled';
 const KEY_NETWORK = 'network_enabled';
+const KEY_ACCOUNT_SWITCH = 'account_switch_enabled';
+const KEY_KHAKI_THEME = 'khaki_theme_enabled';
+const KEY_NAV_STYLE = 'nav_style';
 const KEY_WHATSAPP = 'support_whatsapp_number';
 const KEY_TELEGRAM = 'telegram_support_handle';
-const KEYS = [KEY_MESSAGING, KEY_SUPPORT_CHAT, KEY_GROUPS, KEY_NETWORK, KEY_WHATSAPP, KEY_TELEGRAM];
+const KEYS = [KEY_MESSAGING, KEY_SUPPORT_CHAT, KEY_GROUPS, KEY_NETWORK, KEY_ACCOUNT_SWITCH, KEY_KHAKI_THEME, KEY_NAV_STYLE, KEY_WHATSAPP, KEY_TELEGRAM];
 const CACHE_KEY = 'prolink_platform_public_settings';
 
 export const DEFAULT_PUBLIC_SETTINGS: PlatformPublicSettings = {
@@ -23,6 +29,9 @@ export const DEFAULT_PUBLIC_SETTINGS: PlatformPublicSettings = {
   supportChatEnabled: false,
   groupsEnabled: false,
   networkEnabled: false,
+  accountSwitchEnabled: false,
+  khakiThemeEnabled: false,
+  navStyle: 'dock',
   supportWhatsapp: '',
   supportTelegram: '',
 };
@@ -35,6 +44,9 @@ const parseRows = (rows: { key: string; value: string }[]): PlatformPublicSettin
     else if (row.key === KEY_SUPPORT_CHAT) next.supportChatEnabled = value === 'true';
     else if (row.key === KEY_GROUPS) next.groupsEnabled = value === 'true';
     else if (row.key === KEY_NETWORK) next.networkEnabled = value === 'true';
+    else if (row.key === KEY_ACCOUNT_SWITCH) next.accountSwitchEnabled = value === 'true';
+    else if (row.key === KEY_KHAKI_THEME) next.khakiThemeEnabled = value === 'true';
+    else if (row.key === KEY_NAV_STYLE) next.navStyle = value || 'dock';
     else if (row.key === KEY_WHATSAPP) next.supportWhatsapp = value;
     else if (row.key === KEY_TELEGRAM) next.supportTelegram = value;
   }
@@ -77,10 +89,13 @@ export const platformSettingsService = {
       ['supportChatEnabled', KEY_SUPPORT_CHAT],
       ['groupsEnabled', KEY_GROUPS],
       ['networkEnabled', KEY_NETWORK],
+      ['accountSwitchEnabled', KEY_ACCOUNT_SWITCH],
+      ['khakiThemeEnabled', KEY_KHAKI_THEME],
     ];
     for (const [field, key] of boolKeys) {
       if (patch[field] !== undefined) rows.push({ key, value: String(patch[field]), updated_at: now });
     }
+    if (patch.navStyle !== undefined) rows.push({ key: KEY_NAV_STYLE, value: patch.navStyle.trim() || 'dock', updated_at: now });
     if (patch.supportWhatsapp !== undefined) rows.push({ key: KEY_WHATSAPP, value: patch.supportWhatsapp.trim(), updated_at: now });
     if (patch.supportTelegram !== undefined) rows.push({ key: KEY_TELEGRAM, value: patch.supportTelegram.trim(), updated_at: now });
     if (rows.length === 0) return { success: true };

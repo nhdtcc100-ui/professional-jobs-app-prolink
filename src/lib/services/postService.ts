@@ -326,6 +326,6 @@ export const postService = {
     if (!isAdmin && authorId) {
       query = query.eq('author_id', authorId);
     }
-    return query;
+    return query.select('id');
   },
 };
