@@ -447,7 +447,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
         try {
           const { data: fetchedProfiles } = await db
             .from("profiles")
-            .select("id, name, full_name, phone, avatar, avatar_url, role, email")
+            .select("id, name, phone, avatar_url, role, email")
             .in("id", allThreadUserIds);
 
           if (fetchedProfiles && fetchedProfiles.length > 0) {
@@ -458,10 +458,10 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                 thread.user = {
                   ...thread.user,
                   id: p.id,
-                  name: p.full_name || p.name || thread.user.name || "مستخدم",
+                  name: p.name || thread.user.name || "مستخدم",
                   phone: p.phone || thread.user.phone || "",
                   email: p.email || thread.user.email || "",
-                  avatar: p.avatar_url || p.avatar || thread.user.avatar || "",
+                  avatar: p.avatar_url || thread.user.avatar || "",
                   role: p.role || thread.user.role || "seeker",
                 };
               }
