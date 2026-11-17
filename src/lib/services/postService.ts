@@ -197,7 +197,7 @@ export const postService = {
               }
             }, { scope: 'createPost' });
           },
-          { ttlMs: 15000, scope: 'posts' }
+          { ttlMs: 5000, scope: 'posts' }
         )
       );
 

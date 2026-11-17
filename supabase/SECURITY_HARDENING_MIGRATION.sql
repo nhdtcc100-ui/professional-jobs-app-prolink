@@ -733,3 +733,13 @@ ALTER TABLE public.notifications ALTER COLUMN message SET DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON public.notifications (user_id, read);
 CREATE INDEX IF NOT EXISTS idx_notifications_type ON public.notifications (type);
+
+-- ─────────────────────────────────────────────────────────────
+-- 11. job_applications: add extended payload columns used by the client
+--     (fixes PGRST204 400 on 'applicant_data' / 'cover_letter' / etc.)
+-- ─────────────────────────────────────────────────────────────
+ALTER TABLE public.job_applications ADD COLUMN IF NOT EXISTS cover_letter TEXT DEFAULT '';
+ALTER TABLE public.job_applications ADD COLUMN IF NOT EXISTS experience TEXT DEFAULT '';
+ALTER TABLE public.job_applications ADD COLUMN IF NOT EXISTS education TEXT DEFAULT '';
+ALTER TABLE public.job_applications ADD COLUMN IF NOT EXISTS skills JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.job_applications ADD COLUMN IF NOT EXISTS applicant_data JSONB DEFAULT '{}'::jsonb;

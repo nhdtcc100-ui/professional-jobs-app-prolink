@@ -120,7 +120,7 @@ export const jobService = {
               return { data: res, error: null };
             }, { scope: 'postJob' });
           },
-          { ttlMs: 15000, scope: 'jobs' }
+          { ttlMs: 5000, scope: 'jobs' }
         )
       );
 
@@ -312,14 +312,14 @@ export const jobService = {
               }
             }, { scope: 'applyToJob' });
           },
-          { ttlMs: 30000, scope: 'job_applications' }
+          { ttlMs: 5000, scope: 'job_applications' }
         )
       );
 
-      if (result?.error) {
-        idempotencyEngine.invalidate(idempotencyKey);
-        concurrencyMutex.clearKey(mutexKey);
-      }
+      // 🔁 الحماية من التكرار يتولاها فحص الطلب الموجود + قيد UNIQUE في القاعدة،
+      // لذا نُبطِل الكاش فوراً بعد الاكتمال (نجاحاً أو فشلاً) كي يُعاد الإرسال بدون رفرش.
+      idempotencyEngine.invalidate(idempotencyKey);
+      concurrencyMutex.clearKey(mutexKey);
       return result;
     } catch (e: any) {
       // Invalidate lock and idempotency on failure so user can retry immediately without refreshing

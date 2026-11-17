@@ -926,8 +926,12 @@ export function ModernProfileView({
       const supabaseUrl = SUPABASE_URL;
       const supabaseAnonKey = SUPABASE_ANON_KEY;
 
-      // 1. استخراج الجلسة والتوكن الحاليين
-      const { data: sessionData } = await supabase.auth.getSession();
+      // 1. استخراج الجلسة والتوكن الحاليين (بمهلة حتى لا يعلّق الحفظ إذا كان قفل المصادقة عالقاً)
+      let sessionData: any = null;
+      try {
+        const r = await withTimeout(supabase.auth.getSession(), 3000, 'فحص الجلسة');
+        sessionData = (r as any)?.data ?? null;
+      } catch { /* fallback to localStorage below */ }
       let accessToken = sessionData?.session?.access_token || '';
       let targetEmail = sessionData?.session?.user?.email || user?.email || profile?.email || '';
 
