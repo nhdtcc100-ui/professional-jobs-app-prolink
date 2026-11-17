@@ -1048,6 +1048,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const effectiveUserId = explicitUserId || user?.id;
     isFetchingAllData.current = true;
 
+    // 🔁 التحديث القسري (بعد أي حفظ/حذف) يجب أن يتجاوز كاش القراءة حتى تظهر التغييرات فوراً بدون رفرش
+    if (force) postService.invalidateCache();
+
     // Temporarily expose effectiveUserId as local for queries that need it
     const uid = effectiveUserId;
 
