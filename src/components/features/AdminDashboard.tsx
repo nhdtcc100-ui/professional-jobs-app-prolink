@@ -2443,11 +2443,11 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
 
                           <div className="p-4 bg-slate-800/50 border border-slate-700/50 rounded-2xl">
                             <p className="text-xs font-black text-slate-200 mb-1">نمط التنقل الجانبي</p>
-                            <p className="text-[10px] text-slate-500 font-medium mb-3">اختر شكل التنقل الذي يظهر لجميع المستخدمين على الجوال.</p>
+                            <p className="text-[10px] text-slate-500 font-medium mb-3">اختر شكل البار السفلي للتنقل بين الأقسام (الرئيسية/الوظائف/الأخبار). كل الأنماط تحافظ على البار العلوي والسفلي معاً.</p>
                             <div className="grid grid-cols-3 gap-2">
                               {([
                                 ['dock', 'كبسولة عائمة'],
-                                ['drawer', 'درج جانبي'],
+                                ['drawer', 'شريط كلاسيكي'],
                                 ['compact', 'شريط سفلي مضغوط'],
                               ] as [string, string][]).map(([val, label]) => (
                                 <button

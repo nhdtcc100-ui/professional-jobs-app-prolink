@@ -523,23 +523,56 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
-          Drawer Style — زر عائم يفتح الدرج الجانبي فقط (بدون شريط سفلي)
+          Classic Style — شريط سفلي كلاسيكي بعرض الشاشة (يبقي البارين العلوي والسفلي)
+          الدرج الجانبي يبقى متاحاً عبر زر "المزيد" كما في كل الأنماط.
           ══════════════════════════════════════════════════════════════════════ */}
       {navStyle === 'drawer' && (
-        <button
-          type="button"
-          onClick={() => { safeVibrate(8); setShowMobileMenu(!showMobileMenu); }}
-          className="md:hidden fixed bottom-5 right-5 z-[80] w-14 h-14 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-500/30 flex items-center justify-center active:scale-95 transition-all"
-          style={{ marginBottom: 'env(safe-area-inset-bottom, 0px)' }}
-          aria-label="فتح قائمة التنقل"
+        <div
+          className="md:hidden fixed bottom-0 left-0 right-0 z-[80] pointer-events-none"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         >
-          <MoreHorizontal size={26} />
-          {pendingRequestsCount > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-[18px] h-4 px-1 flex items-center justify-center rounded-full text-[9px] font-black text-white bg-red-500 border-2 border-white">
-              {pendingRequestsCount > 9 ? '9+' : pendingRequestsCount}
-            </span>
-          )}
-        </button>
+          <nav
+            className="pointer-events-auto flex items-stretch justify-around gap-1 bg-white dark:bg-[#0f172a] border-t border-slate-200 dark:border-slate-800 px-2 py-2 shadow-[0_-6px_24px_rgba(0,0,0,0.08)]"
+            aria-label="شريط التنقل الكلاسيكي"
+          >
+            {visibleNavItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeNavId === item.id || (item.id === 'more' && showMobileMenu);
+              const isMessages = item.id === 'messages';
+              const isJobs = item.id === 'jobs';
+              const badge = isMessages
+                ? unreadMessagesCount
+                : isJobs && isJobPoster(appUser) && applicantsCount > 0
+                  ? applicantsCount
+                  : 0;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    safeVibrate(8);
+                    if (item.id === 'more') {
+                      setShowMobileMenu(!showMobileMenu);
+                    } else {
+                      setActiveTab(item.id);
+                      setShowMobileMenu(false);
+                      setShowNotifications?.(false);
+                    }
+                  }}
+                  className={`relative flex-1 flex flex-col items-center justify-center gap-1 py-2 rounded-2xl transition-all active:scale-95 ${isActive ? 'text-white bg-blue-600 shadow-md shadow-blue-500/25' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                >
+                  <Icon size={21} strokeWidth={isActive ? 2.4 : 1.9} />
+                  <span className="text-[9.5px] font-black tracking-tight">{item.label}</span>
+                  {badge > 0 && (
+                    <span className="absolute top-1 right-1/2 translate-x-4 min-w-[16px] h-4 px-0.5 flex items-center justify-center rounded-full text-[8px] font-black text-white bg-red-500 border border-white dark:border-slate-900">
+                      {badge > 9 ? '9+' : badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════
