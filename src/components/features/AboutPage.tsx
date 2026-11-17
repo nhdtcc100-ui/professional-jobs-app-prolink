@@ -22,6 +22,7 @@ import { useAppContext } from '../../contexts/AppContext';
 import { telegramSupportService } from '../../lib/services/telegramSupportService';
 
 import { isUUID, sanitizeInput } from '../../lib/utils/sanitize';
+import { whatsappUrl } from '../../lib/utils/contact';
 
 /* ─────────────────────────────────────────────────────────────
    Constants
@@ -59,7 +60,7 @@ const SUPPORT_TABLE = 'support_messages';
    Component
 ───────────────────────────────────────────────────────────── */
 export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
-  const { allUsers = [] } = useAppContext();
+  const { allUsers = [], platformSettings } = useAppContext();
   type Tab = 'overview' | 'terms' | 'labor' | 'privacy' | 'support';
   const [activeTab, setActiveTab] = useState<Tab>('overview');
 
@@ -623,12 +624,34 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
                   </div>
                   <div>
                     <h3 className="text-base font-black text-slate-800 dark:text-white">تواصل مع فريق الدعم</h3>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Technical Support — {SUPPORT_PHONE}</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Technical Support — {platformSettings.supportWhatsapp || SUPPORT_PHONE_2}</p>
                   </div>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                   اكتب رسالتك وسيردّ عليك فريق الدعم مباشرةً من لوحة التحكم. السبت–الخميس ٩ص–٩م.
                 </p>
+                <div className="grid grid-cols-2 gap-2.5 mt-4">
+                  {(platformSettings.supportWhatsapp || SUPPORT_PHONE_2) && (
+                    <a
+                      href={whatsappUrl(platformSettings.supportWhatsapp || SUPPORT_PHONE_2)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs rounded-2xl shadow-lg shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                      <MessageCircle size={16} /> واتساب الدعم
+                    </a>
+                  )}
+                  {platformSettings.supportTelegram && (
+                    <a
+                      href={`https://t.me/${platformSettings.supportTelegram.replace(/^@+/, '').replace(/^https?:\/\/t\.me\//, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-3 bg-sky-500 hover:bg-sky-600 text-white font-black text-xs rounded-2xl shadow-lg shadow-sky-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Send size={16} /> تلكرام الدعم
+                    </a>
+                  )}
+                </div>
               </div>
 
               {/* Chat window */}

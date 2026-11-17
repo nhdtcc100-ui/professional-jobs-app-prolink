@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { openContactMenu } from '../../lib/utils/contact';
 import { 
   MessageCircle, 
   Repeat2, 
@@ -32,7 +33,7 @@ const FormattedText = ({ text, className }: { text: string, className?: string }
           return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 hover:underline font-bold" onClick={e => e.stopPropagation()}>{part}</a>;
         }
         if (part.match(/\+?[\d\s-]{8,20}\d/) && part.replace(/[\D]/g, '').length >= 8) {
-          return <a key={i} href={`tel:${part.replace(/[\s-]/g, '')}`} className="text-emerald-600 hover:text-emerald-800 hover:underline font-black inline-block" dir="ltr" onClick={e => e.stopPropagation()}>{part}</a>;
+          return <span key={i} onClick={e => { e.stopPropagation(); openContactMenu({ phone: part.replace(/[\s-]/g, '') }); }} className="text-emerald-600 hover:text-emerald-800 hover:underline font-black inline-block cursor-pointer" dir="ltr">{part}</span>;
         }
         return <span key={i}>{part}</span>;
       })}

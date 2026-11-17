@@ -67,17 +67,17 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   logout, setShowAdmin,
   theme, toggleTheme
 }) => {
-  const { posts, connections, unreadMessagesCount, pendingRequestsCount, userTotalPostsCount, isGuestMode, setShowNotifications } = useAppContext();
+  const { posts, connections, unreadMessagesCount, pendingRequestsCount, userTotalPostsCount, isGuestMode, setShowNotifications, canUseMessaging } = useAppContext();
 
-  // Hide messages tab on mobile dock for guests
+  // Messages tab: guests never; members only when admin opened messaging (or they are admin)
   const visibleNavItems = useMemo(() => {
     return NAV_ITEMS.filter(item => {
-      if (item.id === 'messages' && (!appUser || isGuestMode)) {
+      if (item.id === 'messages' && (!appUser || isGuestMode || !canUseMessaging)) {
         return false;
       }
       return true;
     });
-  }, [appUser, isGuestMode]);
+  }, [appUser, isGuestMode, canUseMessaging]);
 
   const userPosts = posts.filter(p => p.authorId === appUser?.id || (p as any).author_id === appUser?.id);
   const myPostsCount = Math.max(userTotalPostsCount || 0, userPosts.length);

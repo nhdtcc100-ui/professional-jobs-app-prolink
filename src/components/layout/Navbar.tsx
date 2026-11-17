@@ -42,7 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   theme,
   toggleTheme
 }) => {
-  const { unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount, isGuestMode } = useAppContext();
+  const { unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount, isGuestMode, canUseMessaging } = useAppContext();
 
   return (
     <nav
@@ -153,8 +153,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={(e) => { e?.preventDefault(); setActiveTab('news'); }}
           />
           
-          {/* Messages Tab with Red Unread Badge - only for logged in members */}
-          {!isGuestMode && appUser && (
+          {/* Messages Tab with Red Unread Badge - admin-only until messaging is opened */}
+          {!isGuestMode && appUser && canUseMessaging && (
             <div className="relative h-full flex items-center overflow-visible z-20">
               <NavbarItem
                 icon={<MessageSquare size={22} />}

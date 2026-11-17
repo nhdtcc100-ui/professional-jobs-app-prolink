@@ -11,6 +11,7 @@ import { AppUser } from '../../../types';
 import { sanitizeInput } from '../../../lib/utils/sanitize';
 import { GlassCard, CloseButton } from '../../ui';
 import { useAppContext } from '../../../contexts/AppContext';
+import { openContactMenu, telUrl, whatsappUrl } from '../../../lib/utils/contact';
 import { EmployeeOnboardingModal } from '../erp/EmployeeOnboardingModal';
 import { AIEvaluationModal } from './AIEvaluationModal';
 interface ApplicantData {
@@ -220,7 +221,7 @@ function ApplicationsListViewContent({
   addToast,
   appUser,
 }: ApplicationsListViewProps) {
-  const { setActiveTab, setSelectedChat, allUsers = [], activeTab } = useAppContext();
+  const { setActiveTab, setSelectedChat, allUsers = [], activeTab, canUseMessaging } = useAppContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [selectedAppIndex, setSelectedAppIndex] = useState<number | null>(null);
@@ -740,7 +741,7 @@ function ApplicationsListViewContent({
 
                     {isSentView ? (
                       <div className="flex items-center gap-2 mt-3">
-                        {app.status === 'approved' && (
+                        {app.status === 'approved' && canUseMessaging && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -755,6 +756,18 @@ function ApplicationsListViewContent({
                             className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/20 active:scale-95"
                           >
                             <MessageSquare size={13} /> محادثة صاحب العمل
+                          </button>
+                        )}
+                        {app.status === 'approved' && !canUseMessaging && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const targetEmployer = allUsers.find(u => u.id === (app as any).employer_id);
+                              openContactMenu({ phone: targetEmployer?.phone, name: targetEmployer?.name, website: (targetEmployer as any)?.website });
+                            }}
+                            className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95"
+                          >
+                            <Phone size={13} /> تواصل مع صاحب العمل
                           </button>
                         )}
                         <button
@@ -793,7 +806,7 @@ function ApplicationsListViewContent({
 
                         {/* Quick Actions */}
                         <div className="flex gap-1.5">
-                          {app.status === 'approved' ? (
+                          {app.status === 'approved' && canUseMessaging ? (
                             <motion.button
                               whileHover={{ scale: 1.1, y: -2 }}
                               whileTap={{ scale: 0.9 }}
@@ -1093,14 +1106,14 @@ function ApplicationsListViewContent({
                             {app.applicant_data?.phone && (
                               <div className="flex gap-1.5 shrink-0">
                                 <a
-                                  href={`tel:${app.applicant_data.phone}`}
+                                  href={telUrl(app.applicant_data.phone)}
                                   className="p-2 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white rounded-xl transition-all shadow-sm"
                                   title="اتصال هاتفي"
                                 >
                                   <Phone size={14} />
                                 </a>
                                 <a
-                                  href={`https://wa.me/${app.applicant_data.phone.replace(/[^0-9+]/g, '')}`}
+                                  href={whatsappUrl(app.applicant_data.phone)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="p-2 bg-green-50 dark:bg-green-900/40 text-green-600 dark:text-green-400 hover:bg-[#25D366] hover:text-white rounded-xl transition-all shadow-sm"
@@ -1321,24 +1334,34 @@ function ApplicationsListViewContent({
                                   </button>
                                 )}
 
-                                <button
-                                  onClick={() => {
-                                    const applicantId = app.applicant_id;
-                                    if (applicantId) {
-                                      const targetUser = allUsers.find(u => u.id === applicantId);
-                                      if (targetUser) {
-                                        setSelectedChat(targetUser);
-                                        setActiveTab('messages');
-                                        setSelectedAppIndex(null);
-                                      } else {
-                                        addToast('لم يتم العثور على حساب المتقدم', 'error');
+                                {canUseMessaging && (
+                                  <button
+                                    onClick={() => {
+                                      const applicantId = app.applicant_id;
+                                      if (applicantId) {
+                                        const targetUser = allUsers.find(u => u.id === applicantId);
+                                        if (targetUser) {
+                                          setSelectedChat(targetUser);
+                                          setActiveTab('messages');
+                                          setSelectedAppIndex(null);
+                                        } else {
+                                          addToast('لم يتم العثور على حساب المتقدم', 'error');
+                                        }
                                       }
-                                    }
-                                  }}
-                                  className="flex-1 min-w-[130px] py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25 active:scale-95"
-                                >
-                                  <MessageSquare size={16} /> دردشة فورية
-                                </button>
+                                    }}
+                                    className="flex-1 min-w-[130px] py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25 active:scale-95"
+                                  >
+                                    <MessageSquare size={16} /> دردشة فورية
+                                  </button>
+                                )}
+                                {!canUseMessaging && app.applicant_data?.phone && (
+                                  <button
+                                    onClick={() => openContactMenu({ phone: app.applicant_data?.phone, name: app.applicant_data?.name })}
+                                    className="flex-1 min-w-[130px] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95"
+                                  >
+                                    <Phone size={16} /> تواصل: واتساب / اتصال
+                                  </button>
+                                )}
                               </>
                             )}
 

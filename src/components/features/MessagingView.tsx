@@ -233,7 +233,7 @@ export function MessagingView({
     checkApprovalStatus();
   }, [selectedChat, currentUser]);
 
-  const { markChatMessagesAsRead, readMessageIds, readChatSenders, setAllUsers } = useAppContext();
+  const { markChatMessagesAsRead, readMessageIds, readChatSenders, setAllUsers, canUseMessaging } = useAppContext();
 
   // 👁️ Auto-mark messages as read when user is viewing this chat
   useEffect(() => {
@@ -630,6 +630,10 @@ export function MessagingView({
 
   const sendMessage = async () => {
     if (!currentUser) return;
+    if (!canUseMessaging) {
+      addToast?.('🔒 الرسائل مقفلة حالياً ومتاحة للإدارة فقط', 'info');
+      return;
+    }
     if ((!content.trim() && !pendingFile) || !selectedChat) return;
     if (msgError) return;
     // For file messages, lock UI during upload only

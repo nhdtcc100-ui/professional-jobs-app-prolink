@@ -305,7 +305,7 @@ END $$;
 
 CREATE POLICY "platform_settings_public_keys" ON public.platform_settings
   FOR SELECT USING (
-    key IN ('telegram_support_handle','mock_data_enabled','news_sources_config')
+    key IN ('telegram_support_handle','mock_data_enabled','news_sources_config','support_whatsapp_number','messaging_enabled')
     OR public.prolink_is_admin()
   );
 
@@ -322,6 +322,13 @@ CREATE POLICY "platform_settings_admin_delete" ON public.platform_settings
 -- Remove any previously leaked token stored in settings (re-set it from the
 -- Admin Dashboard, which now writes through the telegram-support edge function).
 UPDATE public.platform_settings SET value = '' WHERE key = 'telegram_bot_token';
+
+-- Public support contacts + global messaging gate (admin-editable from the dashboard)
+INSERT INTO public.platform_settings (key, value, updated_at) VALUES
+  ('support_whatsapp_number', '07724053748', NOW()),
+  ('messaging_enabled', 'false', NOW()),
+  ('telegram_support_handle', '@keko4444', NOW())
+ON CONFLICT (key) DO NOTHING;
 
 -- ─────────────────────────────────────────────────────────────
 -- 5. login_attempts: real brute-force protection via RPC (fail-closed)
@@ -446,3 +453,88 @@ CREATE POLICY "security_logs_admin_delete" ON public.security_logs
 --  WHERE tablename IN ('profiles','group_members','platform_settings','login_attempts','security_logs')
 --     OR (schemaname='storage' AND tablename='objects');
 -- SELECT id, public FROM storage.buckets;
+
+-- ─────────────────────────────────────────────────────────────
+-- 8. Messaging gate: DMs are admin-only until messaging_enabled='true'
+--    Conversations involving an admin always work (support flows).
+-- ─────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.prolink_messaging_open()
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT COALESCE((SELECT value = 'true' FROM public.platform_settings WHERE key = 'messaging_enabled'), false);
+$$;
+
+CREATE OR REPLACE FUNCTION public.prolink_is_admin_id(p_id uuid)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = p_id AND (is_admin = true OR role IN ('admin','superadmin'))
+  );
+$$;
+
+REVOKE ALL ON FUNCTION public.prolink_messaging_open() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.prolink_is_admin_id(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.prolink_messaging_open() TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.prolink_is_admin_id(uuid) TO anon, authenticated;
+
+DO $$
+DECLARE pol RECORD;
+BEGIN
+  FOR pol IN SELECT policyname FROM pg_policies WHERE schemaname='public' AND tablename='messages' LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.messages', pol.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY "messages_select" ON public.messages FOR SELECT
+  USING (
+    (auth.uid() = sender_id OR auth.uid() = receiver_id)
+    AND (
+      public.prolink_messaging_open()
+      OR public.prolink_is_admin()
+      OR public.prolink_is_admin_id(sender_id)
+      OR public.prolink_is_admin_id(receiver_id)
+    )
+  );
+
+CREATE POLICY "messages_insert" ON public.messages FOR INSERT
+  WITH CHECK (
+    auth.uid() IS NOT NULL AND auth.uid() = sender_id
+    AND (
+      public.prolink_messaging_open()
+      OR public.prolink_is_admin()
+      OR public.prolink_is_admin_id(receiver_id)
+    )
+  );
+
+CREATE POLICY "messages_update" ON public.messages FOR UPDATE
+  USING (
+    (auth.uid() = sender_id OR auth.uid() = receiver_id)
+    AND (
+      public.prolink_messaging_open()
+      OR public.prolink_is_admin()
+      OR public.prolink_is_admin_id(sender_id)
+      OR public.prolink_is_admin_id(receiver_id)
+    )
+  )
+  WITH CHECK (
+    (auth.uid() = sender_id OR auth.uid() = receiver_id)
+    AND (
+      public.prolink_messaging_open()
+      OR public.prolink_is_admin()
+      OR public.prolink_is_admin_id(sender_id)
+      OR public.prolink_is_admin_id(receiver_id)
+    )
+  );
+
+CREATE POLICY "messages_delete" ON public.messages FOR DELETE
+  USING (
+    auth.uid() = sender_id
+    AND (
+      public.prolink_messaging_open()
+      OR public.prolink_is_admin()
+      OR public.prolink_is_admin_id(receiver_id)
+    )
+  );

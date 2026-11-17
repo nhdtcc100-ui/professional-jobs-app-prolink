@@ -244,6 +244,7 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
   idx
 }) => {
   const rowRef = useRef<HTMLDivElement>(null);
+  const { canUseMessaging } = useAppContext();
   const cfg = NOTIF_CONFIG[n.type] || NOTIF_CONFIG.default;
   const Icon = cfg.icon;
   const [isSwipedOut, setIsSwipedOut] = useState(false);
@@ -402,7 +403,7 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
             </div>
           )}
 
-          {n.type === 'sync_approval' && sender && onSendMessage && (
+          {n.type === 'sync_approval' && sender && onSendMessage && canUseMessaging && (
             <div className="mt-2 flex items-center gap-2 pt-0.5">
               <button
                 onClick={(e) => { e.stopPropagation(); onSendMessage(sender); }}

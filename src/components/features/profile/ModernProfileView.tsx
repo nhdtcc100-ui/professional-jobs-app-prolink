@@ -1,4 +1,5 @@
 import { safeVibrate } from '../../../lib/utils/haptics';
+import { openContactMenu } from '../../../lib/utils/contact';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -241,7 +242,7 @@ export function ModernProfileView({
 
   // ─── Profile Tabs & Posts State ──────────────────────────────────────────────
   const [activeProfileTab, setActiveProfileTab] = useState<'info' | 'posts'>('info');
-  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast, appUser, handleDeletePost } = useAppContext();
+  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast, appUser, handleDeletePost, canUseMessaging } = useAppContext();
   const notify = useCallback((msg: string, type: any = 'success') => {
     if (typeof addToast === 'function') addToast(msg, type);
     else if (typeof contextAddToast === 'function') contextAddToast(msg, type);
@@ -1547,7 +1548,15 @@ export function ModernProfileView({
                 placeholder="07XXXXXXXXX" dir="ltr"
                 className="w-full bg-transparent outline-none text-base sm:text-lg font-bold text-slate-800 dark:text-white text-right" />
             ) : (
-              <p className="w-full text-base sm:text-lg font-bold text-slate-800 dark:text-white text-right" dir="ltr">{phone || '—'}</p>
+              <button
+                type="button"
+                onClick={() => openContactMenu({ phone, name: profile?.name, website: (profile as any)?.website })}
+                className="w-full text-base sm:text-lg font-bold text-slate-800 dark:text-white text-right cursor-pointer hover:text-[#0a66c2] transition-colors"
+                dir="ltr"
+                title="اضغط لخيارات التواصل: واتساب / اتصال"
+              >
+                {phone || '—'}
+              </button>
             )}
             <Phone size={19} className="text-slate-400 shrink-0" />
           </div>
@@ -1562,10 +1571,10 @@ export function ModernProfileView({
             </div>
           </button>
         ) : (
-          showCallButton && phone && (
-            <button type="button" onClick={onCallClick}
+          phone && (
+            <button type="button" onClick={() => openContactMenu({ phone, name: profile?.name, website: (profile as any)?.website })}
               className="w-full py-4.5 sm:py-5 rounded-2xl sm:rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base sm:text-lg transition-all shadow-xl shadow-emerald-500/25 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer">
-              <Phone size={20} /><span>اتصال برقم الهاتف</span>
+              <Phone size={20} /><span>تواصل: واتساب / اتصال</span>
             </button>
           )
         )}
@@ -1934,8 +1943,8 @@ export function ModernProfileView({
         </motion.div>
       )}
 
-      {/* ─── Visitor: Message Button ─────────────────────────────────────────────── */}
-      {!isMe && (
+      {/* ─── Visitor: Message Button (only when messaging is open) ─────────────── */}
+      {!isMe && canUseMessaging && (
         <div className="pt-2">
           <button type="button" onClick={onMessageClick}
             className="w-full py-4 rounded-full bg-gradient-to-l from-[#0a66c2] to-[#004182] hover:from-[#004182] hover:to-[#0a66c2] text-white font-black text-base transition-all shadow-lg shadow-[#0a66c2]/30 active:scale-[0.98] flex items-center justify-center gap-2">

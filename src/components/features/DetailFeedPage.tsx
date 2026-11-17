@@ -4,8 +4,9 @@ import { motion, AnimatePresence, type Variants } from 'motion/react';
 import { 
   ArrowRight, Briefcase, MapPin, DollarSign, 
   Tag, Clock, Send, Calendar, ExternalLink, Sparkles,
-  FileText, Home, Newspaper, ChevronDown, ChevronLeft, ChevronRight, Edit2, Trash2, AlertTriangle
+  FileText, Home, Newspaper, ChevronDown, ChevronLeft, ChevronRight, Edit2, Trash2, AlertTriangle, Phone
 } from 'lucide-react';
+import { openContactMenu } from '../../lib/utils/contact';
 import { Job, AppUser } from '../../types';
 import { safeTimeAgo } from '../../lib/utils/formatDate';
 import { BilingualSmartText } from '../../lib/utils/bilingualText';
@@ -434,6 +435,19 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                             )}
                             <p className="text-xs sm:text-sm text-white/95 font-black">{currentItem.company}</p>
                             <span className="text-[10px] font-bold text-white/60">• {timeAgo(currentItem.postedAt)}</span>
+                            {(pubUser?.phone || (pubUser as any)?.website) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openContactMenu({ phone: pubUser?.phone, name: pubUser?.name || currentItem.company, website: (pubUser as any)?.website });
+                                }}
+                                className="mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/90 hover:bg-emerald-500 text-white text-[10px] font-black border border-emerald-300/30 shadow-md active:scale-95 transition-all"
+                                title="تواصل مع صاحب الوظيفة: واتساب / اتصال / روابطه"
+                              >
+                                <Phone size={12} /> تواصل معه
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>

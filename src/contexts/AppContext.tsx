@@ -6,6 +6,7 @@ import { authService, postService, jobService, networkService, profileService } 
 import { callService } from '../lib/services/callService';
 import { sanitizeInput } from '../lib/utils/sanitize';
 import { isUserAdmin, canUserPostAndInteract } from '../lib/utils/roleUtils';
+import { platformSettingsService, PlatformPublicSettings } from '../lib/services/platformSettingsService';
 import { getJobCategory } from '../lib/utils/jobCategoryUtils';
 import { mockDataService } from '../lib/services/mockDataService';
 
@@ -56,6 +57,8 @@ interface AppContextType {
   // UI State
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  platformSettings: PlatformPublicSettings;
+  canUseMessaging: boolean;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   selectedProfile: AppUser | null;
@@ -501,6 +504,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, []);
 
+  // ── Public platform settings: support contacts + global messaging gate ──
+  const [platformSettings, setPlatformSettings] = useState<PlatformPublicSettings>(() => platformSettingsService.getCached());
+
+  useEffect(() => {
+    let cancelled = false;
+    const apply = (s: PlatformPublicSettings) => { if (!cancelled) setPlatformSettings(s); };
+    platformSettingsService.fetch().then(apply);
+    const onChanged = (e: Event) => {
+      const d = (e as CustomEvent<PlatformPublicSettings>).detail;
+      if (d) apply(d);
+    };
+    window.addEventListener('prolink_platform_settings_changed', onChanged);
+    const channel = supabase
+      .channel('platform-public-settings')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'platform_settings' }, () => {
+        platformSettingsService.fetch().then(apply);
+      })
+      .subscribe();
+    return () => {
+      cancelled = true;
+      window.removeEventListener('prolink_platform_settings_changed', onChanged);
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // 🔒 Messaging is admin-only until an admin opens it for everyone
+  const canUseMessaging = Boolean(isUserAdmin(appUser) || platformSettings.messagingEnabled);
+
   const mockBundle = React.useMemo(() => {
     if (!isMockEnabled) return null;
     return mockDataService.getBundle(appUser?.id || user?.id || 'me');
@@ -681,7 +712,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ── Accurate Live Unread Counters ───────────────────────────────
   const unreadMessagesCount = React.useMemo(() => {
-    if (!user?.id) return 0;
+    if (!user?.id || !canUseMessaging) return 0;
     const myId = String(user.id).toLowerCase().trim();
     return messages.filter(m => {
       const receiver = String(m.receiverId || m.receiver_id || '').toLowerCase().trim();
@@ -697,7 +728,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return true;
     }).length;
-  }, [messages, user?.id, readMessageIds, readChatSenders]);
+  }, [messages, user?.id, readMessageIds, readChatSenders, canUseMessaging]);
 
   const pendingRequestsCount = React.useMemo(() => {
     if (!user?.id) return 0;
@@ -725,7 +756,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTabRaw] = useState<string>(() => {
     try { return localStorage.getItem('prolink_active_tab') || 'news'; } catch { return 'news'; }
   });
+  const messagingGateRef = useRef({ canUse: false, notify: (_m: string) => {} });
   const setActiveTab = useCallback((tab: string) => {
+    if (tab === 'messages' && !messagingGateRef.current.canUse) {
+      messagingGateRef.current.notify('🔒 الرسائل مقفلة حالياً ومتاحة للإدارة فقط. للتواصل مع الدعم استخدم واتساب أو تلكرام من صفحة "حول المنصة".');
+      return;
+    }
     try { localStorage.setItem('prolink_active_tab', tab); } catch {}
     setActiveTabRaw(tab);
   }, []);
@@ -807,6 +843,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+  };
+
+  messagingGateRef.current = {
+    canUse: canUseMessaging,
+    notify: (m: string) => addToast(m, 'info'),
   };
 
   const handleGoogleLogin = async () => {
@@ -2386,6 +2427,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     messages: effectiveMessages, isMockEnabled, readMessageIds, readChatSenders, reports, myGroups,
     unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount,
     activeTab, setActiveTab, searchQuery, setSearchQuery,
+    platformSettings, canUseMessaging,
     selectedProfile, setSelectedProfile, isEditingProfile, setIsEditingProfile,
     toasts, showNotifications, setShowNotifications, showAdmin, setShowAdmin,
     selectedChat, setSelectedChat,

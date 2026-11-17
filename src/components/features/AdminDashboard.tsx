@@ -11,6 +11,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { profileService } from '../../lib/services/profileService';
 import { telegramSupportService } from '../../lib/services/telegramSupportService';
+import { platformSettingsService } from '../../lib/services/platformSettingsService';
 import { mockDataService } from '../../lib/services/mockDataService';
 import { NewsSourcesAdmin } from './NewsSourcesAdmin';
 import { useAppContext } from '../../contexts/AppContext';
@@ -50,7 +51,7 @@ interface Stats {
 type Tab = 'overview' | 'reports' | 'support' | 'mock_data' | 'users' | 'posts' | 'resources' | 'news_sources' | 'settings' | 'security';
 
 export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardProps) {
-  const { setAllUsers: setGlobalUsers, setAppUser, appUser: currentAppUser } = useAppContext();
+  const { setAllUsers: setGlobalUsers, setAppUser, appUser: currentAppUser, platformSettings } = useAppContext();
   const isSupportOnly = !currentAppUser?.isAdmin && currentAppUser?.hasSupportAccess;
 
   // ── Tab Persistence ─────────────────────────────────────────
@@ -166,6 +167,30 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   const [savingTelegram, setSavingTelegram] = useState(false);
   const [testingTelegram, setTestingTelegram] = useState(false);
   const [detectingChatId, setDetectingChatId] = useState(false);
+
+  // ── Public contact & messaging gate settings ──────────────
+  const [editingSupportWhatsapp, setEditingSupportWhatsapp] = useState('');
+  const [messagingOpen, setMessagingOpen] = useState(false);
+  const [savingPublicSettings, setSavingPublicSettings] = useState(false);
+
+  useEffect(() => {
+    setEditingSupportWhatsapp(platformSettings.supportWhatsapp);
+    setMessagingOpen(platformSettings.messagingEnabled);
+  }, [platformSettings]);
+
+  const handleSavePublicSettings = async () => {
+    setSavingPublicSettings(true);
+    try {
+      const res = await platformSettingsService.save({
+        supportWhatsapp: editingSupportWhatsapp,
+        messagingEnabled: messagingOpen,
+      });
+      if (res.success) addToast('✅ تم حفظ إعدادات التواصل والرسائل', 'success');
+      else addToast('فشل الحفظ: ' + (res.error || 'خطأ غير معروف'), 'error');
+    } finally {
+      setSavingPublicSettings(false);
+    }
+  };
 
   const handleDetectChatId = async () => {
     setDetectingChatId(true);
@@ -2314,6 +2339,66 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
             )}
             {activeTab === 'settings' && (
               <motion.div key="settings" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
+                 {/* ── Public Contact & Messaging Gate Card ── */}
+                 <div className="bg-gradient-to-br from-slate-800/60 via-slate-800/40 to-emerald-950/30 border border-emerald-500/30 rounded-[2.5rem] p-8 shadow-2xl backdrop-blur-md relative overflow-hidden">
+                    <div className="relative z-10">
+                       <div className="flex items-center gap-4 mb-6">
+                          <div className="p-3.5 bg-gradient-to-br from-emerald-500 to-green-600 rounded-2xl shadow-[0_0_25px_rgba(16,185,129,0.4)] text-white">
+                             <MessageSquare size={22} />
+                          </div>
+                          <div>
+                             <h3 className="text-base font-black text-white">التواصل العام وخاصية الرسائل</h3>
+                             <p className="text-xs text-slate-400 font-medium">رقم واتساب الدعم الذي يظهر للمستخدمين، وفتح/إغلاق الرسائل للجميع</p>
+                          </div>
+                       </div>
+
+                       <div className="p-6 bg-slate-900/60 border border-slate-700/60 rounded-3xl space-y-6">
+                          <div>
+                             <label className="text-xs font-black text-slate-200 block mb-2">رقم واتساب الدعم (مثال: 07724053748)</label>
+                             <input
+                                type="tel"
+                                dir="ltr"
+                                value={editingSupportWhatsapp}
+                                onChange={(e) => setEditingSupportWhatsapp(e.target.value)}
+                                placeholder="07XXXXXXXXX"
+                                className="w-full px-4 py-3 bg-slate-800/80 border border-slate-600/60 rounded-2xl text-white font-bold text-sm outline-none focus:border-emerald-400 transition-colors"
+                             />
+                             <p className="text-[10px] text-slate-500 font-medium mt-1.5">يظهر زر «واتساب الدعم» في صفحة الدعم وشاشة قفل الرسائل. يُطبَّع تلقائياً بصيغة 964+.</p>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-4 p-4 bg-slate-800/50 border border-slate-700/50 rounded-2xl">
+                             <div>
+                                <p className="text-xs font-black text-slate-200">فتح خاصية الرسائل للجميع</p>
+                                <p className="text-[10px] text-slate-500 font-medium mt-1">
+                                   {messagingOpen
+                                     ? 'الرسائل مفتوحة حالياً لجميع الأعضاء.'
+                                     : 'الرسائل مقفلة حالياً — متاحة للإدارة فقط. لن تظهر أزرار المراسلة للأعضاء.'}
+                                </p>
+                             </div>
+                             <button
+                                type="button"
+                                role="switch"
+                                aria-checked={messagingOpen}
+                                onClick={() => setMessagingOpen(v => !v)}
+                                className={`relative w-14 h-8 rounded-full transition-colors shrink-0 ${messagingOpen ? 'bg-emerald-500' : 'bg-slate-600'}`}
+                             >
+                                <span className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow transition-all ${messagingOpen ? 'right-1' : 'right-7'}`} />
+                             </button>
+                          </div>
+
+                          <button
+                             type="button"
+                             onClick={handleSavePublicSettings}
+                             disabled={savingPublicSettings}
+                             className="w-full py-3.5 bg-gradient-to-l from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-black text-sm rounded-2xl shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                          >
+                             {savingPublicSettings ? 'جاري الحفظ...' : 'حفظ إعدادات التواصل والرسائل'}
+                          </button>
+                          <p className="text-[10px] text-slate-500 font-medium">معرّف تلكرام الدعم يُعدَّل من بطاقة تيليجرام أدناه، ويتحدث لحظياً لدى جميع المستخدمين.</p>
+                       </div>
+                    </div>
+                 </div>
+
                  {/* ── Telegram Support Configuration Card ── */}
                  <div className="bg-gradient-to-br from-slate-800/60 via-slate-800/40 to-sky-950/30 border border-sky-500/30 rounded-[2.5rem] p-8 shadow-2xl backdrop-blur-md relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-96 h-96 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />

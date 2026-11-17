@@ -1,0 +1,78 @@
+import { supabase } from '../supabase';
+
+export interface PlatformPublicSettings {
+  messagingEnabled: boolean;
+  supportWhatsapp: string;
+  supportTelegram: string;
+}
+
+const KEY_MESSAGING = 'messaging_enabled';
+const KEY_WHATSAPP = 'support_whatsapp_number';
+const KEY_TELEGRAM = 'telegram_support_handle';
+const KEYS = [KEY_MESSAGING, KEY_WHATSAPP, KEY_TELEGRAM];
+const CACHE_KEY = 'prolink_platform_public_settings';
+
+export const DEFAULT_PUBLIC_SETTINGS: PlatformPublicSettings = {
+  messagingEnabled: false,
+  supportWhatsapp: '',
+  supportTelegram: '',
+};
+
+const parseRows = (rows: { key: string; value: string }[]): PlatformPublicSettings => {
+  const next = { ...DEFAULT_PUBLIC_SETTINGS };
+  for (const row of rows || []) {
+    const value = String(row.value ?? '').trim();
+    if (row.key === KEY_MESSAGING) next.messagingEnabled = value === 'true';
+    else if (row.key === KEY_WHATSAPP) next.supportWhatsapp = value;
+    else if (row.key === KEY_TELEGRAM) next.supportTelegram = value;
+  }
+  return next;
+};
+
+const writeCache = (settings: PlatformPublicSettings) => {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify(settings)); } catch {}
+};
+
+export const platformSettingsService = {
+  getCached(): PlatformPublicSettings {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (raw) return { ...DEFAULT_PUBLIC_SETTINGS, ...JSON.parse(raw) };
+    } catch {}
+    return { ...DEFAULT_PUBLIC_SETTINGS };
+  },
+
+  async fetch(): Promise<PlatformPublicSettings> {
+    try {
+      const { data, error } = await supabase
+        .from('platform_settings')
+        .select('key, value')
+        .in('key', KEYS);
+      if (error || !data) return this.getCached();
+      const settings = parseRows(data as any);
+      writeCache(settings);
+      return settings;
+    } catch {
+      return this.getCached();
+    }
+  },
+
+  async save(patch: Partial<PlatformPublicSettings>): Promise<{ success: boolean; error?: string }> {
+    const rows: { key: string; value: string; updated_at: string }[] = [];
+    const now = new Date().toISOString();
+    if (patch.messagingEnabled !== undefined) rows.push({ key: KEY_MESSAGING, value: String(patch.messagingEnabled), updated_at: now });
+    if (patch.supportWhatsapp !== undefined) rows.push({ key: KEY_WHATSAPP, value: patch.supportWhatsapp.trim(), updated_at: now });
+    if (patch.supportTelegram !== undefined) rows.push({ key: KEY_TELEGRAM, value: patch.supportTelegram.trim(), updated_at: now });
+    if (rows.length === 0) return { success: true };
+
+    const { error } = await supabase
+      .from('platform_settings')
+      .upsert(rows as any, { onConflict: 'key' });
+    if (error) return { success: false, error: error.message };
+
+    const merged = { ...this.getCached(), ...parseRows(rows) };
+    writeCache(merged);
+    window.dispatchEvent(new CustomEvent('prolink_platform_settings_changed', { detail: merged }));
+    return { success: true };
+  },
+};

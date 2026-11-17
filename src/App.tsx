@@ -58,6 +58,8 @@ declare global {
 }
 
 import { MessagingView } from './components/features/MessagingView';
+import { ContactMenuHost } from './components/ui/ContactMenu';
+import { whatsappUrl } from './lib/utils/contact';
 
 // 🚀 Lazy-loaded heavy feature views (integrated with preloadTab)
 const MissionsView    = lazy(() => loadMissionsView().then(m => ({ default: m.MissionsView })));
@@ -84,6 +86,7 @@ function App() {
     pendingEmailVerification, setPendingEmailVerification,
     posts, setPosts, jobs, allUsers, connections, notifications, messages, reports,
     activeTab, setActiveTab, searchQuery, setSearchQuery,
+    platformSettings, canUseMessaging,
     selectedProfile, setSelectedProfile, isEditingProfile, setIsEditingProfile,
     toasts, showNotifications, setShowNotifications, showAdmin, setShowAdmin,
     selectedChat, setSelectedChat,
@@ -632,6 +635,10 @@ function App() {
 
   const handleShareJobToUser = async (targetUser: AppUser, job: Job) => {
     if (!appUser) return;
+    if (!canUseMessaging) {
+      addToast('🔒 الرسائل مقفلة حالياً ومتاحة للإدارة فقط', 'info');
+      return;
+    }
     try {
       const jobMsg = `[JOB_CARD:${job.id}|${job.title}|${job.company}|${job.location || 'عن بُعد'}|${job.salary || 'غير محدد'}|${job.image_url || ''}]`;
       const { error } = await (supabase as any).from('messages').insert([{ 
@@ -1342,6 +1349,48 @@ function App() {
                       </button>
                     </motion.div>
                   )
+                ) : !canUseMessaging ? (
+                  activeTab === 'messages' && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.18, ease: 'easeOut' }}
+                      className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-md mx-auto shadow-xl"
+                      dir="rtl"
+                    >
+                      <div className="w-16 h-16 bg-amber-50 dark:bg-amber-950/40 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                        <MessageSquare size={30} />
+                      </div>
+                      <h3 className="text-base font-black text-slate-800 dark:text-white">الرسائل مقفلة حالياً 🔒</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">
+                        خاصية الرسائل متاحة للإدارة فقط في الوقت الحالي، وسيتم فتحها للجميع قريباً.
+                        للتواصل مع صاحب وظيفة أو مرشح استخدم أزرار واتساب / الاتصال على الأرقام المنشورة، أو تواصل مع الدعم:
+                      </p>
+                      <div className="mt-5 grid gap-2.5">
+                        {platformSettings.supportWhatsapp && (
+                          <a
+                            href={whatsappUrl(platformSettings.supportWhatsapp)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs rounded-xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                          >
+                            <span>الدعم عبر واتساب</span>
+                          </a>
+                        )}
+                        {platformSettings.supportTelegram && (
+                          <a
+                            href={`https://t.me/${platformSettings.supportTelegram.replace(/^@+/, '').replace(/^https?:\/\/t\.me\//, '')}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full py-3 bg-sky-500 hover:bg-sky-600 text-white font-black text-xs rounded-xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                          >
+                            <span>الدعم عبر تلكرام</span>
+                          </a>
+                        )}
+                      </div>
+                    </motion.div>
+                  )
                 ) : (
                   <div
                     key="keepalive-tab-messages"
@@ -1699,6 +1748,7 @@ function App() {
       <SecurityAlertToast onOpenAdmin={() => setShowAdmin(true)} />
 
       <ToastContainer toasts={toasts} />
+      <ContactMenuHost />
 
       {/* Onboarding Modal for new users */}
       <AnimatePresence mode="wait">
