@@ -160,8 +160,8 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   // ── Telegram Support Configuration State ──────────────────
   const [telegramHandle, setTelegramHandle] = useState<string>(() => telegramSupportService.getCachedHandle());
   const [editingTelegramHandle, setEditingTelegramHandle] = useState<string>(() => telegramSupportService.getCachedHandle());
-  const [editingBotToken, setEditingBotToken] = useState<string>(() => telegramSupportService.getCachedBotToken());
-  const [editingChatId, setEditingChatId] = useState<string>(() => telegramSupportService.getCachedChatId());
+  const [editingBotToken, setEditingBotToken] = useState<string>('');
+  const [editingChatId, setEditingChatId] = useState<string>('');
   const [showBotToken, setShowBotToken] = useState(false);
   const [savingTelegram, setSavingTelegram] = useState(false);
   const [testingTelegram, setTestingTelegram] = useState(false);

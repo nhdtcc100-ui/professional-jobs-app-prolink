@@ -38,7 +38,6 @@ import { CallsView } from './components/features';
 import { jobService } from './lib/services/jobService';
 import { AlertBanner } from './components/features/security/AlertBanner';
 import { SecurityAlertToast } from './components/features/security/SecurityAlertToast';
-import { initAntiInspect, setAntiInspectUser } from './lib/security/antiInspect';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { RecedeCard } from './components/common/RecedeCard';
 import { GuestBanner } from './components/common/GuestBanner';
@@ -112,12 +111,7 @@ function App() {
 
   useEffect(() => {
     fetchGroups();
-    initAntiInspect(appUser);
   }, []);
-
-  useEffect(() => {
-    setAntiInspectUser(appUser);
-  }, [appUser]);
 
   // ── خروج وضع الزائر تلقائياً عند تسجيل الدخول ──
   useEffect(() => {

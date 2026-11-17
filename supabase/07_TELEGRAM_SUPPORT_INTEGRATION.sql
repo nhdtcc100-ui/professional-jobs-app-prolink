@@ -12,11 +12,14 @@ CREATE TABLE IF NOT EXISTS public.platform_settings (
 );
 
 -- 2. Seed Default Telegram Support Settings
+-- SECURITY: never seed real bot tokens here. Set telegram_bot_token / telegram_chat_id
+-- from the Admin Dashboard (stored server-side) or via Edge Function secrets
+-- (TELEGRAM_BOT_TOKEN / TELEGRAM_SUPPORT_CHAT_ID).
 INSERT INTO public.platform_settings (key, value, updated_at)
 VALUES 
     ('telegram_support_handle', '@prolink1357_support_bot', NOW()),
-    ('telegram_bot_token', '9259272344:AAGkb7hGss2Hy9gdUPamHEg5mwLvOAe8Vw0', NOW()),
-    ('telegram_chat_id', '207207781', NOW())
+    ('telegram_bot_token', '', NOW()),
+    ('telegram_chat_id', '', NOW())
 ON CONFLICT (key) DO UPDATE 
 SET value = EXCLUDED.value
 WHERE platform_settings.value IS NULL OR platform_settings.value = '';

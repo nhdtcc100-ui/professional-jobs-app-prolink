@@ -14,6 +14,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
   );
 }
 
+export const SUPABASE_URL = supabaseUrl;
+export const SUPABASE_ANON_KEY = supabaseAnonKey;
+export const AUTH_STORAGE_KEY = 'prolink_v2_auth_session';
+export const LEGACY_AUTH_STORAGE_KEY = `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`;
+
 // Safe storage that works on Mobile Safari Private Mode, Android WebView, and standard browsers
 const mobileSafeStorage = {
   getItem: (key: string): string | null => {
@@ -46,7 +51,7 @@ export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     detectSessionInUrl: true,
     storage: mobileSafeStorage,
-    storageKey: 'prolink_v2_auth_session',
+    storageKey: AUTH_STORAGE_KEY,
     
     // تعطيل نظام الأقفال المسبب للتعليق (No-Op Lock)
     lock: async (_name, _acquireTimeout, fn) => await fn()

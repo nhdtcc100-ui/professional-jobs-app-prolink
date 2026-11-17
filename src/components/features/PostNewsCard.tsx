@@ -21,7 +21,7 @@ import { supabase } from '../../lib/supabase';
 interface PostNewsCardProps {
   post: Post;
   delay?: number;
-  onClick: () => void;
+  onClick: (post: any) => void;
   onAuthorClick?: (e: React.MouseEvent) => void;
   allUsers: any[];
   onDeletePost?: (id: string) => Promise<boolean> | void;
@@ -224,7 +224,7 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
 
       {/* ── Main Foreground Card ── */}
       <motion.div
-        onClick={isEditing || showDeleteConfirm ? undefined : onClick}
+        onClick={isEditing || showDeleteConfirm ? undefined : () => onClick(post)}
         whileHover={isEditing || showDeleteConfirm ? {} : { y: -4, scale: 1.003 }}
         animate={showDeleteConfirm ? { scale: 0.985 } : { scale: 1 }}
         className={`relative z-10 flex flex-col md:flex-row items-stretch gap-4 p-4 md:p-5 bg-white dark:bg-[#0f172a] rounded-[2rem] border ${

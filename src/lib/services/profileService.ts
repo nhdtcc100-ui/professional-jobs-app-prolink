@@ -1,4 +1,4 @@
-import { supabase } from '../supabase';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, AUTH_STORAGE_KEY, LEGACY_AUTH_STORAGE_KEY } from '../supabase';
 import { logger } from '../logger';
 import { threatEngine } from '../security/threatEngine';
 import { validateName } from '../security/inputValidator';
@@ -360,30 +360,17 @@ export const profileService = {
           );
         }
       }
-
-      const sqliRes = threatEngine.scanForSQLi(strVal);
-      if (sqliRes.detected) {
-        threatEngine.logThreat({
-          user_id: userId,
-          user_name: dbUpdates.name || updates.name || 'مستخدم الملف الشخصي',
-          user_email: updates.email,
-          attack_type: 'SQL_INJECTION',
-          severity: 'CRITICAL',
-          endpoint: '/api/profile/update',
-          payload_sample: strVal.slice(0, 150),
-        });
-      }
     }
 
     let result: any = null;
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+    const supabaseUrl = SUPABASE_URL;
+    const supabaseAnonKey = SUPABASE_ANON_KEY;
 
     // 1. Direct REST PATCH — ultra-fast, bypasses navigator.locks & supabase-js client deadlock (50ms)
     let token = supabaseAnonKey;
     try {
-      const raw = localStorage.getItem('prolink_v2_auth_session') ||
-                  localStorage.getItem('sb-ubeqmsyyyojojmswmidq-auth-token');
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY) ||
+                  localStorage.getItem(LEGACY_AUTH_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         token = parsed?.access_token || parsed?.currentSession?.access_token || supabaseAnonKey;

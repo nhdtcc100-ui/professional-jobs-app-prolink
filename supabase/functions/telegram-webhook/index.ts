@@ -12,12 +12,14 @@ serve(async (req: Request) => {
       return new Response('Method not allowed', { status: 405 });
     }
 
-    // Security Check: Verify Telegram Secret Token
-    if (TELEGRAM_WEBHOOK_SECRET) {
-      const headerSecret = req.headers.get('X-Telegram-Bot-Api-Secret-Token');
-      if (headerSecret !== TELEGRAM_WEBHOOK_SECRET) {
-        return new Response('Unauthorized token', { status: 401 });
-      }
+    // Security Check: fail closed — the webhook secret MUST be configured.
+    if (!TELEGRAM_WEBHOOK_SECRET) {
+      console.error('TELEGRAM_WEBHOOK_SECRET is not configured; rejecting webhook call');
+      return new Response('Webhook not configured', { status: 503 });
+    }
+    const headerSecret = req.headers.get('X-Telegram-Bot-Api-Secret-Token');
+    if (headerSecret !== TELEGRAM_WEBHOOK_SECRET) {
+      return new Response('Unauthorized token', { status: 401 });
     }
 
     const update = await req.json();
@@ -27,8 +29,8 @@ serve(async (req: Request) => {
       return new Response('No message content', { status: 200 });
     }
 
-    // Security Check: Verify chat ID matches authorized support group
-    if (TELEGRAM_SUPPORT_CHAT_ID && String(message.chat.id) !== String(TELEGRAM_SUPPORT_CHAT_ID)) {
+    // Security Check: fail closed — only the authorized support chat may reply.
+    if (!TELEGRAM_SUPPORT_CHAT_ID || String(message.chat.id) !== String(TELEGRAM_SUPPORT_CHAT_ID)) {
       console.warn('Unauthorized chat ID attempted response:', message.chat.id);
       return new Response('Chat ignored', { status: 200 });
     }

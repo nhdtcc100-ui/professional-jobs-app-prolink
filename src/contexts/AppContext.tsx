@@ -129,16 +129,12 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 // Maps raw Supabase profile row → AppUser shape used by the UI
 export const mapProfile = (p: any): any => {
-  // ✅ Admin status: checks is_admin column, admin role, or verified admin emails
+  // ✅ Admin status comes only from DB-backed fields (is_admin / role), never email matching
   const isTargetAdmin = Boolean(
     p.is_admin === true ||
     p.isAdmin === true ||
     p.role === 'admin' ||
-    (p.email && (
-      p.email.toLowerCase().includes('admin@prolink.com') ||
-      p.email.toLowerCase().includes('nhdtcc100@gmail.com') ||
-      p.email.toLowerCase().includes('nhd0770@gmail.com')
-    ))
+    p.role === 'superadmin'
   );
   // ✅ is_active: treat NULL/undefined as active (default), only false = banned
   const isActive = p.is_active !== false;

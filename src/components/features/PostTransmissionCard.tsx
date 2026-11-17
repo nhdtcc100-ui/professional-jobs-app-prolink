@@ -96,21 +96,16 @@ export function PostTransmissionCard({
   useEffect(() => {
     fetchComments();
 
-    const channel = supabase.channel(`comments-${post.id}-${Date.now()}`);
+    const channel = supabase.channel(`comments-${post.id}`);
     
     channel
       .on('postgres_changes', 
         { event: '*', schema: 'public', table: 'comments', filter: `post_id=eq.${post.id}` }, 
         () => {
-          console.log(`DEBUG: New comment for post ${post.id}`);
           fetchComments();
         }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log(`DEBUG: Subscribed to comments for post ${post.id}`);
-        }
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);

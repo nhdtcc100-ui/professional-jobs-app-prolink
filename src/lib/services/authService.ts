@@ -217,10 +217,14 @@ export const authService = {
 
     const internalEmail = `${cleanPhone}@prolink.internal`;
 
-    // Rate limit by phone number
+    // Rate limit by phone number (client + server, fail-closed)
     const rlCheck = rateLimiter.check(cleanPhone);
     if (!rlCheck.allowed) {
       throw new Error(`⛔ الرقم مقفل مؤقتاً. حاول مجدداً بعد ${rlCheck.remainingMinutes} دقيقة`);
+    }
+    const serverCheck = await serverRateLimiter.check(cleanPhone);
+    if (!serverCheck.allowed) {
+      throw new Error(`⛔ الرقم مقفل مؤقتاً. حاول مجدداً بعد ${serverCheck.remainingMinutes ?? 15} دقيقة`);
     }
 
     // ── محاولة تسجيل الدخول أولاً ────────────────────────────────────────────
@@ -232,6 +236,7 @@ export const authService = {
     if (!signInError) {
       // ✅ تسجيل دخول ناجح
       rateLimiter.reset(cleanPhone);
+      await serverRateLimiter.record(cleanPhone, true);
       return { data, error: null, isNewUser: false };
     }
 
@@ -276,6 +281,7 @@ export const authService = {
 
       // ✅ تسجيل ناجح - DB Trigger سيُنشئ الـ profile تلقائياً
       rateLimiter.reset(cleanPhone);
+      await serverRateLimiter.record(cleanPhone, true);
 
       // حسابات الهاتف: لا تأكيد بريد → جلسة مباشرة عادةً
       if (signUpData.user && signUpData.session) {
@@ -292,6 +298,7 @@ export const authService = {
     }
 
     // ── فشل تسجيل الدخول (كلمة مرور خاطئة) ─────────────────────────────────
+    await serverRateLimiter.record(cleanPhone, false);
     const { locked, remainingAttempts } = rateLimiter.recordFailure(cleanPhone);
     if (locked) throw new Error('🔒 تم قفل الحساب مؤقتاً لمدة 15 دقيقة');
     throw new Error(

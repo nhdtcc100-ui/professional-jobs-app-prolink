@@ -87,11 +87,6 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
       // 1. فحص فوري من قائمة المستخدمين في الذاكرة
       const memIds = (allUsers || [])
         .filter(u => u.isAdmin || u.is_admin || (u as any).role === 'admin' || (u as any).role === 'superadmin' ||
-          (u.email && (
-            u.email.toLowerCase().includes('admin@prolink.com') ||
-            u.email.toLowerCase().includes('nhdtcc100@gmail.com') ||
-            u.email.toLowerCase().includes('nhd0770@gmail.com')
-          )) ||
           u.phone === SUPPORT_PHONE || u.phone === SUPPORT_PHONE_2
         )
         .map(u => u.id)
@@ -106,7 +101,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
       const { data } = await (supabase as any)
         .from("profiles")
         .select("id, role, is_admin, phone, email")
-        .or(`is_admin.eq.true,role.eq.admin,role.eq.superadmin,phone.eq.${SUPPORT_PHONE},phone.eq.${SUPPORT_PHONE_2},email.ilike.%admin@prolink.com%,email.ilike.%nhdtcc100@gmail.com%,email.ilike.%nhd0770@gmail.com%`);
+        .or(`is_admin.eq.true,role.eq.admin,role.eq.superadmin,phone.eq.${SUPPORT_PHONE},phone.eq.${SUPPORT_PHONE_2}`);
       if (data && data.length > 0) {
         const ids: string[] = data.map((p: any) => p.id).filter(Boolean);
         if (ids.length > 0) {

@@ -10,7 +10,7 @@ import {
   Shield, Wrench, ArrowRight, Sparkles, ArrowLeftRight, Clock
 } from 'lucide-react';
 import { DEFAULT_NEWS_PLACEHOLDER, handleImageError } from '../../../lib/utils/placeholders';
-import { supabase } from '../../../lib/supabase';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, AUTH_STORAGE_KEY, LEGACY_AUTH_STORAGE_KEY } from '../../../lib/supabase';
 import { profileService } from '../../../lib/services/profileService';
 import { cvService } from '../../../lib/services/cvService';
 import { mobileUploadService } from '../../../lib/services/mobileUploadService';
@@ -241,7 +241,7 @@ export function ModernProfileView({
 
   // ─── Profile Tabs & Posts State ──────────────────────────────────────────────
   const [activeProfileTab, setActiveProfileTab] = useState<'info' | 'posts'>('info');
-  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast, appUser } = useAppContext();
+  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast, appUser, handleDeletePost } = useAppContext();
   const notify = useCallback((msg: string, type: any = 'success') => {
     if (typeof addToast === 'function') addToast(msg, type);
     else if (typeof contextAddToast === 'function') contextAddToast(msg, type);
@@ -473,8 +473,8 @@ export function ModernProfileView({
     fileCategory: 'avatar' | 'cover' | 'cv',
     userId: string
   ): Promise<string> => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+    const supabaseUrl = SUPABASE_URL;
+    const supabaseAnonKey = SUPABASE_ANON_KEY;
 
     // فحص أن حجم الملف أكبر من صفر
     if (!file || file.size === 0) {
@@ -598,14 +598,14 @@ export function ModernProfileView({
     field: 'avatar' | 'cover' | 'cv' | 'role',
     value: string
   ): Promise<{ status: number; duration: number }> => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+    const supabaseUrl = SUPABASE_URL;
+    const supabaseAnonKey = SUPABASE_ANON_KEY;
 
     // 1. أخذ التوكن فورياً وبشكل متزامن من localStorage دون انتظار أي قفل
     let token = supabaseAnonKey;
     try {
-      const raw = localStorage.getItem('prolink_v2_auth_session') ||
-                  localStorage.getItem('sb-ubeqmsyyyojojmswmidq-auth-token');
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY) ||
+                  localStorage.getItem(LEGACY_AUTH_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         token = parsed?.access_token || parsed?.currentSession?.access_token || supabaseAnonKey;
@@ -1042,8 +1042,8 @@ export function ModernProfileView({
     }
     try {
       setSavingPassword(true);
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+      const supabaseUrl = SUPABASE_URL;
+      const supabaseAnonKey = SUPABASE_ANON_KEY;
 
       // 1. استخراج الجلسة والتوكن الحاليين
       const { data: sessionData } = await supabase.auth.getSession();
@@ -1053,7 +1053,7 @@ export function ModernProfileView({
       // استخراج احتياطي للتوكن من التخزين المحلي في حال تأخر SDK
       if (!accessToken) {
         try {
-          const raw = localStorage.getItem('prolink_v2_auth_session') || localStorage.getItem('supabase.auth.token');
+          const raw = localStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem('supabase.auth.token');
           if (raw) {
             const parsed = JSON.parse(raw);
             accessToken = parsed?.access_token || parsed?.currentSession?.access_token || '';
