@@ -16,6 +16,7 @@ export interface ContactMenuDetail {
   phone?: string;
   name?: string;
   website?: string;
+  cvUrl?: string;
 }
 
 export const openContactMenu = (detail: ContactMenuDetail): void => {

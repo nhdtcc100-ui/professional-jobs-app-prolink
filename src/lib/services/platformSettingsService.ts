@@ -2,18 +2,27 @@ import { supabase } from '../supabase';
 
 export interface PlatformPublicSettings {
   messagingEnabled: boolean;
+  supportChatEnabled: boolean;
+  groupsEnabled: boolean;
+  networkEnabled: boolean;
   supportWhatsapp: string;
   supportTelegram: string;
 }
 
 const KEY_MESSAGING = 'messaging_enabled';
+const KEY_SUPPORT_CHAT = 'support_chat_enabled';
+const KEY_GROUPS = 'groups_enabled';
+const KEY_NETWORK = 'network_enabled';
 const KEY_WHATSAPP = 'support_whatsapp_number';
 const KEY_TELEGRAM = 'telegram_support_handle';
-const KEYS = [KEY_MESSAGING, KEY_WHATSAPP, KEY_TELEGRAM];
+const KEYS = [KEY_MESSAGING, KEY_SUPPORT_CHAT, KEY_GROUPS, KEY_NETWORK, KEY_WHATSAPP, KEY_TELEGRAM];
 const CACHE_KEY = 'prolink_platform_public_settings';
 
 export const DEFAULT_PUBLIC_SETTINGS: PlatformPublicSettings = {
   messagingEnabled: false,
+  supportChatEnabled: false,
+  groupsEnabled: false,
+  networkEnabled: false,
   supportWhatsapp: '',
   supportTelegram: '',
 };
@@ -23,6 +32,9 @@ const parseRows = (rows: { key: string; value: string }[]): PlatformPublicSettin
   for (const row of rows || []) {
     const value = String(row.value ?? '').trim();
     if (row.key === KEY_MESSAGING) next.messagingEnabled = value === 'true';
+    else if (row.key === KEY_SUPPORT_CHAT) next.supportChatEnabled = value === 'true';
+    else if (row.key === KEY_GROUPS) next.groupsEnabled = value === 'true';
+    else if (row.key === KEY_NETWORK) next.networkEnabled = value === 'true';
     else if (row.key === KEY_WHATSAPP) next.supportWhatsapp = value;
     else if (row.key === KEY_TELEGRAM) next.supportTelegram = value;
   }
@@ -60,7 +72,15 @@ export const platformSettingsService = {
   async save(patch: Partial<PlatformPublicSettings>): Promise<{ success: boolean; error?: string }> {
     const rows: { key: string; value: string; updated_at: string }[] = [];
     const now = new Date().toISOString();
-    if (patch.messagingEnabled !== undefined) rows.push({ key: KEY_MESSAGING, value: String(patch.messagingEnabled), updated_at: now });
+    const boolKeys: [keyof PlatformPublicSettings, string][] = [
+      ['messagingEnabled', KEY_MESSAGING],
+      ['supportChatEnabled', KEY_SUPPORT_CHAT],
+      ['groupsEnabled', KEY_GROUPS],
+      ['networkEnabled', KEY_NETWORK],
+    ];
+    for (const [field, key] of boolKeys) {
+      if (patch[field] !== undefined) rows.push({ key, value: String(patch[field]), updated_at: now });
+    }
     if (patch.supportWhatsapp !== undefined) rows.push({ key: KEY_WHATSAPP, value: patch.supportWhatsapp.trim(), updated_at: now });
     if (patch.supportTelegram !== undefined) rows.push({ key: KEY_TELEGRAM, value: patch.supportTelegram.trim(), updated_at: now });
     if (rows.length === 0) return { success: true };
@@ -74,5 +94,15 @@ export const platformSettingsService = {
     writeCache(merged);
     window.dispatchEvent(new CustomEvent('prolink_platform_settings_changed', { detail: merged }));
     return { success: true };
+  },
+
+  // Detects whether the server-side gate migration (section 8) is applied.
+  async isGateMigrationApplied(): Promise<boolean> {
+    try {
+      const { error } = await supabase.rpc('prolink_messaging_open' as any);
+      return !error;
+    } catch {
+      return false;
+    }
   },
 };

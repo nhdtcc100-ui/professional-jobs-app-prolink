@@ -305,7 +305,7 @@ END $$;
 
 CREATE POLICY "platform_settings_public_keys" ON public.platform_settings
   FOR SELECT USING (
-    key IN ('telegram_support_handle','mock_data_enabled','news_sources_config','support_whatsapp_number','messaging_enabled')
+    key IN ('telegram_support_handle','mock_data_enabled','news_sources_config','support_whatsapp_number','messaging_enabled','support_chat_enabled','groups_enabled','network_enabled')
     OR public.prolink_is_admin()
   );
 
@@ -327,6 +327,9 @@ UPDATE public.platform_settings SET value = '' WHERE key = 'telegram_bot_token';
 INSERT INTO public.platform_settings (key, value, updated_at) VALUES
   ('support_whatsapp_number', '07724053748', NOW()),
   ('messaging_enabled', 'false', NOW()),
+  ('support_chat_enabled', 'false', NOW()),
+  ('groups_enabled', 'false', NOW()),
+  ('network_enabled', 'false', NOW()),
   ('telegram_support_handle', '@keko4444', NOW())
 ON CONFLICT (key) DO NOTHING;
 
@@ -458,11 +461,18 @@ CREATE POLICY "security_logs_admin_delete" ON public.security_logs
 -- 8. Messaging gate: DMs are admin-only until messaging_enabled='true'
 --    Conversations involving an admin always work (support flows).
 -- ─────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.prolink_feature_open(p_key text)
+RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
+AS $$
+  SELECT COALESCE((SELECT value = 'true' FROM public.platform_settings WHERE key = p_key), false);
+$$;
+
 CREATE OR REPLACE FUNCTION public.prolink_messaging_open()
 RETURNS boolean
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
 AS $$
-  SELECT COALESCE((SELECT value = 'true' FROM public.platform_settings WHERE key = 'messaging_enabled'), false);
+  SELECT public.prolink_feature_open('messaging_enabled');
 $$;
 
 CREATE OR REPLACE FUNCTION public.prolink_is_admin_id(p_id uuid)
@@ -477,8 +487,10 @@ $$;
 
 REVOKE ALL ON FUNCTION public.prolink_messaging_open() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.prolink_is_admin_id(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.prolink_feature_open(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.prolink_messaging_open() TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.prolink_is_admin_id(uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.prolink_feature_open(text) TO anon, authenticated;
 
 DO $$
 DECLARE pol RECORD;
@@ -537,4 +549,157 @@ CREATE POLICY "messages_delete" ON public.messages FOR DELETE
       OR public.prolink_is_admin()
       OR public.prolink_is_admin_id(receiver_id)
     )
+  );
+
+-- ─────────────────────────────────────────────────────────────
+-- 9. Feature gates: groups / network / in-app support chat are
+--    admin-only until the matching platform_settings key = 'true'.
+--    Admins always retain full access.
+-- ─────────────────────────────────────────────────────────────
+
+-- 9a. groups
+ALTER TABLE public.groups ENABLE ROW LEVEL SECURITY;
+DO $$
+DECLARE pol RECORD;
+BEGIN
+  FOR pol IN SELECT policyname FROM pg_policies WHERE schemaname='public' AND tablename='groups' LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.groups', pol.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY "groups_select_gated" ON public.groups FOR SELECT
+  USING (
+    public.prolink_is_admin()
+    OR (
+      public.prolink_feature_open('groups_enabled')
+      AND (
+        is_private = false
+        OR created_by = auth.uid()
+        OR id IN (SELECT group_id FROM public.group_members WHERE user_id = auth.uid())
+      )
+    )
+  );
+
+CREATE POLICY "groups_insert_gated" ON public.groups FOR INSERT TO authenticated
+  WITH CHECK (
+    auth.uid() = created_by
+    AND (public.prolink_is_admin() OR public.prolink_feature_open('groups_enabled'))
+  );
+
+CREATE POLICY "groups_update_gated" ON public.groups FOR UPDATE TO authenticated
+  USING (public.prolink_is_admin() OR (public.prolink_feature_open('groups_enabled') AND created_by = auth.uid()))
+  WITH CHECK (public.prolink_is_admin() OR (public.prolink_feature_open('groups_enabled') AND created_by = auth.uid()));
+
+CREATE POLICY "groups_delete_gated" ON public.groups FOR DELETE TO authenticated
+  USING (public.prolink_is_admin() OR (public.prolink_feature_open('groups_enabled') AND created_by = auth.uid()));
+
+-- 9b. group_members (ownership rules from section 2 + feature gate)
+DO $$
+DECLARE pol RECORD;
+BEGIN
+  FOR pol IN SELECT policyname FROM pg_policies WHERE schemaname='public' AND tablename='group_members' LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.group_members', pol.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY "members_select_gated" ON public.group_members FOR SELECT TO authenticated
+  USING (public.prolink_is_admin() OR public.prolink_feature_open('groups_enabled'));
+
+CREATE POLICY "members_insert_gated" ON public.group_members FOR INSERT TO authenticated
+  WITH CHECK (
+    (public.prolink_is_admin() OR public.prolink_feature_open('groups_enabled'))
+    AND (
+      public.prolink_is_admin()
+      OR EXISTS (SELECT 1 FROM public.groups g WHERE g.id = group_id AND g.created_by = auth.uid())
+      OR (user_id = auth.uid() AND COALESCE(role, 'member') = 'member')
+    )
+  );
+
+CREATE POLICY "members_update_gated" ON public.group_members FOR UPDATE TO authenticated
+  USING (
+    public.prolink_is_admin()
+    OR (public.prolink_feature_open('groups_enabled') AND (
+      user_id = auth.uid()
+      OR EXISTS (SELECT 1 FROM public.groups g WHERE g.id = group_id AND g.created_by = auth.uid())
+    ))
+  );
+
+CREATE POLICY "members_delete_gated" ON public.group_members FOR DELETE TO authenticated
+  USING (
+    public.prolink_is_admin()
+    OR (public.prolink_feature_open('groups_enabled') AND (
+      user_id = auth.uid()
+      OR EXISTS (SELECT 1 FROM public.groups g WHERE g.id = group_id AND g.created_by = auth.uid())
+    ))
+  );
+
+-- 9c. connections (شبكتي المهنية)
+ALTER TABLE public.connections ENABLE ROW LEVEL SECURITY;
+DO $$
+DECLARE pol RECORD;
+BEGIN
+  FOR pol IN SELECT policyname FROM pg_policies WHERE schemaname='public' AND tablename='connections' LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.connections', pol.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY "connections_select_gated" ON public.connections FOR SELECT
+  USING (
+    public.prolink_is_admin()
+    OR (public.prolink_feature_open('network_enabled') AND (requester_id = auth.uid() OR recipient_id = auth.uid()))
+  );
+
+CREATE POLICY "connections_insert_gated" ON public.connections FOR INSERT TO authenticated
+  WITH CHECK (
+    auth.uid() = requester_id
+    AND (public.prolink_is_admin() OR public.prolink_feature_open('network_enabled'))
+  );
+
+CREATE POLICY "connections_update_gated" ON public.connections FOR UPDATE TO authenticated
+  USING (
+    public.prolink_is_admin()
+    OR (public.prolink_feature_open('network_enabled') AND (requester_id = auth.uid() OR recipient_id = auth.uid()))
+  )
+  WITH CHECK (
+    public.prolink_is_admin()
+    OR (public.prolink_feature_open('network_enabled') AND (requester_id = auth.uid() OR recipient_id = auth.uid()))
+  );
+
+CREATE POLICY "connections_delete_gated" ON public.connections FOR DELETE TO authenticated
+  USING (
+    public.prolink_is_admin()
+    OR (public.prolink_feature_open('network_enabled') AND (requester_id = auth.uid() OR recipient_id = auth.uid()))
+  );
+
+-- 9d. support_messages (in-app support chat): admin-only until opened.
+--     Telegram replies still arrive via receive_telegram_reply (SECURITY DEFINER).
+ALTER TABLE public.support_messages ENABLE ROW LEVEL SECURITY;
+DO $$
+DECLARE pol RECORD;
+BEGIN
+  FOR pol IN SELECT policyname FROM pg_policies WHERE schemaname='public' AND tablename='support_messages' LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.support_messages', pol.policyname);
+  END LOOP;
+END $$;
+
+CREATE POLICY "support_messages_select_gated" ON public.support_messages FOR SELECT TO authenticated
+  USING (
+    public.prolink_is_admin()
+    OR (public.prolink_feature_open('support_chat_enabled') AND (sender_id = auth.uid() OR receiver_id = auth.uid()))
+  );
+
+CREATE POLICY "support_messages_insert_gated" ON public.support_messages FOR INSERT TO authenticated
+  WITH CHECK (
+    auth.uid() = sender_id
+    AND (public.prolink_is_admin() OR public.prolink_feature_open('support_chat_enabled'))
+  );
+
+CREATE POLICY "support_messages_update_gated" ON public.support_messages FOR UPDATE TO authenticated
+  USING (
+    public.prolink_is_admin()
+    OR (public.prolink_feature_open('support_chat_enabled') AND (sender_id = auth.uid() OR receiver_id = auth.uid()))
+  )
+  WITH CHECK (
+    public.prolink_is_admin()
+    OR (public.prolink_feature_open('support_chat_enabled') AND (sender_id = auth.uid() OR receiver_id = auth.uid()))
   );

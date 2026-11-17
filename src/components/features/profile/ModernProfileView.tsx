@@ -1,5 +1,6 @@
 import { safeVibrate } from '../../../lib/utils/haptics';
 import { openContactMenu } from '../../../lib/utils/contact';
+import { openCv } from '../../../lib/utils/cv';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -324,7 +325,6 @@ export function ModernProfileView({
       return;
     }
 
-    // 1. إذا كان الملف في ذاكرة الهاتف RAM
     if (pendingCVFile) {
       const u = URL.createObjectURL(pendingCVFile);
       window.open(u, '_blank');
@@ -332,62 +332,7 @@ export function ModernProfileView({
       return;
     }
 
-    // 2. إذا كان الرابط عاماً ومباشراً (يُفتح فوراً بشكل متزامن 100% دون فقدان تفويض اللمس)
-    if (targetCvUrl.includes('/storage/v1/object/public/')) {
-      const w = window.open(targetCvUrl, '_blank');
-      if (!w) {
-        const a = document.createElement('a');
-        a.href = targetCvUrl;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-      return;
-    }
-
-    // 3. للروابط الخاصة التي تتطلب signedUrl:
-    // فتح نافذة متزامنة فوراً أثناء حدث اللمس المباشر لضمان عدم حظرها
-    const newWindow = window.open('about:blank', '_blank');
-
-    let finalUrl = targetCvUrl;
-    try {
-      const markers = [
-        { marker: '/storage/v1/object/sign/resumes/', bkt: 'resumes' },
-        { marker: '/storage/v1/object/sign/applications/', bkt: 'applications' },
-        { marker: '/resumes/', bkt: 'resumes' },
-        { marker: '/applications/', bkt: 'applications' },
-      ];
-      for (const { marker, bkt } of markers) {
-        if (targetCvUrl.includes(marker)) {
-          const path = decodeURIComponent(targetCvUrl.split(marker)[1]?.split('?')[0] || '');
-          if (path) {
-            try {
-              const { data } = await supabase.storage.from(bkt).createSignedUrl(path, 300);
-              if (data?.signedUrl) finalUrl = data.signedUrl;
-            } catch (_) {}
-          }
-          break;
-        }
-      }
-    } catch (_) {}
-
-    if (newWindow && !newWindow.closed) {
-      try {
-        newWindow.location.replace(finalUrl);
-      } catch (_) {
-        newWindow.location.href = finalUrl;
-      }
-    } else {
-      const a = document.createElement('a');
-      a.href = finalUrl;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    }
+    await openCv(targetCvUrl);
   };
 
   // ─── تحميل السيرة الذاتية بأمان وتنزيلها كملف بدون فضح روابط قواعد البيانات ────
@@ -1550,7 +1495,7 @@ export function ModernProfileView({
             ) : (
               <button
                 type="button"
-                onClick={() => openContactMenu({ phone, name: profile?.name, website: (profile as any)?.website })}
+                onClick={() => openContactMenu({ phone, name: profile?.name, website: (profile as any)?.website, cvUrl: (profile as any)?.cv_url || profile?.cvUrl })}
                 className="w-full text-base sm:text-lg font-bold text-slate-800 dark:text-white text-right cursor-pointer hover:text-[#0a66c2] transition-colors"
                 dir="ltr"
                 title="اضغط لخيارات التواصل: واتساب / اتصال"
@@ -1572,7 +1517,7 @@ export function ModernProfileView({
           </button>
         ) : (
           phone && (
-            <button type="button" onClick={() => openContactMenu({ phone, name: profile?.name, website: (profile as any)?.website })}
+            <button type="button" onClick={() => openContactMenu({ phone, name: profile?.name, website: (profile as any)?.website, cvUrl: (profile as any)?.cv_url || profile?.cvUrl })}
               className="w-full py-4.5 sm:py-5 rounded-2xl sm:rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base sm:text-lg transition-all shadow-xl shadow-emerald-500/25 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer">
               <Phone size={20} /><span>تواصل: واتساب / اتصال</span>
             </button>

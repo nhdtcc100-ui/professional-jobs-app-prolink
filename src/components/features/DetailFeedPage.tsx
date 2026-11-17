@@ -440,7 +440,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  openContactMenu({ phone: pubUser?.phone, name: pubUser?.name || currentItem.company, website: (pubUser as any)?.website });
+                                  openContactMenu({ phone: pubUser?.phone, name: pubUser?.name || currentItem.company, website: (pubUser as any)?.website, cvUrl: (pubUser as any)?.cv_url });
                                 }}
                                 className="mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/90 hover:bg-emerald-500 text-white text-[10px] font-black border border-emerald-300/30 shadow-md active:scale-95 transition-all"
                                 title="تواصل مع صاحب الوظيفة: واتساب / اتصال / روابطه"

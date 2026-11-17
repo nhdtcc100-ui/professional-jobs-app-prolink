@@ -42,7 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   theme,
   toggleTheme
 }) => {
-  const { unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount, isGuestMode, canUseMessaging } = useAppContext();
+  const { unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount, isGuestMode, canUseMessaging, canUseNetwork } = useAppContext();
 
   return (
     <nav
@@ -101,6 +101,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           />
           
           {/* Network Tab with Red Unread Badge */}
+          {canUseNetwork && (
           <div className="relative h-full flex items-center">
             <NavbarItem
               icon={<Users size={22} />}
@@ -116,6 +117,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             )}
           </div>
+          )}
 
           <NavbarItem
             icon={<Briefcase size={22} />}

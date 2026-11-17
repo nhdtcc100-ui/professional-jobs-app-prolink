@@ -59,7 +59,7 @@ declare global {
 
 import { MessagingView } from './components/features/MessagingView';
 import { ContactMenuHost } from './components/ui/ContactMenu';
-import { whatsappUrl } from './lib/utils/contact';
+import { FeatureLocked } from './components/ui/FeatureLocked';
 
 // 🚀 Lazy-loaded heavy feature views (integrated with preloadTab)
 const MissionsView    = lazy(() => loadMissionsView().then(m => ({ default: m.MissionsView })));
@@ -86,7 +86,7 @@ function App() {
     pendingEmailVerification, setPendingEmailVerification,
     posts, setPosts, jobs, allUsers, connections, notifications, messages, reports,
     activeTab, setActiveTab, searchQuery, setSearchQuery,
-    platformSettings, canUseMessaging,
+    canUseMessaging, canUseGroups, canUseNetwork,
     selectedProfile, setSelectedProfile, isEditingProfile, setIsEditingProfile,
     toasts, showNotifications, setShowNotifications, showAdmin, setShowAdmin,
     selectedChat, setSelectedChat,
@@ -1267,7 +1267,7 @@ function App() {
               )}
 
               {/* ⚡ Keep-Alive: Network View */}
-              {visitedTabs.network && (
+              {visitedTabs.network && canUseNetwork && (
                 <div
                   key="keepalive-tab-network"
                   className={activeTab === 'network' ? 'pb-safe-bottom px-1 md:px-0 animate-in fade-in duration-150' : 'hidden'}
@@ -1302,6 +1302,13 @@ function App() {
                     />
                   </Suspense>
                 </div>
+              )}
+
+              {activeTab === 'network' && !canUseNetwork && (
+                <FeatureLocked
+                  title="شبكتي المهنية مقفلة حالياً 🔒"
+                  message="خاصية الشبكة المهنية متاحة للإدارة فقط في الوقت الحالي، وسيتم فتحها للجميع قريباً. للتواصل مع الدعم استخدم واتساب أو تلكرام:"
+                />
               )}
 
               {activeTab === 'calls' && appUser?.isAdmin && (
@@ -1351,45 +1358,11 @@ function App() {
                   )
                 ) : !canUseMessaging ? (
                   activeTab === 'messages' && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.18, ease: 'easeOut' }}
-                      className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-md mx-auto shadow-xl"
-                      dir="rtl"
-                    >
-                      <div className="w-16 h-16 bg-amber-50 dark:bg-amber-950/40 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                        <MessageSquare size={30} />
-                      </div>
-                      <h3 className="text-base font-black text-slate-800 dark:text-white">الرسائل مقفلة حالياً 🔒</h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">
-                        خاصية الرسائل متاحة للإدارة فقط في الوقت الحالي، وسيتم فتحها للجميع قريباً.
-                        للتواصل مع صاحب وظيفة أو مرشح استخدم أزرار واتساب / الاتصال على الأرقام المنشورة، أو تواصل مع الدعم:
-                      </p>
-                      <div className="mt-5 grid gap-2.5">
-                        {platformSettings.supportWhatsapp && (
-                          <a
-                            href={whatsappUrl(platformSettings.supportWhatsapp)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs rounded-xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
-                          >
-                            <span>الدعم عبر واتساب</span>
-                          </a>
-                        )}
-                        {platformSettings.supportTelegram && (
-                          <a
-                            href={`https://t.me/${platformSettings.supportTelegram.replace(/^@+/, '').replace(/^https?:\/\/t\.me\//, '')}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full py-3 bg-sky-500 hover:bg-sky-600 text-white font-black text-xs rounded-xl shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
-                          >
-                            <span>الدعم عبر تلكرام</span>
-                          </a>
-                        )}
-                      </div>
-                    </motion.div>
+                    <FeatureLocked
+                      title="الرسائل مقفلة حالياً 🔒"
+                      message="خاصية الرسائل متاحة للإدارة فقط في الوقت الحالي، وسيتم فتحها للجميع قريباً. للتواصل مع صاحب وظيفة أو مرشح استخدم أزرار واتساب / الاتصال على الأرقام المنشورة، أو تواصل مع الدعم:"
+                      icon={<MessageSquare size={30} />}
+                    />
                   )
                 ) : (
                   <div
@@ -1418,7 +1391,7 @@ function App() {
                 )
               )}
 
-              {activeTab === 'groups' && (
+              {activeTab === 'groups' && (canUseGroups ? (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -1438,7 +1411,12 @@ function App() {
                     />
                   </Suspense>
                 </motion.div>
-              )}
+              ) : (
+                <FeatureLocked
+                  title="المجموعات المهنية مقفلة حالياً 🔒"
+                  message="خاصية المجموعات المهنية متاحة للإدارة فقط في الوقت الحالي، وسيتم فتحها للجميع قريباً. للتواصل مع الدعم استخدم واتساب أو تلكرام:"
+                />
+              ))}
 
               {/* ⚡ Keep-Alive: News View */}
               {visitedTabs.news && (

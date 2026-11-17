@@ -59,6 +59,9 @@ interface AppContextType {
   setActiveTab: (tab: string) => void;
   platformSettings: PlatformPublicSettings;
   canUseMessaging: boolean;
+  canUseSupportChat: boolean;
+  canUseGroups: boolean;
+  canUseNetwork: boolean;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   selectedProfile: AppUser | null;
@@ -529,8 +532,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // 🔒 Messaging is admin-only until an admin opens it for everyone
-  const canUseMessaging = Boolean(isUserAdmin(appUser) || platformSettings.messagingEnabled);
+  // 🔒 Admin-only features until an admin opens them for everyone
+  const isAdminUser = isUserAdmin(appUser);
+  const canUseMessaging = Boolean(isAdminUser || platformSettings.messagingEnabled);
+  const canUseSupportChat = Boolean(isAdminUser || platformSettings.supportChatEnabled);
+  const canUseGroups = Boolean(isAdminUser || platformSettings.groupsEnabled);
+  const canUseNetwork = Boolean(isAdminUser || platformSettings.networkEnabled);
 
   const mockBundle = React.useMemo(() => {
     if (!isMockEnabled) return null;
@@ -756,10 +763,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTabRaw] = useState<string>(() => {
     try { return localStorage.getItem('prolink_active_tab') || 'news'; } catch { return 'news'; }
   });
-  const messagingGateRef = useRef({ canUse: false, notify: (_m: string) => {} });
+  const featureGateRef = useRef<{ gates: Record<string, boolean>; notify: (m: string) => void }>({ gates: {}, notify: (_m: string) => {} });
   const setActiveTab = useCallback((tab: string) => {
-    if (tab === 'messages' && !messagingGateRef.current.canUse) {
-      messagingGateRef.current.notify('🔒 الرسائل مقفلة حالياً ومتاحة للإدارة فقط. للتواصل مع الدعم استخدم واتساب أو تلكرام من صفحة "حول المنصة".');
+    const gateMessages: Record<string, string> = {
+      messages: '🔒 الرسائل مقفلة حالياً ومتاحة للإدارة فقط. للتواصل مع الدعم استخدم واتساب أو تلكرام من صفحة "حول المنصة".',
+      network: '🔒 شبكتي المهنية مقفلة حالياً ومتاحة للإدارة فقط، وسيتم فتحها للجميع قريباً.',
+      groups: '🔒 المجموعات المهنية مقفلة حالياً ومتاحة للإدارة فقط، وسيتم فتحها للجميع قريباً.',
+    };
+    if (gateMessages[tab] && featureGateRef.current.gates[tab] === false) {
+      featureGateRef.current.notify(gateMessages[tab]);
       return;
     }
     try { localStorage.setItem('prolink_active_tab', tab); } catch {}
@@ -845,8 +857,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
   };
 
-  messagingGateRef.current = {
-    canUse: canUseMessaging,
+  featureGateRef.current = {
+    gates: { messages: canUseMessaging, network: canUseNetwork, groups: canUseGroups },
     notify: (m: string) => addToast(m, 'info'),
   };
 
@@ -2427,7 +2439,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     messages: effectiveMessages, isMockEnabled, readMessageIds, readChatSenders, reports, myGroups,
     unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount,
     activeTab, setActiveTab, searchQuery, setSearchQuery,
-    platformSettings, canUseMessaging,
+    platformSettings, canUseMessaging, canUseSupportChat, canUseGroups, canUseNetwork,
     selectedProfile, setSelectedProfile, isEditingProfile, setIsEditingProfile,
     toasts, showNotifications, setShowNotifications, showAdmin, setShowAdmin,
     selectedChat, setSelectedChat,

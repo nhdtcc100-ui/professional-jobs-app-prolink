@@ -168,15 +168,26 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   const [testingTelegram, setTestingTelegram] = useState(false);
   const [detectingChatId, setDetectingChatId] = useState(false);
 
-  // ── Public contact & messaging gate settings ──────────────
+  // ── Public contact & feature-gate settings ──────────────
   const [editingSupportWhatsapp, setEditingSupportWhatsapp] = useState('');
   const [messagingOpen, setMessagingOpen] = useState(false);
+  const [supportChatOpen, setSupportChatOpen] = useState(false);
+  const [groupsOpen, setGroupsOpen] = useState(false);
+  const [networkOpen, setNetworkOpen] = useState(false);
   const [savingPublicSettings, setSavingPublicSettings] = useState(false);
+  const [gateMigrationMissing, setGateMigrationMissing] = useState(false);
 
   useEffect(() => {
     setEditingSupportWhatsapp(platformSettings.supportWhatsapp);
     setMessagingOpen(platformSettings.messagingEnabled);
+    setSupportChatOpen(platformSettings.supportChatEnabled);
+    setGroupsOpen(platformSettings.groupsEnabled);
+    setNetworkOpen(platformSettings.networkEnabled);
   }, [platformSettings]);
+
+  useEffect(() => {
+    platformSettingsService.isGateMigrationApplied().then(ok => setGateMigrationMissing(!ok));
+  }, []);
 
   const handleSavePublicSettings = async () => {
     setSavingPublicSettings(true);
@@ -184,9 +195,18 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
       const res = await platformSettingsService.save({
         supportWhatsapp: editingSupportWhatsapp,
         messagingEnabled: messagingOpen,
+        supportChatEnabled: supportChatOpen,
+        groupsEnabled: groupsOpen,
+        networkEnabled: networkOpen,
       });
-      if (res.success) addToast('✅ تم حفظ إعدادات التواصل والرسائل', 'success');
-      else addToast('فشل الحفظ: ' + (res.error || 'خطأ غير معروف'), 'error');
+      if (res.success) {
+        addToast('✅ تم حفظ إعدادات التواصل والميزات', 'success');
+        const ok = await platformSettingsService.isGateMigrationApplied();
+        setGateMigrationMissing(!ok);
+        if (!ok) addToast('⚠️ الحفظ تم لكن بوابة الخادم غير مفعّلة: أعد تشغيل SECURITY_HARDENING_MIGRATION.sql في Supabase SQL Editor حتى تظهر التغييرات لبقية المستخدمين.', 'warning');
+      } else {
+        addToast('فشل الحفظ: ' + (res.error || 'خطأ غير معروف'), 'error');
+      }
     } finally {
       setSavingPublicSettings(false);
     }
@@ -2386,13 +2406,46 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                              </button>
                           </div>
 
+                          {([
+                            ['فتح دردشة الدعم داخل التطبيق', supportChatOpen, setSupportChatOpen, 'الدردشة المباشرة مع الدعم داخل التطبيق'],
+                            ['فتح المجموعات المهنية', groupsOpen, setGroupsOpen, 'المجموعات المهنية'],
+                            ['فتح شبكتي المهنية', networkOpen, setNetworkOpen, 'شبكة العلاقات المهنية'],
+                          ] as [string, boolean, React.Dispatch<React.SetStateAction<boolean>>, string][]).map(([label, val, setter, noun]) => (
+                            <div key={label} className="flex items-center justify-between gap-4 p-4 bg-slate-800/50 border border-slate-700/50 rounded-2xl">
+                              <div>
+                                <p className="text-xs font-black text-slate-200">{label}</p>
+                                <p className="text-[10px] text-slate-500 font-medium mt-1">
+                                  {val ? `${noun} مفتوحة حالياً لجميع الأعضاء.` : `${noun} مقفلة حالياً — متاحة للإدارة فقط.`}
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={val}
+                                onClick={() => setter(v => !v)}
+                                className={`relative w-14 h-8 rounded-full transition-colors shrink-0 ${val ? 'bg-emerald-500' : 'bg-slate-600'}`}
+                              >
+                                <span className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow transition-all ${val ? 'right-1' : 'right-7'}`} />
+                              </button>
+                            </div>
+                          ))}
+
+                          {gateMigrationMissing && (
+                            <div className="p-4 bg-amber-500/10 border border-amber-500/40 rounded-2xl">
+                              <p className="text-[11px] font-black text-amber-300">⚠️ بوابة الخادم غير مفعّلة</p>
+                              <p className="text-[10px] text-amber-200/80 font-medium mt-1 leading-relaxed">
+                                أعد تشغيل ملف <span className="font-mono">SECURITY_HARDENING_MIGRATION.sql</span> (النسخة المحدّثة) في Supabase → SQL Editor. بدونه تُحفظ الإعدادات لكن بقية المستخدمين لا يرونها ولا تُطبَّق الحماية من جهة الخادم.
+                              </p>
+                            </div>
+                          )}
+
                           <button
                              type="button"
                              onClick={handleSavePublicSettings}
                              disabled={savingPublicSettings}
                              className="w-full py-3.5 bg-gradient-to-l from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-black text-sm rounded-2xl shadow-lg active:scale-95 transition-all disabled:opacity-50"
                           >
-                             {savingPublicSettings ? 'جاري الحفظ...' : 'حفظ إعدادات التواصل والرسائل'}
+                             {savingPublicSettings ? 'جاري الحفظ...' : 'حفظ إعدادات التواصل والميزات'}
                           </button>
                           <p className="text-[10px] text-slate-500 font-medium">معرّف تلكرام الدعم يُعدَّل من بطاقة تيليجرام أدناه، ويتحدث لحظياً لدى جميع المستخدمين.</p>
                        </div>

@@ -18,16 +18,6 @@ const json = (body: unknown, status = 200) =>
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
-function toBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  let bin = '';
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(bin);
-}
-
 async function callGemini(parts: unknown[]): Promise<string> {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
@@ -63,51 +53,6 @@ serve(async (req: Request) => {
     const { action, payload } = await req.json();
 
     switch (action) {
-      case 'evaluate-cv': {
-        const { jobTitle, jobRequirements, cvUrl, applicantSkills } = payload || {};
-        const prompt = `
-        أنت خبير موارد بشرية ومحترف في استقطاب الكفاءات (HR & Talent Acquisition Expert).
-        قيم مطابقة السيرة الذاتية لوظيفة: "${jobTitle || ''}".
-        المتطلبات: "${jobRequirements || 'خبرة مهنية'}".
-
-        ⚠️ تنبيه: إذا كان الملف المرفوع ليس سيرة ذاتية، ضع النتيجة 0 واكتب تحذيراً.
-
-        الرد JSON:
-        {
-          "score": number (0-100),
-          "strengths": [string],
-          "weaknesses": [string],
-          "summary": string
-        }
-      `;
-
-        const parts: unknown[] = [{ text: prompt }];
-        if (cvUrl) {
-          try {
-            const fileRes = await fetch(cvUrl);
-            if (fileRes.ok) {
-              const buf = await fileRes.arrayBuffer();
-              const mime = fileRes.headers.get('content-type') || '';
-              parts.push({
-                inline_data: {
-                  mime_type: mime.includes('pdf') ? 'application/pdf' : mime.startsWith('image/') ? mime : 'image/jpeg',
-                  data: toBase64(buf),
-                },
-              });
-            }
-          } catch (e) {
-            console.warn('CV fetch failed:', e);
-          }
-        }
-
-        try {
-          return json({ ok: true, result: parseJsonReply(await callGemini(parts)) });
-        } catch {
-          const fallbackPrompt = `Evaluate candidate for ${jobTitle || ''} with skills: ${(applicantSkills || []).join(', ')}. Return JSON with score, strengths, weaknesses, summary.`;
-          return json({ ok: true, result: parseJsonReply(await callGemini([{ text: fallbackPrompt }])) });
-        }
-      }
-
       case 'job-match': {
         const { userProfile, jobDetails } = payload || {};
         const prompt = `

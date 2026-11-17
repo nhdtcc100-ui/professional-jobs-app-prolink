@@ -12,8 +12,8 @@ import { sanitizeInput } from '../../../lib/utils/sanitize';
 import { GlassCard, CloseButton } from '../../ui';
 import { useAppContext } from '../../../contexts/AppContext';
 import { openContactMenu, telUrl, whatsappUrl } from '../../../lib/utils/contact';
+import { openCv, downloadCv } from '../../../lib/utils/cv';
 import { EmployeeOnboardingModal } from '../erp/EmployeeOnboardingModal';
-import { AIEvaluationModal } from './AIEvaluationModal';
 interface ApplicantData {
   name?: string;
   email?: string;
@@ -263,86 +263,18 @@ function ApplicationsListViewContent({
     }
   }, [selectedAppIndex]);
 
-  // Safe zero-freeze direct CV open & download helpers (100% Native - No iframes, No modals, Popup-blocker resistant)
-  const handleOpenApplicantCV = async (cvUrl: string, name?: string) => {
+  // CV open/download: signed URLs for private buckets, data:/blob: handled natively.
+  const handleOpenApplicantCV = async (cvUrl: string, _name?: string) => {
     if (!cvUrl) {
       addToast('لا يوجد ملف سيرة ذاتية مرفق لهذا الطلب', 'error');
       return;
     }
-
-    if (cvUrl.startsWith('blob:') || cvUrl.startsWith('data:') || cvUrl.includes('/storage/v1/object/public/')) {
-      const w = window.open(cvUrl, '_blank');
-      if (!w) {
-        const a = document.createElement('a');
-        a.href = cvUrl;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-      return;
-    }
-
-    // فتح نافذة متزامنة فوراً لتثبيت إذن المتصفح وتجنب الحظر في المرات المتكررة
-    const newWindow = window.open('about:blank', '_blank');
-
-    try {
-      let finalUrl = cvUrl;
-      const markers = [
-        { marker: '/storage/v1/object/sign/resumes/', bkt: 'resumes' },
-        { marker: '/storage/v1/object/sign/applications/', bkt: 'applications' },
-        { marker: '/resumes/', bkt: 'resumes' },
-        { marker: '/applications/', bkt: 'applications' },
-      ];
-      for (const { marker, bkt } of markers) {
-        if (cvUrl.includes(marker)) {
-          const path = decodeURIComponent(cvUrl.split(marker)[1]?.split('?')[0] || '');
-          if (path) {
-            try {
-              const { data } = await supabase.storage.from(bkt).createSignedUrl(path, 300);
-              if (data?.signedUrl) finalUrl = data.signedUrl;
-            } catch (_) {}
-          }
-          break;
-        }
-      }
-
-      if (newWindow && !newWindow.closed) {
-        try {
-          newWindow.location.replace(finalUrl);
-        } catch (_) {
-          newWindow.location.href = finalUrl;
-        }
-      } else {
-        const a = document.createElement('a');
-        a.href = finalUrl;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-    } catch (_) {
-      if (newWindow && !newWindow.closed) {
-        newWindow.location.href = cvUrl;
-      }
-    }
+    await openCv(cvUrl);
   };
 
   const handleDownloadApplicantCV = async (cvUrl: string, name?: string) => {
     if (!cvUrl) return;
-    try {
-      const a = document.createElement('a');
-      a.href = cvUrl;
-      a.target = '_blank';
-      a.download = `CV_${name || 'applicant'}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (_) {
-      window.open(cvUrl, '_blank');
-    }
+    await downloadCv(cvUrl, name || 'applicant');
   };
 
   // Helper to reliably retrieve complete applicant profile
@@ -413,8 +345,6 @@ function ApplicationsListViewContent({
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [interviewDate, setInterviewDate] = useState('');
   const [interviewTime, setInterviewTime] = useState('');
-  const [showAIEval, setShowAIEval] = useState(false);
-  const [appForAI, setAppForAI] = useState<JobApplication | null>(null);
 
   const safeApps = Array.isArray(incomingApplications) ? incomingApplications : [];
 
@@ -856,20 +786,6 @@ function ApplicationsListViewContent({
                             title="رفض الطلب"
                           >
                             <XCircle size={16} />
-                          </motion.button>
-
-                          <motion.button
-                            whileHover={{ scale: 1.1, y: -2 }}
-                            whileTap={{ scale: 0.9 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setAppForAI(app);
-                              setShowAIEval(true);
-                            }}
-                            className="w-9 h-9 flex items-center justify-center rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400 border border-purple-100 dark:border-purple-800/30 hover:bg-purple-600 hover:text-white transition-all shadow-sm"
-                            title="تحليل الذكاء الاصطناعي"
-                          >
-                            <Sparkles size={16} />
                           </motion.button>
                         </div>
                       </div>
@@ -1356,7 +1272,7 @@ function ApplicationsListViewContent({
                                 )}
                                 {!canUseMessaging && app.applicant_data?.phone && (
                                   <button
-                                    onClick={() => openContactMenu({ phone: app.applicant_data?.phone, name: app.applicant_data?.name })}
+                                    onClick={() => openContactMenu({ phone: app.applicant_data?.phone, name: app.applicant_data?.name, cvUrl: app.cv_url || (app.applicant_data as any)?.cvUrl })}
                                     className="flex-1 min-w-[130px] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95"
                                   >
                                     <Phone size={16} /> تواصل: واتساب / اتصال
@@ -1428,15 +1344,6 @@ function ApplicationsListViewContent({
         addToast={addToast}
         onClose={() => { setShowOnboarding(false); }}
       />
-
-      <AnimatePresence>
-        {showAIEval && appForAI && (
-          <AIEvaluationModal
-            application={appForAI}
-            onClose={() => { setShowAIEval(false); setAppForAI(null); }}
-          />
-        )}
-      </AnimatePresence>
 
     </div>
   );

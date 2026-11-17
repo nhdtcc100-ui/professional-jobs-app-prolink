@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Phone, MessageCircle, Copy, Check, Link2, X } from 'lucide-react';
+import { Phone, MessageCircle, Copy, Check, Link2, X, FileText } from 'lucide-react';
 import { ContactMenuDetail, normalizeIraqiPhone, telUrl, whatsappUrl } from '../../lib/utils/contact';
+import { resolveCvUrl, openCv } from '../../lib/utils/cv';
 
 export function ContactMenu({ detail, onClose }: { detail: ContactMenuDetail; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [sharingCv, setSharingCv] = useState(false);
   const phone = (detail.phone || '').trim();
   const normalized = normalizeIraqiPhone(phone);
   const website = (detail.website || '').trim();
+  const cvUrl = (detail.cvUrl || '').trim();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -25,6 +28,22 @@ export function ContactMenu({ detail, onClose }: { detail: ContactMenuDetail; on
   const openWebsite = () => {
     const url = /^https?:\/\//i.test(website) ? website : `https://${website}`;
     window.open(url, '_blank', 'noopener');
+  };
+
+  const shareCv = async () => {
+    if (!cvUrl || sharingCv) return;
+    setSharingCv(true);
+    try {
+      if (cvUrl.startsWith('data:') || cvUrl.startsWith('blob:')) {
+        await openCv(cvUrl);
+      } else {
+        const link = await resolveCvUrl(cvUrl);
+        const text = `${detail.name ? `السيرة الذاتية لـ ${detail.name}` : 'السيرة الذاتية'}\n${link}`;
+        window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+      }
+    } finally {
+      setSharingCv(false);
+    }
   };
 
   return (
@@ -78,7 +97,17 @@ export function ContactMenu({ detail, onClose }: { detail: ContactMenuDetail; on
               الرابط المنشور (موقع / لينكدإن)
             </button>
           )}
-          {!normalized && !website && (
+          {cvUrl && (
+            <button
+              onClick={shareCv}
+              disabled={sharingCv}
+              className="flex items-center gap-3 w-full px-4 py-3 rounded-2xl bg-violet-500 hover:bg-violet-600 disabled:opacity-60 text-white font-bold transition-colors"
+            >
+              <FileText size={20} />
+              {sharingCv ? 'جاري تجهيز السيرة...' : 'إرسال السيرة الذاتية (CV) عبر واتساب'}
+            </button>
+          )}
+          {!normalized && !website && !cvUrl && (
             <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-3">لا تتوفر بيانات تواصل لهذا المستخدم</p>
           )}
         </div>
@@ -93,7 +122,7 @@ export function ContactMenuHost() {
   useEffect(() => {
     const onOpen = (e: Event) => {
       const d = (e as CustomEvent<ContactMenuDetail>).detail;
-      if (d && (d.phone || d.website)) setDetail(d);
+      if (d && (d.phone || d.website || d.cvUrl)) setDetail(d);
     };
     window.addEventListener('prolink:contact-menu', onOpen);
     return () => window.removeEventListener('prolink:contact-menu', onOpen);

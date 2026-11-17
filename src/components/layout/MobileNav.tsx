@@ -67,7 +67,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
   logout, setShowAdmin,
   theme, toggleTheme
 }) => {
-  const { posts, connections, unreadMessagesCount, pendingRequestsCount, userTotalPostsCount, isGuestMode, setShowNotifications, canUseMessaging } = useAppContext();
+  const { posts, connections, unreadMessagesCount, pendingRequestsCount, userTotalPostsCount, isGuestMode, setShowNotifications, canUseMessaging, canUseNetwork, canUseGroups } = useAppContext();
 
   // Messages tab: guests never; members only when admin opened messaging (or they are admin)
   const visibleNavItems = useMemo(() => {
@@ -171,15 +171,17 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       });
     }
 
-    list.push({
-      id: 'network',
-      label: 'شبكتي المهنية',
-      icon: Users,
-      color: 'text-violet-500',
-      badge: pendingRequestsCount > 0 ? (pendingRequestsCount > 9 ? '9+' : pendingRequestsCount) : undefined,
-      onClick: () => setActiveTab('network'),
-      preload: () => preloadTab('network'),
-    });
+    if (canUseNetwork) {
+      list.push({
+        id: 'network',
+        label: 'شبكتي المهنية',
+        icon: Users,
+        color: 'text-violet-500',
+        badge: pendingRequestsCount > 0 ? (pendingRequestsCount > 9 ? '9+' : pendingRequestsCount) : undefined,
+        onClick: () => setActiveTab('network'),
+        preload: () => preloadTab('network'),
+      });
+    }
 
     if (appUser?.isAdmin) {
       list.push({
@@ -192,14 +194,16 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       });
     }
 
-    list.push({
-      id: 'groups',
-      label: 'المجموعات المهنية 👥',
-      icon: MessageSquare,
-      color: 'text-indigo-500',
-      onClick: () => setActiveTab('groups'),
-      preload: () => preloadTab('groups'),
-    });
+    if (canUseGroups) {
+      list.push({
+        id: 'groups',
+        label: 'المجموعات المهنية 👥',
+        icon: MessageSquare,
+        color: 'text-indigo-500',
+        onClick: () => setActiveTab('groups'),
+        preload: () => preloadTab('groups'),
+      });
+    }
 
     list.push({
       id: 'services',
@@ -270,7 +274,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
     }
 
     return list;
-  }, [appUser, pendingRequestsCount, theme, toggleTheme, logout, setShowAdmin, setActiveTab]);
+  }, [appUser, pendingRequestsCount, theme, toggleTheme, logout, setShowAdmin, setActiveTab, canUseNetwork, canUseGroups]);
 
   return (
     <>
