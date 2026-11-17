@@ -66,7 +66,7 @@ export function MissionsView({
   jobs, appUser, allUsers, addToast, messages, onApplyJob, setActiveTab, onPublisherClick,
   initialSelectedJob, onClearInitialJob, onViewJob
 }: MissionsViewProps) {
-  const { refreshData, markJobApplicationNotificationsAsRead } = useAppContext();
+  const { refreshData, markJobApplicationNotificationsAsRead, handleDeleteJob: deleteJobGlobal } = useAppContext();
   const isAdmin = isUserAdmin(appUser);
 
   const [mainTab, setMainTab] = useState<MainTab>('jobs');
@@ -407,14 +407,12 @@ export function MissionsView({
 
   const handleDeleteJob = async (jobId: string) => {
     if (!appUser?.id) { addToast('يجب تسجيل الدخول أولاً', 'error'); return; }
-    try {
-      const { error } = await jobService.deleteJob(jobId, appUser.id);
-      if (error) throw error;
-      refreshData();
-      addToast('تم حذف الوظيفة');
+    // ✅ الحذف عبر المعالج العام يزيل الوظيفة من الحالة المشتركة فوراً
+    // فتختفي من الرئيسية وصفحة الوظائف معاً بدون رفرش.
+    const ok = await deleteJobGlobal(jobId);
+    if (ok) {
       setJobToDelete(null);
-    } catch (e: any) {
-      addToast('خطأ: ' + e.message, 'error');
+      refreshData();
     }
   };
 
@@ -685,6 +683,7 @@ export function MissionsView({
                         compact={filteredJobs.length >= 3}
                         matchScore={score > 0 ? score : calculateMatchScore(job.requirements || job.description || '')}
                         onPublisherClick={onPublisherClick}
+                        onDeleteJob={handleDeleteJob}
                       />
                     </RecedeCard>
                   ))}
