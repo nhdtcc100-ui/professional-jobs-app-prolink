@@ -710,10 +710,25 @@ CREATE POLICY "support_messages_update_gated" ON public.support_messages FOR UPD
 -- ─────────────────────────────────────────────────────────────
 -- 10. notifications: expand schema to match the client payload
 --     (fixes POST/PATCH 400 Bad Request on missing columns)
+--     Defensive: legacy tables may lack 'message' or use 'content'.
 -- ─────────────────────────────────────────────────────────────
+ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS message TEXT;
 ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS from_name TEXT;
 ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS from_avatar TEXT;
 ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS target_id TEXT;
+
+-- If a legacy 'content' column exists, relax its NOT NULL and backfill 'message'
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'notifications' AND column_name = 'content'
+  ) THEN
+    EXECUTE 'ALTER TABLE public.notifications ALTER COLUMN content DROP NOT NULL';
+    EXECUTE 'UPDATE public.notifications SET message = content WHERE message IS NULL AND content IS NOT NULL';
+  END IF;
+END $$;
+
 ALTER TABLE public.notifications ALTER COLUMN message SET DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON public.notifications (user_id, read);
