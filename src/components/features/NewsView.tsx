@@ -696,7 +696,7 @@ const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
               label: src.name,
               region: src.category === 'sports' || src.category === 'economy' ? 'arab' : 'global'
             });
-            return items.map(it => ({
+            return items.map((it: NewsItem) => ({
               ...it,
               topic: src.category === 'sports' ? 'رياضة' :
                      src.category === 'economy' ? 'اقتصاد' :
@@ -707,7 +707,7 @@ const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
           } else if (src.type === 'telegram') {
             const cleanUser = src.url.replace(/^.*t\.me\/s?\/?/, '').replace('@', '').split('/')[0].trim();
             const items = await newsService.fetchRSS(newsService.getTelegramRssUrl(cleanUser), src.name || `@${cleanUser}`);
-            return items.map(it => ({
+            return items.map((it: NewsItem) => ({
               ...it,
               topic: src.category === 'sports' ? 'رياضة' :
                      src.category === 'economy' ? 'اقتصاد' :

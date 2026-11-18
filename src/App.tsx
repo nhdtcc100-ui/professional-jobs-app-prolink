@@ -14,7 +14,7 @@ import {
   loadSettingsPage,
   preloadTab
 } from './lib/lazyPreload';
-import { Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare, Shield } from 'lucide-react';
+import { Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare, Shield, ArrowRight } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { Post, Job, AppUser } from './types';
 import { SkeletonPostCard } from './components/ui';
@@ -1246,7 +1246,7 @@ function App() {
                       </div>
                       <h3 className="text-base font-black text-slate-800 dark:text-white">نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 💼</h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">حسابك مسجل كـ (باحث عن عمل). يمكن للحسابات الفردية التصفح والتقديم على الفرص بدلاً من نشرها.</p>
-                      <button onClick={() => setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all">الرجوع للرئيسية</button>
+                      <button onClick={() => typeof window !== 'undefined' && window.history.length > 1 ? window.history.back() : setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 mx-auto cursor-pointer"><ArrowRight size={15} /><span>رجوع</span></button>
                     </div>
                   ) : (
                     <div className="pb-safe-bottom px-1 md:px-0">
@@ -1462,7 +1462,7 @@ function App() {
                       </div>
                       <h3 className="text-base font-black text-slate-800 dark:text-white">نظام الموارد البشرية (ERP) — مخصص للإدارة فقط 🔒</h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">حسابك الحالي ليس لديه صلاحية الوصول لهذا النظام. هذا النظام مخصص فقط للإدارة العليا.</p>
-                      <button onClick={() => setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all">الرجوع للرئيسية</button>
+                      <button onClick={() => typeof window !== 'undefined' && window.history.length > 1 ? window.history.back() : setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 mx-auto cursor-pointer"><ArrowRight size={15} /><span>رجوع</span></button>
                     </div>
                   )}
                 </motion.div>

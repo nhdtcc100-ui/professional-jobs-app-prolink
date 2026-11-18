@@ -523,3 +523,5 @@ export const newsService = {
     ];
   }
 };
+
+export default newsService;

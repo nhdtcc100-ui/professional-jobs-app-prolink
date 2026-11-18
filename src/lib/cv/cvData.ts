@@ -390,42 +390,76 @@ export function normalizeCvData(input: unknown): CvData {
 
 export interface CvProfileSource {
   name?: string;
+  fullName?: string;
   title?: string;
   displayTitle?: string;
   display_title?: string;
   specialty?: string;
   location?: string;
+  governorate?: string;
   phone?: string;
   email?: string;
   website?: string;
   bio?: string;
-  skills?: string[];
-  experience?: string;
-  education?: string;
+  about?: string;
+  skills?: any;
+  experience?: any;
+  education?: any;
+  [key: string]: any;
 }
 
 export function cvFromProfile(user: CvProfileSource | null | undefined, language: CvLanguage = 'ar'): CvData {
   const data = createEmptyCvData(language);
   if (!user) return data;
   data.personal = {
-    fullName: user.name || '',
+    fullName: user.fullName || user.name || 'المستخدم',
     title: user.displayTitle || user.display_title || user.title || user.specialty || '',
-    location: user.location || '',
+    location: user.location || user.governorate || '',
     phone: user.phone || '',
     email: user.email || '',
     website: user.website || '',
   };
-  data.summary = user.bio || '';
-  data.skills = Array.isArray(user.skills) ? user.skills : [];
-  const experienceText = cleanCvText(user.experience, CV_LIMITS.experienceDescription, true);
-  if (experienceText) {
-    data.experiences = [{ id: newCvId(), role: '', company: '', location: '', start: '', end: '', current: false, description: experienceText }];
+  data.summary = user.bio || user.about || '';
+  data.skills = Array.isArray(user.skills)
+    ? user.skills.map((s: any) => (typeof s === 'string' ? s : s?.name)).filter(Boolean)
+    : [];
+
+  if (Array.isArray(user.experience)) {
+    data.experiences = user.experience.map((e: any) => ({
+      id: cleanId(e.id),
+      role: cleanCvText(e.role || e.title || e.position || '', CV_LIMITS.role),
+      company: cleanCvText(e.company || e.employer || '', CV_LIMITS.company),
+      location: cleanCvText(e.location || '', CV_LIMITS.location),
+      start: cleanCvText(e.start || e.startDate || '', CV_LIMITS.date),
+      end: e.current ? '' : cleanCvText(e.end || e.endDate || '', CV_LIMITS.date),
+      current: Boolean(e.current),
+      description: cleanCvText(e.description || '', CV_LIMITS.experienceDescription, true),
+    })).filter((e: any) => e.role || e.company || e.description);
+  } else {
+    const experienceText = cleanCvText(user.experience, CV_LIMITS.experienceDescription, true);
+    if (experienceText) {
+      data.experiences = [{ id: newCvId(), role: '', company: '', location: '', start: '', end: '', current: false, description: experienceText }];
+    }
   }
-  const educationText = cleanCvText(user.education, CV_LIMITS.degree + CV_LIMITS.educationDescription, true);
-  if (educationText) {
-    const [first, ...rest] = educationText.split('\n');
-    data.education = [{ id: newCvId(), degree: first, school: '', field: '', start: '', end: '', description: rest.join('\n') }];
+
+  if (Array.isArray(user.education)) {
+    data.education = user.education.map((edu: any) => ({
+      id: cleanId(edu.id),
+      degree: cleanCvText(edu.degree || '', CV_LIMITS.degree),
+      school: cleanCvText(edu.school || edu.institution || '', CV_LIMITS.school),
+      field: cleanCvText(edu.field || '', CV_LIMITS.field),
+      start: cleanCvText(edu.start || edu.startDate || '', CV_LIMITS.date),
+      end: cleanCvText(edu.end || edu.endDate || '', CV_LIMITS.date),
+      description: cleanCvText(edu.description || '', CV_LIMITS.educationDescription, true),
+    })).filter((edu: any) => edu.degree || edu.school || edu.field);
+  } else {
+    const educationText = cleanCvText(user.education, CV_LIMITS.degree + CV_LIMITS.educationDescription, true);
+    if (educationText) {
+      const [first, ...rest] = educationText.split('\n');
+      data.education = [{ id: newCvId(), degree: first, school: '', field: '', start: '', end: '', description: rest.join('\n') }];
+    }
   }
+
   return normalizeCvData(data);
 }
 

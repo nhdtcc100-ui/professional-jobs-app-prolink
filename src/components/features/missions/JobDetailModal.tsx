@@ -175,22 +175,13 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose, on
             )}
           </button>
 
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={onNavigateHome ? onNavigateHome : onClose}
-              className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all"
-            >
-              <Home size={14} className="text-blue-500" />
-              <span>العودة للرئيسية</span>
-            </button>
-            <button
-              onClick={onClose}
-              className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all"
-            >
-              <ArrowRight size={14} className="text-indigo-500" />
-              <span>رجوع للمكان السابق</span>
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+          >
+            <ArrowRight size={14} className="text-blue-500" />
+            <span>رجوع للمكان السابق</span>
+          </button>
         </div>
       </div>
     </motion.div>

@@ -136,8 +136,8 @@ export default function NewsDetailModal({ item, appUser, onClose, onNavigateHome
 
             <div className="space-y-6">
               <h3 className="font-black text-lg text-slate-800 dark:text-white border-r-4 border-blue-600 pr-4">التفاصيل الكاملة</h3>
-              <div className="bg-white dark:bg-slate-800/30 p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-sm">
-                <BilingualSmartText text={item.content || item.description || ''} className="space-y-4" />
+              <div className="bg-white dark:bg-slate-800/30 p-6 sm:p-10 rounded-[2rem] sm:rounded-[3rem] border border-slate-100 dark:border-slate-800 shadow-sm text-black dark:text-white font-medium">
+                <BilingualSmartText text={item.content || item.description || ''} className="space-y-4" paragraphClassName="text-black dark:text-white font-medium text-base sm:text-lg" />
               </div>
             </div>
 

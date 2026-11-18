@@ -249,19 +249,24 @@ export const BilingualSmartText: React.FC<{
 
   return (
     <div className={className}>
-      {segments.map((segment) => (
-        <p
-          key={segment.id}
-          dir={segment.dir}
-          className={`leading-relaxed text-sm md:text-base ${segment.align} ${
-            segment.isArabic
-              ? 'font-medium text-slate-700 dark:text-slate-200 font-arabic'
-              : 'font-normal text-slate-800 dark:text-slate-100 font-sans tracking-wide'
-          } ${paragraphClassName}`}
-        >
-          <SmartLineRenderer text={segment.text} isArabic={segment.isArabic} />
-        </p>
-      ))}
+      {segments.map((segment) => {
+        const hasCustomColor = paragraphClassName && paragraphClassName.includes('text-');
+        const defaultColor = segment.isArabic
+          ? 'font-medium text-slate-900 dark:text-slate-100 font-arabic'
+          : 'font-normal text-slate-900 dark:text-slate-100 font-sans tracking-wide';
+
+        return (
+          <p
+            key={segment.id}
+            dir={segment.dir}
+            className={`leading-relaxed text-sm md:text-base ${segment.align} ${
+              hasCustomColor ? paragraphClassName : `${defaultColor} ${paragraphClassName}`
+            }`}
+          >
+            <SmartLineRenderer text={segment.text} isArabic={segment.isArabic} />
+          </p>
+        );
+      })}
     </div>
   );
 };

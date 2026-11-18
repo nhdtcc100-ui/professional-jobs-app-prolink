@@ -18,6 +18,9 @@ import { AppUser, Post, Job } from '../../../types';
 import { useAppContext } from '../../../contexts/AppContext';
 import { PostNewsCard } from '../PostNewsCard';
 import { DetailFeedPage } from '../DetailFeedPage';
+import { CvViewerModal } from '../cv/CvViewerModal';
+import { cvProfileService } from '../../../lib/services/cvProfileService';
+import { cvFromProfile, CvData, cvHasContent } from '../../../lib/cv/cvData';
 
 interface ModernProfileViewProps {
   profile: AppUser;
@@ -224,6 +227,9 @@ export function ModernProfileView({
   const [savingInfo, setSavingInfo] = useState(false);
   const [savingPhone, setSavingPhone] = useState(false);
   const [savingCV, setSavingCV] = useState(false);
+  const [viewingPlatformCv, setViewingPlatformCv] = useState(false);
+  const [platformCvData, setPlatformCvData] = useState<CvData | null>(null);
+  const [cvModalLoading, setCvModalLoading] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
@@ -314,78 +320,32 @@ export function ModernProfileView({
     }
   };
 
-  // ─── فتح نافذة CV (معاينة حقيقية عبر Canvas بدون iframe أو جوجل دوكس) ────────
-  // ─── فتح ومعاينة السيرة الذاتية (معاينة متزامنة ومستقرة تتجاوز حواجب النوافذ المنبثقة) ────────
+  // ─── فتح ومعاينة السيرة الذاتية المنشأة بواسطة المنصة / التطبيق ────────
   const openCVModal = async () => {
-    const targetCvUrl = cvUrl || profile?.cvUrl || (profile as any)?.cv_url || '';
-    if (!targetCvUrl && !pendingCVFile) {
-      addToast('لا توجد سيرة ذاتية مرفوعة للمعاينة', 'error');
-      return;
-    }
-
-    // 1. إذا كان الملف في ذاكرة الهاتف RAM
-    if (pendingCVFile) {
-      const u = URL.createObjectURL(pendingCVFile);
-      window.open(u, '_blank');
-      setTimeout(() => URL.revokeObjectURL(u), 60000);
-      return;
-    }
-
-    // 2. إذا كان الرابط عاماً ومباشراً (يُفتح فوراً بشكل متزامن 100% دون فقدان تفويض اللمس)
-    if (targetCvUrl.includes('/storage/v1/object/public/')) {
-      const w = window.open(targetCvUrl, '_blank');
-      if (!w) {
-        const a = document.createElement('a');
-        a.href = targetCvUrl;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-      return;
-    }
-
-    // 3. للروابط الخاصة التي تتطلب signedUrl:
-    // فتح نافذة متزامنة فوراً أثناء حدث اللمس المباشر لضمان عدم حظرها
-    const newWindow = window.open('about:blank', '_blank');
-
-    let finalUrl = targetCvUrl;
+    setCvModalLoading(true);
     try {
-      const markers = [
-        { marker: '/storage/v1/object/sign/resumes/', bkt: 'resumes' },
-        { marker: '/storage/v1/object/sign/applications/', bkt: 'applications' },
-        { marker: '/resumes/', bkt: 'resumes' },
-        { marker: '/applications/', bkt: 'applications' },
-      ];
-      for (const { marker, bkt } of markers) {
-        if (targetCvUrl.includes(marker)) {
-          const path = decodeURIComponent(targetCvUrl.split(marker)[1]?.split('?')[0] || '');
-          if (path) {
-            try {
-              const { data } = await supabase.storage.from(bkt).createSignedUrl(path, 300);
-              if (data?.signedUrl) finalUrl = data.signedUrl;
-            } catch (_) {}
-          }
-          break;
-        }
-      }
-    } catch (_) {}
-
-    if (newWindow && !newWindow.closed) {
+      let finalData: CvData | null = null;
       try {
-        newWindow.location.replace(finalUrl);
-      } catch (_) {
-        newWindow.location.href = finalUrl;
+        const record = isMe
+          ? await cvProfileService.loadOwn(profile.id)
+          : await cvProfileService.loadPublic(profile.id);
+        if (record && cvHasContent(record.data)) {
+          finalData = record.data;
+        }
+      } catch (err) {
+        console.warn('Could not load stored cv profile, synthesizing from profile data:', err);
       }
-    } else {
-      const a = document.createElement('a');
-      a.href = finalUrl;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+
+      if (!finalData) {
+        finalData = cvFromProfile(profile);
+      }
+
+      setPlatformCvData(finalData);
+      setViewingPlatformCv(true);
+    } catch (err) {
+      addToast('تعذر تجهيز السيرة الذاتية للمعاينة', 'error');
+    } finally {
+      setCvModalLoading(false);
     }
   };
 
@@ -1808,7 +1768,7 @@ export function ModernProfileView({
               )}
             </div>
           </div>
-        ) : (
+        ) : (<>
           <label
             htmlFor={isMe ? "cv-file-input" : undefined}
             className={`p-6 sm:p-8 rounded-2xl border-2 border-dashed border-blue-200 dark:border-blue-800/60 bg-blue-50/30 dark:bg-blue-950/10 flex flex-col items-center justify-center text-center gap-3 transition-all ${isMe ? 'hover:bg-blue-50 dark:hover:bg-blue-950/20 cursor-pointer active:scale-[0.99]' : ''}`}
@@ -1823,7 +1783,22 @@ export function ModernProfileView({
               <p className="text-[11px] font-bold text-slate-400 mt-1">PDF أو Word — الحد الأقصى 25 ميغابايت</p>
             </div>
           </label>
-        )}
+
+          {/* زر معاينة السيرة المنشأة بالتطبيق */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
+            <motion.button
+              type="button"
+              onClick={() => openCVModal()}
+              disabled={cvModalLoading}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              className="w-full sm:w-auto py-2.5 px-4 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-[#0a66c2] dark:text-blue-300 rounded-xl text-xs font-black transition-all border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-2 shadow-sm active:scale-95 cursor-pointer disabled:opacity-50"
+            >
+              {cvModalLoading ? <Loader2 size={15} className="animate-spin text-[#0a66c2]" /> : <Eye size={15} />}
+              <span>معاينة السيرة الذاتية المنشأة بالتطبيق 📄</span>
+            </motion.button>
+          </div>
+        </>)}
 
         {isMe && (
           <input
@@ -2104,6 +2079,15 @@ export function ModernProfileView({
           allUsers={contextUsers || []}
         />,
         document.body
+      )}
+
+      {/* ── Platform CV Viewer Modal (معاينة السيرة الذاتية المنشأة بالتطبيق) ── */}
+      {viewingPlatformCv && platformCvData && (
+        <CvViewerModal
+          data={platformCvData}
+          avatarUrl={profile.avatar}
+          onClose={() => setViewingPlatformCv(false)}
+        />
       )}
 
     </div>

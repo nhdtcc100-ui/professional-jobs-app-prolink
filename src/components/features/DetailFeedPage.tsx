@@ -4,7 +4,7 @@ import { motion, AnimatePresence, type Variants } from 'motion/react';
 import { 
   ArrowRight, Briefcase, MapPin, DollarSign, 
   Tag, Clock, Send, Calendar, ExternalLink, Sparkles,
-  FileText, Home, Newspaper, ChevronDown, ChevronLeft, ChevronRight, Edit2, Trash2, AlertTriangle
+  FileText, Home, Newspaper, ChevronDown, ChevronLeft, ChevronRight, Edit2, Trash2, AlertTriangle, X
 } from 'lucide-react';
 import { Job, AppUser } from '../../types';
 import { safeTimeAgo } from '../../lib/utils/formatDate';
@@ -269,37 +269,21 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
           <span>رجوع</span>
         </button>
 
-        {/* أزرار التنقل بين العناصر */}
-        <div className="flex items-center gap-1.5 justify-center shrink-0">
-          <button
-            onClick={goToNext}
-            disabled={currentIndex >= resolvedItems.length - 1}
-            className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-100 transition-all active:scale-90 cursor-pointer shadow-xs"
-            title="التالي"
-            aria-label="التالي"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <button
-            onClick={goToPrev}
-            disabled={currentIndex <= 0}
-            className="p-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800/50 text-blue-600 dark:text-blue-400 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-blue-100 transition-all active:scale-90 cursor-pointer shadow-xs"
-            title="السابق"
-            aria-label="السابق"
-          >
-            <ChevronRight size={16} />
-          </button>
+        {/* عنوان الصفحة الحالي */}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-black text-slate-700 dark:text-slate-300">
+            {isCurJob ? 'تفاصيل الفرصة والوظيفة' : isCurNews ? 'تفاصيل الخبر' : 'تفاصيل المنشور'}
+          </span>
         </div>
 
-        {/* زر العودة للرئيسية الثابت دائماً في الشريط العلوي */}
+        {/* زر إغلاق / رجوع إضافي */}
         <button
-          onClick={handleGoHome}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-black transition-all active:scale-95 shadow-xs cursor-pointer"
-          title="العودة للرئيسية"
+          onClick={onClose}
+          className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-all active:scale-90 cursor-pointer"
+          title="رجوع"
+          aria-label="رجوع"
         >
-          <Home size={15} className="text-blue-600 dark:text-blue-400" />
-          <span className="hidden sm:inline">العودة للرئيسية</span>
-          <span className="sm:hidden">الرئيسية</span>
+          <X size={18} />
         </button>
       </div>
 
@@ -307,32 +291,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
       <div
         className="flex-1 min-h-0 w-full flex items-center justify-center relative overflow-hidden px-2 sm:px-4 py-2 bg-slate-100/70 dark:bg-slate-950"
       >
-        {/* Peek Card: Next Card on Left (In RTL, Left is Next) */}
-        {currentIndex < resolvedItems.length - 1 && (
-          <div
-            onClick={goToNext}
-            className="hidden sm:flex absolute left-2 md:left-6 w-16 md:w-28 h-[88%] rounded-3xl opacity-35 hover:opacity-60 dark:opacity-20 dark:hover:opacity-40 scale-90 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer shadow-lg overflow-hidden transition-all z-0 items-center justify-center p-2 text-center"
-            title={isCurJob ? 'الوظيفة التالية' : isCurNews ? 'الخبر التالي' : 'المنشور التالي'}
-          >
-            <span className="text-[10px] font-black text-slate-500 line-clamp-3 leading-tight select-none pointer-events-none">
-              {items[currentIndex + 1]?.title || (isCurJob ? 'الوظيفة التالية' : isCurNews ? 'الخبر التالي' : 'التالي')}
-            </span>
-          </div>
-        )}
-
-        {/* Peek Card: Prev Card on Right (In RTL, Right is Previous) */}
-        {currentIndex > 0 && (
-          <div
-            onClick={goToPrev}
-            className="hidden sm:flex absolute right-2 md:right-6 w-16 md:w-28 h-[88%] rounded-3xl opacity-35 hover:opacity-60 dark:opacity-20 dark:hover:opacity-40 scale-90 border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 cursor-pointer shadow-lg overflow-hidden transition-all z-0 items-center justify-center p-2 text-center"
-            title={isCurJob ? 'الوظيفة السابقة' : isCurNews ? 'الخبر السابق' : 'المنشور السابق'}
-          >
-            <span className="text-[10px] font-black text-slate-500 line-clamp-3 leading-tight select-none pointer-events-none">
-              {items[currentIndex - 1]?.title || (isCurJob ? 'الوظيفة السابقة' : isCurNews ? 'الخبر السابق' : 'السابق')}
-            </span>
-          </div>
-        )}
-
         {/* ── Active Card with Ultra-Fast 60-120FPS GPU Transition ── */}
         <AnimatePresence mode="popLayout" initial={false} custom={direction}>
           <motion.div
@@ -536,12 +494,12 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
 
                   <div className="grid grid-cols-2 gap-2">
                     <button
-                      onClick={handleGoHome}
+                      onClick={onClose}
                       className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
-                      title="العودة للرئيسية"
+                      title="رجوع"
                     >
-                      <Home size={14} className="text-blue-500" />
-                      <span>العودة للرئيسية</span>
+                      <ArrowRight size={14} className="text-blue-500" />
+                      <span>رجوع</span>
                     </button>
                     <button
                       onClick={handleGoSection}
@@ -718,9 +676,9 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     </div>
                   )}
 
-                  <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs text-black dark:text-white font-medium">
                     {currentItem.content ? (
-                      <BilingualSmartText text={currentItem.content} className="space-y-3" />
+                      <BilingualSmartText text={currentItem.content} className="space-y-3" paragraphClassName="text-black dark:text-white font-medium" />
                     ) : (
                       <p className="text-slate-400 italic">لا يوجد نص إضافي.</p>
                     )}
@@ -731,12 +689,12 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                 <div className="shrink-0 p-3 sm:px-5 sm:py-3.5 border-t border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-b-3xl z-20">
                   <div className="grid grid-cols-2 gap-2">
                     <button
-                      onClick={handleGoHome}
+                      onClick={onClose}
                       className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
-                      title="العودة للرئيسية"
+                      title="رجوع"
                     >
-                      <Home size={14} className="text-blue-500" />
-                      <span>العودة للرئيسية</span>
+                      <ArrowRight size={14} className="text-blue-500" />
+                      <span>رجوع</span>
                     </button>
                     <button
                       onClick={handleGoSection}
@@ -826,8 +784,8 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     touchAction: 'pan-y',
                   }}
                 >
-                  <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
-                    <BilingualSmartText text={currentItem.content || currentItem.description || ''} className="space-y-3" />
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs text-black dark:text-white font-medium">
+                    <BilingualSmartText text={currentItem.content || currentItem.description || ''} className="space-y-3" paragraphClassName="text-black dark:text-white font-medium" />
                   </div>
                   <div className="h-2" />
                 </div>
@@ -848,12 +806,12 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
 
                   <div className="grid grid-cols-2 gap-2">
                     <button
-                      onClick={handleGoHome}
+                      onClick={onClose}
                       className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
-                      title="العودة للرئيسية"
+                      title="رجوع"
                     >
-                      <Home size={14} className="text-blue-500" />
-                      <span>العودة للرئيسية</span>
+                      <ArrowRight size={14} className="text-blue-500" />
+                      <span>رجوع</span>
                     </button>
                     <button
                       onClick={handleGoSection}

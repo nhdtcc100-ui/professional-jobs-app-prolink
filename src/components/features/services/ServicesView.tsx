@@ -375,82 +375,75 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-gradient-to-br from-indigo-600 via-blue-600 to-violet-600 rounded-3xl p-5 shadow-xl shadow-blue-500/20 relative overflow-hidden"
+        className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm"
       >
-        {/* خلفية زخرفية */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-2 right-4 w-24 h-24 rounded-full bg-white blur-2xl" />
-          <div className="absolute bottom-2 left-8 w-16 h-16 rounded-full bg-white blur-xl" />
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 bg-blue-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center border border-blue-100 dark:border-slate-700 text-[#0a66c2] dark:text-blue-400 shrink-0">
+            <Wrench size={20} />
+          </div>
+          <div>
+            <h2 className="font-black text-slate-900 dark:text-white text-lg leading-tight">سوق الخدمات والمهن الحرة</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-xs font-bold mt-0.5">
+              {totalCount > 0 ? `${totalCount} كفاءة متاحة (عمل حر وباحثين عن عمل)` : 'ابحث عن أصحاب المهن والباحثين عن عمل حسب التخصص والمكان'}
+            </p>
+          </div>
         </div>
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center border border-white/30">
-              <Wrench size={20} className="text-white" />
-            </div>
-            <div>
-              <h2 className="font-black text-white text-lg leading-tight">سوق الخدمات والمهن الحرة</h2>
-              <p className="text-blue-100 text-[10px] font-bold">
-                {totalCount > 0 ? `${totalCount} كفاءة متاحة (عمل حر وباحثين عن عمل)` : 'ابحث عن أصحاب المهن والباحثين عن عمل حسب التخصص والمكان'}
-              </p>
-            </div>
+
+        {/* شريط البحث */}
+        <div className="space-y-2.5">
+          <div className="relative">
+            <Wrench size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none" />
+            <input
+              type="text"
+              value={searchTitle}
+              onChange={e => setSearchTitle(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="المسمى الوظيفي (كهربائي، حلاق، سباك...)"
+              className="w-full pr-10 pl-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm font-bold focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800 transition-all"
+            />
+          </div>
+          <div className="relative">
+            <MapPin size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none" />
+            <input
+              type="text"
+              value={searchLocation}
+              onChange={e => setSearchLocation(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="المنطقة (بغداد الكمالية، الحرية...)"
+              className="w-full pr-10 pl-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm font-bold focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800 transition-all"
+            />
           </div>
 
-          {/* شريط البحث */}
-          <div className="space-y-2">
-            <div className="relative">
-              <Wrench size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
-              <input
-                type="text"
-                value={searchTitle}
-                onChange={e => setSearchTitle(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                placeholder="المسمى الوظيفي (كهربائي، حلاق، سباك...)"
-                className="w-full pr-9 pl-4 py-2.5 bg-white/15 backdrop-blur-sm border border-white/25 rounded-2xl text-white placeholder-white/50 text-sm font-bold focus:outline-none focus:bg-white/25 focus:border-white/50 transition-all"
-              />
-            </div>
-            <div className="relative">
-              <MapPin size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/60 pointer-events-none" />
-              <input
-                type="text"
-                value={searchLocation}
-                onChange={e => setSearchLocation(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                placeholder="المنطقة (بغداد الكمالية، الحرية...)"
-                className="w-full pr-9 pl-4 py-2.5 bg-white/15 backdrop-blur-sm border border-white/25 rounded-2xl text-white placeholder-white/50 text-sm font-bold focus:outline-none focus:bg-white/25 focus:border-white/50 transition-all"
-              />
-            </div>
-
-            <div className="flex gap-2">
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={handleSearch}
+              disabled={loading}
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#0a66c2] text-white font-black text-xs rounded-2xl hover:bg-[#004182] transition-all active:scale-95 disabled:opacity-70 cursor-pointer"
+            >
+              {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+              بحث
+            </button>
+            <button
+              type="button"
+              onClick={() => setAvailableOnly(prev => !prev)}
+              className={`px-3 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
+                availableOnly
+                  ? 'bg-emerald-600 text-white border-emerald-500'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+              title="تصفية حسب المتوفرين للعمل فقط"
+            >
+              <span className={`w-2 h-2 rounded-full ${availableOnly ? 'bg-white animate-pulse' : 'bg-emerald-500'}`} />
+              <span>المتاحون فقط 🟢</span>
+            </button>
+            {hasActiveSearch && (
               <button
-                onClick={handleSearch}
-                disabled={loading}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-white text-blue-600 font-black text-xs rounded-2xl shadow-lg hover:bg-blue-50 transition-all active:scale-95 disabled:opacity-70"
+                onClick={handleClearSearch}
+                className="px-3 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-xs rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-200 transition-all active:scale-95 cursor-pointer"
               >
-                {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                بحث
+                <X size={14} />
               </button>
-              <button
-                type="button"
-                onClick={() => setAvailableOnly(prev => !prev)}
-                className={`px-3 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-1.5 border ${
-                  availableOnly
-                    ? 'bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-900/30'
-                    : 'bg-white/15 text-white/90 hover:bg-white/25 border-white/20'
-                }`}
-                title="تصفية حسب المتوفرين للعمل فقط"
-              >
-                <span className={`w-2 h-2 rounded-full ${availableOnly ? 'bg-white animate-pulse' : 'bg-emerald-400'}`} />
-                <span>المتاحون فقط 🟢</span>
-              </button>
-              {hasActiveSearch && (
-                <button
-                  onClick={handleClearSearch}
-                  className="px-3 py-2.5 bg-white/20 text-white font-bold text-xs rounded-2xl border border-white/30 hover:bg-white/30 transition-all active:scale-95"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </motion.div>
@@ -473,31 +466,18 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
                     setPage(0);
                   });
                 }}
-                className={`relative flex-shrink-0 w-[86px] h-[82px] rounded-2xl overflow-hidden transition-all duration-200 active:scale-95 ${
+                className={`relative flex-shrink-0 w-[88px] h-[82px] rounded-2xl transition-all duration-200 active:scale-95 border cursor-pointer flex flex-col items-center justify-center p-2 ${
                   isSelected
-                    ? 'ring-2 ring-white/80 shadow-xl scale-105'
-                    : 'opacity-80 hover:opacity-100 hover:scale-[1.03]'
+                    ? 'bg-blue-50 dark:bg-blue-950/40 border-[#0a66c2] shadow-md ring-2 ring-[#0a66c2]/30 scale-105'
+                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-slate-50 dark:hover:bg-slate-800/80 shadow-sm'
                 }`}
-                style={{
-                  background: `linear-gradient(135deg, ${cat.grad[0]}, ${cat.grad[1]})`,
-                }}
               >
-                {/* أيقونات زخرفية صغيرة بالزوايا */}
-                <span className="absolute top-1 right-1.5 text-[9px] opacity-40 select-none pointer-events-none" aria-hidden="true">{cat.deco[0]}</span>
-                <span className="absolute top-1 left-1.5 text-[9px] opacity-40 select-none pointer-events-none" aria-hidden="true">{cat.deco[1]}</span>
-
-                {/* المحتوى الرئيسي */}
-                <div className="relative z-10 flex flex-col items-center justify-end h-full pb-2.5 gap-0.5">
-                  <span className="text-[1.6rem] leading-none drop-shadow-sm">{cat.icon}</span>
-                  <span className="text-white font-black text-[9px] mt-0.5 drop-shadow text-center leading-tight px-1">
-                    {cat.label}
-                  </span>
-                </div>
-
-                {/* طبقة توهج عند التحديد */}
-                {isSelected && (
-                  <div className="absolute inset-0 bg-white/20 backdrop-blur-[0.5px]" />
-                )}
+                <span className="text-[1.6rem] leading-none mb-1 select-none pointer-events-none">{cat.icon}</span>
+                <span className={`font-black text-[10px] text-center leading-tight px-1 select-none pointer-events-none ${
+                  isSelected ? 'text-[#0a66c2] dark:text-blue-300' : 'text-slate-800 dark:text-slate-200'
+                }`}>
+                  {cat.label}
+                </span>
               </button>
             );
           })}
