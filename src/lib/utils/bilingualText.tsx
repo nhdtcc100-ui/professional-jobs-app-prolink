@@ -1,7 +1,7 @@
 import React from 'react';
 import { ExternalLink, Phone, Send, MessageCircle, MapPin, Clock } from 'lucide-react';
 import { RECOGNIZED_LOCATIONS, WORKING_HOURS_KEYWORDS } from './formatNews';
-import { openContactMenu } from './contact';
+import { openContactMenu, normalizePhoneDigits, isContactPhone } from './contact';
 
 const ARABIC_CHAR_REGEX = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 const ENGLISH_CHAR_REGEX = /[a-zA-Z]/;
@@ -36,8 +36,7 @@ export function isArabicText(text: string): boolean {
 export function splitBilingualText(rawText: string): BilingualSegment[] {
   if (!rawText) return [];
 
-  // Normalize newlines and HTML tags
-  const cleanRaw = rawText.replace(/<[^>]*>?/gm, '').replace(/\r\n/g, '\n');
+  const cleanRaw = rawText.replace(/\r\n?/g, '\n');
   const rawLines = cleanRaw.split('\n');
   const segments: BilingualSegment[] = [];
 
@@ -122,19 +121,23 @@ function breakMixedLine(line: string): string[] {
  * Formats inline interactive tokens (links, phones, emails, tags) within a single line
  */
 export const SmartLineRenderer: React.FC<{ text: string; isArabic: boolean }> = ({ text, isArabic }) => {
-  const urlPattern = /(https?:\/\/[^\s]+)/g;
-  const phonePattern = /((?:\+?964|0)7[0-9]{9})/g;
-  const emailPattern = /([\w.-]+@[\w.-]+\.[a-z]{2,})/gi;
-
-  const combined = /(https?:\/\/[^\s]+|(?:\+?964|0)7[0-9]{9}|[\w.-]+@[\w.-]+\.[a-z]{2,})/g;
-  const parts = text.split(combined);
+  const urlPattern = /^https?:\/\/[^\s]+$/;
+  const emailPattern = /^[\w.-]+@[\w.-]+\.[a-z]{2,}$/i;
+  const combined = /https?:\/\/[^\s]+|[\w.-]+@[\w.-]+\.[a-z]{2,}|(?:\+?964|00964|0)?7(?:[ ()-]*\d){9}|(?:\+|00)[1-9](?:[ ()-]*\d){7,14}/gi;
+  const parts: string[] = [];
+  let offset = 0;
+  for (const match of normalizePhoneDigits(text).matchAll(combined)) {
+    if (isContactPhone(match[0]) && (/[\p{L}\p{N}]/u.test(text[match.index - 1] || '') || /[\p{L}\p{N}]/u.test(text[match.index + match[0].length] || ''))) continue;
+    parts.push(text.slice(offset, match.index), text.slice(match.index, match.index + match[0].length));
+    offset = match.index + match[0].length;
+  }
+  parts.push(text.slice(offset));
 
   return (
     <>
       {parts.map((part, i) => {
         if (!part) return null;
         if (urlPattern.test(part)) {
-          urlPattern.lastIndex = 0;
           const url = part;
           let label = 'رابط خارجي';
           let colorClass = 'text-blue-600 bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-800/40';
@@ -155,6 +158,7 @@ export const SmartLineRenderer: React.FC<{ text: string; isArabic: boolean }> = 
             <a
               key={i}
               href={url}
+              onClick={event => event.stopPropagation()}
               target="_blank"
               rel="noopener noreferrer"
               dir="ltr"
@@ -164,26 +168,26 @@ export const SmartLineRenderer: React.FC<{ text: string; isArabic: boolean }> = 
             </a>
           );
         }
-        if (phonePattern.test(part)) {
-          phonePattern.lastIndex = 0;
-          const clean = part.replace(/\s/g, '');
+        if (isContactPhone(part)) {
           return (
-            <span
+            <button
+              type="button"
               key={i}
-              onClick={() => openContactMenu({ phone: clean })}
+              aria-label={`التواصل مع ${part}`}
+              onClick={event => { event.stopPropagation(); openContactMenu({ phone: part }); }}
               dir="ltr"
               className="inline-flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/25 text-emerald-600 dark:text-emerald-400 px-2.5 py-1 rounded-xl border border-emerald-200 dark:border-emerald-800/40 font-black text-[11px] mx-1 shadow-sm hover:scale-105 transition-all cursor-pointer my-0.5"
             >
               <Phone size={11} /> {part}
-            </span>
+            </button>
           );
         }
         if (emailPattern.test(part)) {
-          emailPattern.lastIndex = 0;
           return (
             <a
               key={i}
               href={`mailto:${part}`}
+              onClick={event => event.stopPropagation()}
               dir="ltr"
               className="inline-flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 px-2.5 py-1 rounded-xl border border-slate-200 dark:border-slate-700 font-black text-[11px] mx-1 shadow-sm hover:scale-105 transition-all my-0.5"
             >

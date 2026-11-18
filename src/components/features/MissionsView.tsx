@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Plus, Search, Briefcase, BookOpen, Sparkles, RefreshCw, MapPin } from 'lucide-react';
 import { jobService } from '../../lib/services/jobService';
+import { cvApplicationFields, getApplicationCv } from '../../lib/cv/cvApplication';
 import { courseService } from '../../lib/services/courseService';
 import { filterAndRankJobs } from '../../lib/services/matchingService';
 import { supabase } from '../../lib/supabase';
@@ -450,9 +451,11 @@ export function MissionsView({
     try {
       addToast('جاري إرسال طلبك... ⚡');
       const cvUrl = (appUser as any).cvUrl || (appUser as any).cv_url || '';
+      const cv = await getApplicationCv(appUser.id);
+      const cvFields = cv ? cvApplicationFields(cv.data) : null;
       const { error } = await jobService.applyToJob(appUser.id, job.employer_id, {
         jobId: job.id,
-        skills: appUser.skills || [],
+        skills: cvFields?.skills || appUser.skills || [],
         cvUrl: cvUrl,
         applicantData: {
           name: appUser.name || (appUser as any).fullName || 'متقدم',
@@ -464,9 +467,10 @@ export function MissionsView({
           bio: (appUser as any).bio || '',
           email: appUser.email || '',
           cvUrl: cvUrl,
+          cv: cv || undefined,
         },
-        experience: (appUser as any).experience || '',
-        education: (appUser as any).education || '',
+        experience: cvFields?.experience || appUser.experience || '',
+        education: cvFields?.education || appUser.education || '',
         coverLetter: 'أرغب في التقديم عبر ملفي الشخصي.'
       });
       if (error) throw error;

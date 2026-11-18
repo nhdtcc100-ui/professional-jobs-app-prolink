@@ -43,7 +43,7 @@ export default function NewsDetailModal({ item, appUser, onClose, onNavigateHome
     setIsPosting(true);
     try {
       const fullContent = item.content || item.description || '';
-      const cleanContent = fullContent.replace(/<[^>]*>?/gm, '').trim();
+      const cleanContent = newsService.cleanText(fullContent);
       
       const { error } = await (supabase.from('posts') as any).insert([{
         author_id: appUser.id,

@@ -11,7 +11,7 @@ import { withTimeout } from '../utils/withTimeout';
 import { concurrencyMutex } from './concurrencyMutex';
 
 // ✅ Max content lengths to prevent payload abuse
-const MAX_POST_LENGTH = 5000;
+const MAX_POST_LENGTH = 20000;
 const MAX_ECHO_LENGTH = 3000;
 
 const POST_COLUMNS = 'id, author_id, author_name, author_avatar, author_title, content, image_url, video_url, likes_count, comments_count, is_echo, original_post_id, original_author_name, original_author_avatar, original_content, created_at';
@@ -117,6 +117,9 @@ export const postService = {
   },
 
   async createPost(postData: any) {
+    if ((postData.content || '').length > MAX_POST_LENGTH) {
+      return { data: null, error: { message: 'الحد الأقصى للنص 20000 حرف' } };
+    }
     const authorId = postData.author_id || 'anonymous';
     const mutexKey = `post_create_${authorId}`;
     // ✅ Use a fresh UUID per attempt as idempotency key so retries are not blocked by cached errors

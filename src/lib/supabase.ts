@@ -45,7 +45,30 @@ const mobileSafeStorage = {
   }
 };
 
+// Background tabs/WebViews silently drop sockets; without a deadline a hung token
+// refresh blocks every later query (each request awaits the session first).
+const REQUEST_TIMEOUT_MS = 30_000;
+const STORAGE_UPLOAD_TIMEOUT_MS = 120_000;
+
+const fetchWithTimeout: typeof fetch = (input, init = {}) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+  const method = (init.method || (input instanceof Request ? input.method : 'GET')).toUpperCase();
+  const isUpload = url.includes('/storage/v1/object/') && (method === 'POST' || method === 'PUT');
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new DOMException('انتهت مهلة الاتصال، حاول مجدداً.', 'TimeoutError')),
+    isUpload ? STORAGE_UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS
+  );
+  const outer = init.signal;
+  if (outer) {
+    if (outer.aborted) controller.abort(outer.reason);
+    else outer.addEventListener('abort', () => controller.abort(outer.reason), { once: true });
+  }
+  return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer));
+};
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  global: { fetch: fetchWithTimeout },
   auth: {
     persistSession: true,
     autoRefreshToken: true,

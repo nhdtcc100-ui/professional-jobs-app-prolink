@@ -14,6 +14,9 @@ import { useAppContext } from '../../../contexts/AppContext';
 import { openContactMenu, telUrl, whatsappUrl } from '../../../lib/utils/contact';
 import { openCv, downloadCv } from '../../../lib/utils/cv';
 import { EmployeeOnboardingModal } from '../erp/EmployeeOnboardingModal';
+import { CvData, CvSnapshot } from '../../../lib/cv/cvData';
+import { applicantExcelRow, excelCellText, resolveApplicantCvData } from '../../../lib/cv/cvApplicantExport';
+import { CvViewerModal } from '../cv/CvViewerModal';
 interface ApplicantData {
   name?: string;
   email?: string;
@@ -28,6 +31,7 @@ interface ApplicantData {
   avatar?: string;
   cvUrl?: string;
   cv_url?: string;
+  cv?: CvSnapshot;
   prevWorks?: any[];
   bio?: string;
   id?: string;
@@ -41,6 +45,9 @@ interface JobApplication {
   applicant_data?: ApplicantData;
   cover_letter?: string;
   cv_url?: string;
+  experience?: string;
+  education?: string;
+  skills?: string | string[];
   jobTitle?: string;
   job?: {
     title: string;
@@ -68,7 +75,7 @@ function exportToExcel(apps: JobApplication[], label: string, addToast: (msg: st
       '\u0627\u0644\u0646\u0628\u0630\u0629\u0020\u0627\u0644\u0634\u062e\u0635\u064a\u0629',
       '\u0633\u062c\u0644\u0020\u0627\u0644\u062e\u0628\u0631\u0627\u062a\u0020\u0627\u0644\u062a\u0641\u0635\u064a\u0644\u064a',
       '\u0627\u0644\u0648\u0638\u064a\u0641\u0629\u0020\u0627\u0644\u0645\u062a\u0642\u062f\u0645\u0020\u0644\u0647\u0627',
-      '\u0631\u0627\u0628\u0637\u0020\u0627\u0644\u0633\u064a\u0631\u0629\u0020\u0627\u0644\u0630\u0627\u062a\u064a\u0629',
+      'سيرة مرفقة بالطلب',
       '\u0627\u0644\u062d\u0627\u0644\u0629',
       '\u062a\u0627\u0631\u064a\u062e\u0020\u0627\u0644\u062a\u0642\u062f\u064a\u0645',
     ];
@@ -87,61 +94,20 @@ function exportToExcel(apps: JobApplication[], label: string, addToast: (msg: st
           .status-rejected { color: #dc2626; font-weight: bold; }
           .status-pending { color: #d97706; font-weight: bold; }
           .job-title { color: #0a66c2; font-weight: bold; }
-          .cv-link { color: #2563eb; text-decoration: underline; }
         </style>
       </head>
       <body>
-        <h2 style="color: #1e3a8a; font-family: sans-serif;">تقرير Elevate عراق الاحترافي لإدارة الكفاءات - ${label}</h2>
-        <p style="color: #64748b; font-size: 12px;">تاريخ الاستخراج: ${new Date().toLocaleString('ar-EG')}</p>
+        <h2 style="color: #1e3a8a; font-family: sans-serif;">تقرير Elevate عراق الاحترافي لإدارة الكفاءات - ${excelCellText(label)}</h2>
+        <p style="color: #64748b; font-size: 12px;">تاريخ الاستخراج: ${excelCellText(new Date().toLocaleString('ar-EG'))}</p>
         <table border="1">
           <thead>
-            <tr>${ERP_HEADERS.map(h => `<th>${h}</th>`).join('')}</tr>
+            <tr>${ERP_HEADERS.map(h => `<th>${excelCellText(h)}</th>`).join('')}</tr>
           </thead>
           <tbody>
     `;
 
     apps.forEach((app, idx) => {
-      // Find full profile from allUsers to ensure complete data
-      const fullProfile = allUsers.find(u => u.id === app.applicant_id);
-      const a = { ...(app.applicant_data || {}), ...(fullProfile || {}) };
-
-      const skills = Array.isArray(a.skills) ? a.skills.join(' • ') : (a.skills || '');
-      const statusText = app.status === 'approved' ? 'مقبول' : app.status === 'rejected' ? 'مرفوض' : 'قيد المراجعة';
-      const statusClass = app.status === 'approved' ? 'status-approved' : app.status === 'rejected' ? 'status-rejected' : 'status-pending';
-      const rowClass = idx % 2 === 0 ? 'row-even' : '';
-
-      // Format career history (prevWorks)
-      let careerHistory = '-';
-      if (a.prevWorks && Array.isArray(a.prevWorks)) {
-        careerHistory = a.prevWorks.map((w: any) =>
-          `[${w.company || w.companyName}: ${w.role || w.title} | الراتب: ${w.salary || 'غير محدد'} | المهام: ${w.tasks || '-'}]`
-        ).join('\n');
-      }
-
-      const cvUrl = app.cv_url || a.cvUrl || a.cv_url || '-';
-      const jobTitle = app.jobTitle || app.jobs?.title || app.job?.title || 'وظيفة غير معروفة';
-
-      tableHtml += `
-        <tr class="${rowClass}">
-          <td>${idx + 1}</td>
-          <td><b>${a.name || '-'}</b></td>
-          <td>${a.email || '-'}</td>
-          <td>${a.phone || '-'}</td>
-          <td>${a.location || '-'}</td>
-          <td>${a.title || '-'}</td>
-          <td>${a.companyName || '-'}</td>
-          <td>${a.industry || '-'}</td>
-          <td>${a.experience || '-'}</td>
-          <td>${a.education || '-'}</td>
-          <td>${skills}</td>
-          <td>${a.bio || a.experience || '-'}</td>
-          <td style="white-space: pre-wrap;">${careerHistory}</td>
-          <td class="job-title">${jobTitle}</td>
-          <td>${cvUrl !== '-' ? `<a href="${cvUrl}" class="cv-link">فتح السيرة الذاتية</a>` : '-'}</td>
-          <td class="${statusClass}">${statusText}</td>
-          <td>${new Date(app.created_at).toLocaleDateString('ar-EG')}</td>
-        </tr>
-      `;
+      tableHtml += applicantExcelRow(app, idx, allUsers.find(u => u.id === app.applicant_id));
     });
 
     tableHtml += `</tbody></table></body></html>`;
@@ -225,7 +191,9 @@ function ApplicationsListViewContent({
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [selectedAppIndex, setSelectedAppIndex] = useState<number | null>(null);
+  const [applicantCvData, setApplicantCvData] = useState<CvData | null>(null);
   const [highlightedAppId, setHighlightedAppId] = useState<string | null>(null);
+  useEffect(() => { setApplicantCvData(null); }, [activeTab, selectedAppIndex]);
   const detailContainerRef = React.useRef<HTMLDivElement>(null);
   const [ratingFilter, setRatingFilter] = useState<number>(0); // 0 = all
 
@@ -285,21 +253,20 @@ function ApplicationsListViewContent({
     }
   };
 
-  // Helper to reliably retrieve complete applicant profile
+  // Only legacy applications may use live-profile identity.
   const resolveApplicant = (app: JobApplication) => {
     const profile = (app as any).applicant || allUsers.find(u => u.id === app.applicant_id);
     const data = app.applicant_data || {};
-    return {
-      ...(profile || {}),
+    const resolved = resolveApplicantCvData({
       ...data,
-      name: data.name || (app as any).applicantName || profile?.name || (profile as any)?.full_name || 'متقدم',
-      avatar: data.avatar || profile?.avatar || (profile as any)?.avatar_url || '',
-      phone: data.phone || profile?.phone || '',
-      email: data.email || profile?.email || '',
-      location: data.location || profile?.location || '',
-      title: data.title || profile?.title || (profile as any)?.job_title || (profile as any)?.headline || '',
-      bio: data.bio || profile?.bio || '',
-      cvUrl: app.cv_url || data.cvUrl || data.cv_url || profile?.cvUrl || (profile as any)?.cv_url || '',
+      name: data.name || (app as any).applicantName,
+      experience: data.experience || app.experience,
+      education: data.education || app.education,
+      skills: data.skills || app.skills,
+    }, profile);
+    return {
+      ...resolved,
+      cvUrl: app.cv_url || data.cvUrl || data.cv_url || (!resolved.cv ? profile?.cvUrl || profile?.cv_url : '') || '',
     };
   };
 
@@ -358,7 +325,7 @@ function ApplicationsListViewContent({
 
   const filteredApps = safeApps.filter(app => {
     if (!app) return false;
-    const name = (app.applicant_data?.name || (app as any).applicantName || '').toLowerCase();
+    const name = resolveApplicant(app).name.toLowerCase();
     const title = (app.job?.title || app.jobs?.title || (app as any).jobTitle || '').toLowerCase();
     const query = (searchQuery || '').toLowerCase();
     const matchesSearch = !query || name.includes(query) || title.includes(query);
@@ -411,8 +378,9 @@ function ApplicationsListViewContent({
       return;
     }
 
-    const phone = selectedApp.applicant_data?.phone || '';
-    const name = selectedApp.applicant_data?.name || (selectedApp as any).applicantName || 'متقدمنا العزيز';
+    const applicant = resolveApplicant(selectedApp);
+    const phone = applicant.phone;
+    const name = applicant.name || 'متقدمنا العزيز';
     const jobTitle = selectedApp.job?.title || selectedApp.jobs?.title || (selectedApp as any).jobTitle || 'الوظيفة';
 
     // 📨 1. Internal Message (Professional Card Template)
@@ -844,12 +812,12 @@ function ApplicationsListViewContent({
               {/* Current applicant mini info */}
               <div className="flex items-center gap-2 min-w-0">
                 <img
-                  src={filteredApps[selectedAppIndex]?.applicant_data?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(filteredApps[selectedAppIndex]?.applicant_data?.name || 'U')}&background=random`}
+                  src={resolveApplicant(filteredApps[selectedAppIndex]).avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(resolveApplicant(filteredApps[selectedAppIndex]).name || 'U')}&background=random`}
                   className="w-7 h-7 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0"
                   alt=""
                 />
                 <span className="text-xs font-black text-slate-800 dark:text-white truncate max-w-[130px] md:max-w-[200px]">
-                  {filteredApps[selectedAppIndex]?.applicant_data?.name}
+                  {resolveApplicant(filteredApps[selectedAppIndex]).name}
                 </span>
               </div>
 
@@ -1015,7 +983,7 @@ function ApplicationsListViewContent({
                             <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 shadow-sm"><User size={18} /></div>
                             <div className="min-w-0 flex-1">
                               <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">الاسم الكامل</span>
-                              <span className="text-sm font-black text-slate-800 dark:text-white truncate block">{app.applicant_data?.name}</span>
+                              <span className="text-sm font-black text-slate-800 dark:text-white truncate block">{resolved.name}</span>
                             </div>
                           </div>
 
@@ -1024,20 +992,20 @@ function ApplicationsListViewContent({
                               <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 shadow-sm"><Phone size={18} /></div>
                               <div className="min-w-0">
                                 <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">رقم الهاتف</span>
-                                <span className="text-sm font-black text-slate-800 dark:text-white truncate block">{app.applicant_data?.phone || 'غير متوفر'}</span>
+                                <span className="text-sm font-black text-slate-800 dark:text-white truncate block">{resolved.phone || 'غير متوفر'}</span>
                               </div>
                             </div>
-                            {app.applicant_data?.phone && (
+                            {resolved.phone && (
                               <div className="flex gap-1.5 shrink-0">
                                 <a
-                                  href={telUrl(app.applicant_data.phone)}
+                                  href={telUrl(resolved.phone)}
                                   className="p-2 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white rounded-xl transition-all shadow-sm"
                                   title="اتصال هاتفي"
                                 >
                                   <Phone size={14} />
                                 </a>
                                 <a
-                                  href={whatsappUrl(app.applicant_data.phone)}
+                                  href={whatsappUrl(resolved.phone)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="p-2 bg-green-50 dark:bg-green-900/40 text-green-600 dark:text-green-400 hover:bg-[#25D366] hover:text-white rounded-xl transition-all shadow-sm"
@@ -1054,12 +1022,12 @@ function ApplicationsListViewContent({
                               <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 shadow-sm"><Mail size={18} /></div>
                               <div className="min-w-0">
                                 <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">البريد الإلكتروني</span>
-                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate block">{app.applicant_data?.email || 'غير متوفر'}</span>
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate block">{resolved.email || 'غير متوفر'}</span>
                               </div>
                             </div>
-                            {app.applicant_data?.email && (
+                            {resolved.email && (
                               <a
-                                href={`mailto:${app.applicant_data.email}`}
+                                href={`mailto:${resolved.email}`}
                                 className="p-2 bg-amber-50 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-white rounded-xl transition-all shadow-sm shrink-0"
                                 title="إرسال بريد"
                               >
@@ -1072,7 +1040,7 @@ function ApplicationsListViewContent({
                             <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 shadow-sm"><MapPin size={18} /></div>
                             <div className="min-w-0 flex-1">
                               <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">الموقع السكني</span>
-                              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate block">{app.applicant_data?.location || 'غير محدد'}</span>
+                              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate block">{resolved.location || 'غير محدد'}</span>
                             </div>
                           </div>
                         </div>
@@ -1101,16 +1069,22 @@ function ApplicationsListViewContent({
                           <span className="block text-[9px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2 flex items-center gap-2">
                             <Clock size={11} /> خلاصة الخبرة العملية
                           </span>
-                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200 leading-relaxed">
-                            {app.applicant_data?.experience || 'لا توجد نبذة خبرة مسجلة.'}
+                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                            {resolved.experience || 'لا توجد نبذة خبرة مسجلة.'}
                           </p>
                         </div>
-                        {app.applicant_data?.skills && (
+                        {resolved.education && (
+                          <div className="p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
+                            <span className="block text-[9px] font-black text-blue-600 dark:text-blue-400 mb-2">التعليم والمؤهلات</span>
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">{resolved.education}</p>
+                          </div>
+                        )}
+                        {resolved.skills && (
                           <div className="flex flex-wrap gap-2 px-1">
-                            {(Array.isArray(app.applicant_data.skills)
-                              ? app.applicant_data.skills
-                              : typeof app.applicant_data.skills === 'string'
-                              ? app.applicant_data.skills.split(',')
+                            {(Array.isArray(resolved.skills)
+                              ? resolved.skills
+                              : typeof resolved.skills === 'string'
+                              ? resolved.skills.split(',')
                               : []
                             ).map((s: any, i: number) => (
                               <span key={i} className="px-3 py-1.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-[10px] font-black shadow-md">{String(s).trim()}</span>
@@ -1150,8 +1124,9 @@ function ApplicationsListViewContent({
 
                       {/* 📎 CV Options: Direct Native Zero-Freeze Viewer & Download (100% No Freezing) */}
                       {(() => {
-                        const cvTargetUrl = app.cv_url || app.applicant_data?.cvUrl || (app.applicant_data as any)?.cv_url || resolved.cvUrl;
-                        if (!cvTargetUrl) {
+                        const capturedCv = resolved.cv;
+                        const cvTargetUrl = app.cv_url || app.applicant_data?.cvUrl || app.applicant_data?.cv_url || resolved.cvUrl;
+                        if (!capturedCv && !cvTargetUrl) {
                           return (
                             <div className="p-4 bg-slate-100 dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between text-right">
                               <div className="flex items-center gap-3">
@@ -1168,6 +1143,20 @@ function ApplicationsListViewContent({
                         }
                         return (
                           <div className="space-y-2.5">
+                            {capturedCv && (
+                              <button
+                                type="button"
+                                onClick={() => setApplicantCvData(capturedCv.data)}
+                                className="flex items-center gap-3 w-full p-4 bg-blue-600 hover:bg-blue-700 rounded-2xl text-white text-right shadow-sm"
+                              >
+                                <FileText size={20} className="shrink-0" />
+                                <span>
+                                  <span className="block text-xs font-black">معاينة وتصدير السيرة المرفقة بالطلب</span>
+                                  <span className="block text-[10px] text-blue-100 mt-1">النسخة المحفوظة وقت التقديم، وليست السيرة الحالية</span>
+                                </span>
+                              </button>
+                            )}
+                            {cvTargetUrl && <>
                             <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2 px-1">
                               <FileText size={14} className="text-blue-600 dark:text-blue-400" />
                               ملف السيرة الذاتية (CV) للمتقدم
@@ -1215,6 +1204,7 @@ function ApplicationsListViewContent({
                                 </div>
                               </button>
                             </div>
+                            </>}
                           </div>
                         );
                       })()}
@@ -1278,9 +1268,9 @@ function ApplicationsListViewContent({
                                     <MessageSquare size={16} /> دردشة فورية
                                   </button>
                                 )}
-                                {!canUseMessaging && app.applicant_data?.phone && (
+                                {!canUseMessaging && resolved.phone && (
                                   <button
-                                    onClick={() => openContactMenu({ phone: app.applicant_data?.phone, name: app.applicant_data?.name, cvUrl: app.cv_url || (app.applicant_data as any)?.cvUrl })}
+                                    onClick={() => openContactMenu({ phone: resolved.phone, name: resolved.name, cv: resolved.cv, cvUrl: resolved.cvUrl })}
                                     className="flex-1 min-w-[130px] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95"
                                   >
                                     <Phone size={16} /> تواصل: واتساب / اتصال
@@ -1344,6 +1334,8 @@ function ApplicationsListViewContent({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {applicantCvData && <CvViewerModal data={applicantCvData} onClose={() => setApplicantCvData(null)} />}
 
       <EmployeeOnboardingModal
         show={showOnboarding}

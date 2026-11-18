@@ -72,7 +72,7 @@ export function PostTransmissionCard({
   onDeletePost,
   onShareToGroup 
 }: PostTransmissionCardProps) {
-  const { likedPosts, dislikedPosts, appUser, allUsers } = useAppContext();
+  const { likedPosts, dislikedPosts, appUser, allUsers, handleDeletePost: deletePostChecked } = useAppContext();
   const authorUser = allUsers?.find(u => u.id === post.authorId);
   const isAuthorAvailable = authorUser 
     ? Boolean(authorUser.isAvailable ?? (authorUser as any).is_available ?? authorUser.open_to === 'work')
@@ -186,7 +186,11 @@ export function PostTransmissionCard({
       return;
     }
     // 🔒 Sanitize content before saving
-    const sanitizedContent = sanitizeInput(editContent.trim());
+    if (editContent.trim().length > 20000) {
+      addToast('الحد الأقصى للنص 20000 حرف', 'error');
+      return;
+    }
+    const sanitizedContent = sanitizeInput(editContent.trim(), 20000);
     if (!sanitizedContent) { setIsEditing(false); return; }
     setIsSaving(true);
     try {
@@ -217,19 +221,10 @@ export function PostTransmissionCard({
       setShowDeleteConfirm(false);
       return;
     }
-    // Optimistic UI removal
-    if (onDeletePost) onDeletePost(post.id);
-    
-    try {
-      let query = supabase.from('posts').delete().eq('id', post.id);
-      if (!isAdmin) {
-        query = query.eq('author_id', user.id);
-      }
-      const { error } = await query;
-      if (error) throw error;
-      addToast('تم حذف المنشور بنجاح ✅');
-    } catch (e) {
-      addToast('فشل حذف المنشور', 'error');
+    const ok = await deletePostChecked(post.id);
+    if (ok) {
+      setShowDeleteConfirm(false);
+      onDeletePost?.(post.id);
     }
   };
 
@@ -334,6 +329,7 @@ export function PostTransmissionCard({
               className="w-full bg-slate-50 dark:bg-slate-900 border-2 border-blue-100 dark:border-slate-800 rounded-[1.5rem] p-5 text-sm text-slate-700 dark:text-white outline-none focus:border-blue-400 focus:ring-8 focus:ring-blue-50/50 dark:focus:ring-blue-900/20 transition-all resize-none leading-relaxed shadow-inner"
               rows={4}
               value={editContent}
+              maxLength={20000}
               onChange={e => setEditContent(e.target.value)}
               autoFocus
             />

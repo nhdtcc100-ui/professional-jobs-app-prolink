@@ -43,18 +43,21 @@ const parseRSS = (xml: string, source: string, baseRegion: NewsItem['region']): 
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
     if (doc.querySelector('parsererror')) return [];
 
-    return Array.from(doc.querySelectorAll('item')).slice(0, 80).map(el => {
-      const get = (tag: string) => el.querySelector(tag)?.textContent?.trim() || '';
+    return Array.from(doc.querySelectorAll('item, entry')).slice(0, 80).map(el => {
+      const get = (tag: string) => el.querySelector(tag.replace(/:/g, '\\:'))?.textContent?.trim() || '';
       const title = newsService.cleanText(get('title'));
       const link  = get('link') || el.querySelector('guid')?.textContent?.trim() || '#';
-      const desc  = newsService.cleanText(get('content:encoded') || get('description') || get('content') || '');
+      const rawContent = el.getElementsByTagNameNS('http://purl.org/rss/1.0/modules/content/', 'encoded')[0]?.textContent?.trim()
+        || get('content') || get('description') || get('summary');
+      const content = newsService.cleanText(rawContent);
+      const desc = newsService.cleanText(get('description') || get('summary') || rawContent);
       const date  = get('pubDate') || get('dc:date') || get('published') || new Date().toISOString();
       const thumb = newsService.proxyImage(
         el.querySelector('media\\:content')?.getAttribute('url') ||
         el.querySelector('enclosure[type^="image"]')?.getAttribute('url') ||
         el.querySelector('enclosure')?.getAttribute('url') ||
         el.querySelector('media\\:thumbnail')?.getAttribute('url') ||
-        newsService.extractFirstImage(desc) || ''
+        newsService.extractFirstImage(rawContent) || ''
       );
       
       return {
@@ -62,7 +65,7 @@ const parseRSS = (xml: string, source: string, baseRegion: NewsItem['region']): 
         title,
         link,
         pubDate: date,
-        content: desc,
+        content,
         description: desc,
         author: source,
         thumbnail: thumb || APP_PLACEHOLDER,
@@ -118,14 +121,16 @@ const fetchFeed = async (feed: { url: string; region: NewsItem['region']; label:
         if (data?.status === 'ok' && Array.isArray(data?.items) && data.items.length > 0) {
           items = data.items.map((item: any) => {
             const title = newsService.cleanText(item.title || '');
-            const desc = newsService.cleanText(item.description || item.content || '');
-            const rawThumb = item.thumbnail || item.enclosure?.link || newsService.extractFirstImage(desc) || '';
+            const rawContent = item.content || item.description || '';
+            const content = newsService.cleanText(rawContent);
+            const desc = newsService.cleanText(item.description || rawContent);
+            const rawThumb = item.thumbnail || item.enclosure?.link || newsService.extractFirstImage(rawContent) || '';
             return {
               id: Math.random().toString(36).substr(2, 9),
               title,
               link: item.link || item.guid || '#',
               pubDate: item.pubDate || new Date().toISOString(),
-              content: desc,
+              content,
               description: desc,
               author: item.author || feed.label,
               thumbnail: rawThumb ? newsService.proxyImage(rawThumb) : APP_PLACEHOLDER,
@@ -715,7 +720,7 @@ const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
                 title: newsService.cleanText(a.title || a.name || ''),
                 link: a.url || a.link || '#',
                 pubDate: a.publishedAt || a.pubDate || new Date().toISOString(),
-                content: newsService.cleanText(a.description || a.content || ''),
+                content: newsService.cleanText(a.content || a.description || ''),
                 description: newsService.cleanText(a.description || a.content || ''),
                 author: a.source?.name || a.author || src.name,
                 thumbnail: a.urlToImage || a.thumbnail || a.image || APP_PLACEHOLDER,

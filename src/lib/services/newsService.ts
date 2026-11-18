@@ -436,7 +436,7 @@ export const newsService = {
   cleanText(html: string): string {
     if (!html) return '';
     let cleaned = html.replace(/\r/g, '').replace(/<p[^>]*>/gi, '\n\n').replace(/<br\s*\/?>/gi, '\n');
-    cleaned = cleaned.replace(/<[^>]*>?/gm, ' ');
+    cleaned = cleaned.replace(/<\/?[a-z][a-z0-9:-]*(?:\s+[^<>]*)?\s*\/?>/gi, ' ');
     cleaned = cleaned.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
     cleaned = cleaned.replace(/[ \t]+/g, ' ');
     cleaned = cleaned.replace(/\n\s*\n\s*\n+/g, '\n\n');
@@ -449,7 +449,9 @@ export const newsService = {
       const items = Array.from(doc.querySelectorAll('item, entry')).slice(0, 80);
       return items.map(el => {
         const get = (tag: string) => el.querySelector(tag)?.textContent?.trim() || '';
-        const rawContent = get('description') || get('content') || get('summary') || '';
+        const rawSummary = get('description') || get('summary');
+        const rawContent = el.getElementsByTagNameNS('http://purl.org/rss/1.0/modules/content/', 'encoded')[0]?.textContent?.trim()
+          || get('content') || rawSummary;
         const link = get('link') || el.querySelector('link')?.getAttribute('href') || '#';
         const title = this.cleanText(get('title'));
 
@@ -459,7 +461,7 @@ export const newsService = {
           link: link,
           pubDate: get('pubDate') || get('updated') || get('published') || new Date().toISOString(),
           content: this.cleanText(rawContent),
-          description: this.cleanText(rawContent),
+          description: this.cleanText(rawSummary || rawContent),
           author: source,
           thumbnail: this.proxyImage(
             el.querySelector('media\\:content[url]')?.getAttribute('url') ||

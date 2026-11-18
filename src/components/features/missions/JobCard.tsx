@@ -550,7 +550,7 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
                       تأكيد حذف الوظيفة نهائياً
                     </h3>
                     <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed px-2">
-                      سيتم حذف هذه الوظيفة بالكامل من قاعدة البيانات فوراً ولن تتمكن من استرجاعها لاحقاً. هل أنت متأكد من الحذف؟
+                      سيتم حذف هذه الوظيفة نهائياً ولن تتمكن من استرجاعها لاحقاً. هل أنت متأكد من الحذف؟
                     </p>
                   </div>
 

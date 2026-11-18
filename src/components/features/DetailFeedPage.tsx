@@ -440,7 +440,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  openContactMenu({ phone: pubUser?.phone, name: pubUser?.name || currentItem.company, website: (pubUser as any)?.website, cvUrl: (pubUser as any)?.cv_url });
+                                  openContactMenu({ phone: pubUser?.phone, name: pubUser?.name || currentItem.company, website: (pubUser as any)?.website, cvUrl: (pubUser as any)?.cv_url || pubUser?.cvUrl, cvUserId: pubUser?.id });
                                 }}
                                 className="mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/90 hover:bg-emerald-500 text-white text-[10px] font-black border border-emerald-300/30 shadow-md active:scale-95 transition-all"
                                 title="تواصل مع صاحب الوظيفة: واتساب / اتصال / روابطه"
@@ -613,7 +613,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                               تأكيد حذف المنشور نهائياً
                             </h3>
                             <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed px-2">
-                              سيتم حذف هذا المنشور بالكامل من قاعدة البيانات فوراً ولن تتمكن من استرجاعه لاحقاً. هل تريد المتابعة؟
+                              سيتم حذف هذا المنشور نهائياً ولن تتمكن من استرجاعه لاحقاً. هل تريد المتابعة؟
                             </p>
                           </div>
                           <div className="flex items-center gap-3 pt-2">
@@ -628,9 +628,9 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                               type="button"
                               onClick={async () => {
                                 try {
-                                  if (onDeletePost) {
-                                    await onDeletePost(currentItem.id);
-                                  }
+                                  if (!onDeletePost) return;
+                                  const ok = await onDeletePost(currentItem.id);
+                                  if (ok === false) return;
                                   setShowPostDeleteConfirm(false);
                                   if (resolvedItems.length <= 1) {
                                     onClose();

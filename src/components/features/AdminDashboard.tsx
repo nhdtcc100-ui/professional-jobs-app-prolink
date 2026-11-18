@@ -51,7 +51,7 @@ interface Stats {
 type Tab = 'overview' | 'reports' | 'support' | 'mock_data' | 'users' | 'posts' | 'resources' | 'news_sources' | 'settings' | 'security';
 
 export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardProps) {
-  const { setAllUsers: setGlobalUsers, setAppUser, appUser: currentAppUser, platformSettings } = useAppContext();
+  const { setAllUsers: setGlobalUsers, setAppUser, appUser: currentAppUser, platformSettings, handleDeletePost: deletePostChecked } = useAppContext();
   const isSupportOnly = !currentAppUser?.isAdmin && currentAppUser?.hasSupportAccess;
 
   // ── Tab Persistence ─────────────────────────────────────────
@@ -176,6 +176,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   const [networkOpen, setNetworkOpen] = useState(false);
   const [accountSwitchOpen, setAccountSwitchOpen] = useState(false);
   const [khakiThemeOpen, setKhakiThemeOpen] = useState(false);
+  const [cvUploadOpen, setCvUploadOpen] = useState(false);
   const [navStyleSel, setNavStyleSel] = useState('dock');
   const [savingPublicSettings, setSavingPublicSettings] = useState(false);
   const [gateMigrationMissing, setGateMigrationMissing] = useState(false);
@@ -188,6 +189,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
     setNetworkOpen(platformSettings.networkEnabled);
     setAccountSwitchOpen(platformSettings.accountSwitchEnabled);
     setKhakiThemeOpen(platformSettings.khakiThemeEnabled);
+    setCvUploadOpen(platformSettings.cvUploadEnabled);
     setNavStyleSel(platformSettings.navStyle || 'dock');
   }, [platformSettings]);
 
@@ -206,6 +208,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
         networkEnabled: networkOpen,
         accountSwitchEnabled: accountSwitchOpen,
         khakiThemeEnabled: khakiThemeOpen,
+        cvUploadEnabled: cvUploadOpen,
         navStyle: navStyleSel,
       });
       if (res.success) {
@@ -731,20 +734,15 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   };
 
   const handleDeletePost = async (postId: string, reportId?: string) => {
-    try {
-      const { error } = await db.from('posts').delete().eq('id', postId);
-      if (error) throw error;
-      if (reportId) {
-        const { error: repErr } = await db.from('reports').update({ status: 'resolved' }).eq('id', reportId);
-        if (repErr) console.warn(repErr);
-      }
-      setLocalReports(prev => prev.filter((r: any) => r.id !== reportId));
-      setAllPosts(prev => prev.filter((p: any) => p.id !== postId));
-      setStats(prev => ({ ...prev, posts: Math.max(0, prev.posts - 1), pendingReports: Math.max(0, prev.pendingReports - 1) }));
-      addToast('تم حذف المنشور بنجاح ✅', 'success');
-    } catch (e: any) {
-      addToast('فشل الحذف: ' + e.message, 'error');
+    const deleted = await deletePostChecked(postId);
+    if (!deleted) return;
+    if (reportId) {
+      const { error: repErr } = await db.from('reports').update({ status: 'resolved' }).eq('id', reportId);
+      if (repErr) console.warn(repErr);
     }
+    setLocalReports(prev => prev.filter((r: any) => r.id !== reportId));
+    setAllPosts(prev => prev.filter((p: any) => p.id !== postId));
+    setStats(prev => ({ ...prev, posts: Math.max(0, prev.posts - 1), pendingReports: Math.max(0, prev.pendingReports - 1) }));
   };
 
   const handleDismissReport = async (reportId: string) => {
@@ -2440,6 +2438,28 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                               </button>
                             </div>
                           ))}
+
+                          <div className="flex items-center justify-between gap-4 p-4 bg-slate-800/50 border border-slate-700/50 rounded-2xl">
+                            <div>
+                              <p className="text-xs font-black text-slate-200">فتح رفع ملف السيرة الذاتية</p>
+                              <p className="text-[10px] text-slate-500 font-medium mt-1">
+                                {cvUploadOpen ? 'رفع الملف مفتوح حالياً لجميع الأعضاء.' : 'رفع الملف مقفل حالياً — متاح للإدارة فقط.'}
+                              </p>
+                              <p className="text-[10px] text-slate-500 font-medium mt-1">
+                                يمكن فتح أو إغلاق رفع الملف للمستخدمين. إنشاء السيرة الذاتية وعرضها وتصديرها متاح دائماً.
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-label="فتح رفع ملف السيرة الذاتية"
+                              aria-checked={cvUploadOpen}
+                              onClick={() => setCvUploadOpen(v => !v)}
+                              className={`relative w-14 h-8 rounded-full transition-colors shrink-0 ${cvUploadOpen ? 'bg-emerald-500' : 'bg-slate-600'}`}
+                            >
+                              <span className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow transition-all ${cvUploadOpen ? 'right-1' : 'right-7'}`} />
+                            </button>
+                          </div>
 
                           <div className="p-4 bg-slate-800/50 border border-slate-700/50 rounded-2xl">
                             <p className="text-xs font-black text-slate-200 mb-1">نمط التنقل الجانبي</p>

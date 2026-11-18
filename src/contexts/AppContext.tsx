@@ -3,12 +3,14 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import { supabase } from '../lib/supabase';
 import { AppUser, Post, Job, AppConnection, AppNotification } from '../types';
 import { authService, postService, jobService, networkService, profileService } from '../lib/services';
+import { cvApplicationFields, getApplicationCv } from '../lib/cv/cvApplication';
 import { callService } from '../lib/services/callService';
 import { sanitizeInput } from '../lib/utils/sanitize';
 import { isUserAdmin, canUserPostAndInteract } from '../lib/utils/roleUtils';
 import { platformSettingsService, PlatformPublicSettings } from '../lib/services/platformSettingsService';
 import { getJobCategory } from '../lib/utils/jobCategoryUtils';
 import { mockDataService } from '../lib/services/mockDataService';
+import { withTimeout } from '../lib/utils/withTimeout';
 
 interface AppContextType {
   // Auth State
@@ -64,6 +66,7 @@ interface AppContextType {
   canUseNetwork: boolean;
   canUseAccountSwitch: boolean;
   canUseKhakiTheme: boolean;
+  canUseCvUpload: boolean;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   selectedProfile: AppUser | null;
@@ -203,6 +206,18 @@ export const getDeletedPostIds = (): Set<string> => {
     const raw = localStorage.getItem('prolink_deleted_posts');
     return new Set(raw ? JSON.parse(raw) : []);
   } catch { return new Set(); }
+};
+
+export const rememberDeletedPost = (postId: string) => {
+  try {
+    const deleted: string[] = JSON.parse(localStorage.getItem('prolink_deleted_posts') || '[]');
+    if (!deleted.includes(postId)) {
+      deleted.push(postId);
+      localStorage.setItem('prolink_deleted_posts', JSON.stringify(deleted.slice(-300)));
+    }
+    const cached: Post[] = JSON.parse(localStorage.getItem('prolink_cached_posts') || '[]');
+    localStorage.setItem('prolink_cached_posts', JSON.stringify(cached.filter(p => p.id !== postId)));
+  } catch {}
 };
 
 export const getDeletedJobIds = (): Set<string> => {
@@ -546,6 +561,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const canUseNetwork = Boolean(isAdminUser || platformSettings.networkEnabled);
   const canUseAccountSwitch = Boolean(isAdminUser || platformSettings.accountSwitchEnabled);
   const canUseKhakiTheme = Boolean(isAdminUser || platformSettings.khakiThemeEnabled);
+  const canUseCvUpload = Boolean(isAdminUser || platformSettings.cvUploadEnabled);
 
   const mockBundle = React.useMemo(() => {
     if (!isMockEnabled) return null;
@@ -994,6 +1010,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const selectRole = async (role: 'seeker' | 'employer' | 'freelancer', extraData?: Record<string, any>) => {
     if (!user) return;
     try {
+      if (appUser?.role && appUser.role !== role) {
+        throw new Error(canUseAccountSwitch
+          ? 'تغيير نوع الحساب يتطلب إرسال طلب من الملف الشخصي وموافقة الإدارة'
+          : 'خاصية تبديل نوع الحساب مقفلة حالياً وتُفتح من قبل الإدارة');
+      }
       const mergedUserData = {
         ...(user.user_metadata as Record<string, unknown>),
         ...(extraData || {})
@@ -1002,10 +1023,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (error) throw error;
 
       // ✅ أعِد تحميل الـ profile من قاعدة البيانات للتأكد من التحديث
-      const { data: profile } = await authService.getProfile(user.id);
-      if (profile) {
-        setAppUser(mapProfile(profile));
+      const { data: profile, error: profileError } = await authService.getProfile(user.id);
+      if (profileError) throw profileError;
+      if (!profile || profile.role !== role) {
+        throw new Error('لم يتم تأكيد نوع الحساب، يرجى تحديث الملف والمحاولة مجدداً');
       }
+      setAppUser(mapProfile(profile));
 
       // ✅ الآن نُعيِّن needsRole=false فقط بعد التحقق من وجود profile محدَّث
       setNeedsRole(false);
@@ -1743,7 +1766,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return next;
       });
 
-      addToast('🗑️ تم حذف الوظيفة نهائياً من قاعدة البيانات بنجاح', 'success');
+      addToast('تم حذف الوظيفة', 'success');
       return true;
     } catch (err: any) {
       console.error('[handleDeleteJob] Exception:', err);
@@ -1758,7 +1781,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const { data: deletedRows, error } = await postService.deletePost(postId, appUser?.id, isAdmin);
       if (error) {
         console.error('[handleDeletePost] DB Error:', error);
-        addToast('تعذر حذف المنشور من قاعدة البيانات: ' + (error.message || 'خطأ في الصلاحيات'), 'error');
+        addToast('تعذر حذف المنشور: ' + (error.message || 'لا تملك صلاحية حذفه'), 'error');
         return false;
       }
       if (!deletedRows || (deletedRows as any[]).length === 0) {
@@ -1766,24 +1789,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return false;
       }
 
-      // Persist deleted post ID in localStorage so it never returns on refresh
-      try {
-        const rawDel = localStorage.getItem('prolink_deleted_posts');
-        const deletedArr = rawDel ? JSON.parse(rawDel) : [];
-        if (!deletedArr.includes(postId)) {
-          deletedArr.push(postId);
-          localStorage.setItem('prolink_deleted_posts', JSON.stringify(deletedArr.slice(-300)));
-        }
-      } catch {}
-
-      // Success from DB! Invalidate cache & update state + localStorage
+      rememberDeletedPost(postId);
       postService.invalidateCache();
-      setPosts(prev => {
-        const next = prev.filter(p => p.id !== postId);
-        try { localStorage.setItem('prolink_cached_posts', JSON.stringify(next.slice(0, 60))); } catch {}
-        return next;
-      });
-      addToast('🗑️ تم حذف المنشور نهائياً من قاعدة البيانات بنجاح', 'success');
+      setPosts(prev => prev.filter(p => p.id !== postId));
+      addToast('تم حذف المنشور', 'success');
       return true;
     } catch (err: any) {
       console.error('[handleDeletePost] Exception:', err);
@@ -1827,8 +1836,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast('✅ تم تقديم طلبك بنجاح على هذه الوظيفة!', 'success');
       return;
     }
+    if (file && !canUseCvUpload) { addToast('رفع الملفات مغلق حالياً', 'warning'); return; }
     try {
       let cvUrl = (appUser as any).cvUrl || (appUser as any).cv_url || '';
+      const cv = await getApplicationCv(appUser.id);
+      const cvFields = cv ? cvApplicationFields(cv.data) : null;
       if (file) {
         const { data: url, error: uploadError } = await jobService.uploadCV(appUser.id, file);
         if (uploadError) throw uploadError;
@@ -1839,7 +1851,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         jobId: job.id,
         coverLetter: text,
         cvUrl: cvUrl,
-        skills: appUser.skills || [],
+        skills: cvFields?.skills || appUser.skills || [],
         applicantData: {
           name: appUser.name || (appUser as any).fullName || 'متقدم',
           avatar: appUser.avatar || '',
@@ -1850,9 +1862,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           bio: (appUser as any).bio || '',
           email: appUser.email || '',
           cvUrl: cvUrl,
+          cv: cv || undefined,
         },
-        experience: (appUser as any).experience || '',
-        education: (appUser as any).education || ''
+        experience: cvFields?.experience || appUser.experience || '',
+        education: cvFields?.education || appUser.education || ''
       });
       if (error) throw error;
       addToast("تم إرسال طلب التقديم بنجاح! 🚀");
@@ -2230,6 +2243,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (payload.eventType === 'DELETE') {
             const oldId = (payload.old as any)?.id;
             if (oldId) {
+              rememberDeletedPost(oldId);
+              postService.invalidateCache();
               setPosts(prev => prev.filter(p => p.id !== oldId));
             }
             return;
@@ -2445,11 +2460,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }, 3000);
 
+    // getSession refreshes only when expired and shares auth-js's in-flight refresh;
+    // a forced refreshSession here raced the library's own visibility recovery.
+    const ensureFreshSession = () =>
+      withTimeout(supabase.auth.getSession(), 15_000, 'تجديد الجلسة').catch(() => undefined);
+
     const handleVisibilityChange = async () => {
       if (document.visibilityState !== 'visible' || !user || needsRole) return;
-      try {
-        await supabase.auth.refreshSession();
-      } catch (_) {}
+      await ensureFreshSession();
       const elapsed = Date.now() - lastFetchedAt.current;
       const isStale = elapsed > MIN_REFRESH_INTERVAL;
       if (isStale) {
@@ -2462,9 +2480,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const handleOnline = async () => {
       if (!user || needsRole) return;
-      try {
-        await supabase.auth.refreshSession();
-      } catch (_) {}
+      await ensureFreshSession();
       fetchAllData(true);
       catchUpMissedMessages(user.id);
     };
@@ -2493,7 +2509,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     messages: effectiveMessages, isMockEnabled, readMessageIds, readChatSenders, reports, myGroups,
     unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount,
     activeTab, setActiveTab, searchQuery, setSearchQuery,
-    platformSettings, canUseMessaging, canUseSupportChat, canUseGroups, canUseNetwork, canUseAccountSwitch, canUseKhakiTheme,
+    platformSettings, canUseMessaging, canUseSupportChat, canUseGroups, canUseNetwork, canUseAccountSwitch, canUseKhakiTheme, canUseCvUpload,
     selectedProfile, setSelectedProfile, isEditingProfile, setIsEditingProfile,
     toasts, showNotifications, setShowNotifications, showAdmin, setShowAdmin,
     selectedChat, setSelectedChat,

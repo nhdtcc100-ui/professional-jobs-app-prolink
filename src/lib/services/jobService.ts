@@ -10,10 +10,14 @@ import { generateUUID } from '../security/distributedId';
 import { getJobCategory, encodeCategoryInDescription } from '../utils/jobCategoryUtils';
 import { cvService } from './cvService';
 import { withTimeout } from '../utils/withTimeout';
+import { CV_LIMITS } from '../cv/cvData';
+import { cvApplicationFields } from '../cv/cvApplication';
+import { readApplicantCvSnapshot } from '../cv/cvApplicantExport';
 
 // ✅ Whitelist of allowed job types to prevent injection
 const ALLOWED_JOB_TYPES = ['دوام كامل', 'دوام جزئي', 'عن بُعد', 'عقد', 'تدريب', 'مؤقت'];
 const ALLOWED_STATUSES = ['pending', 'active', 'closed'];
+const MAX_JOB_DESCRIPTION_LENGTH = 8000;
 
 export const jobService = {
   async fetchJobs(limit = 50) {
@@ -34,6 +38,9 @@ export const jobService = {
   },
 
   async postJob(data: any) {
+    if ((data.description || '').length > MAX_JOB_DESCRIPTION_LENGTH) {
+      return { data: null, error: { message: 'وصف الوظيفة يتجاوز الحد الأقصى 8000 حرف' } };
+    }
     const employerId = data.employer_id || 'anonymous';
     const mutexKey = `job_post_${employerId}`;
     const idempotencyKey = idempotencyEngine.generateKey('jobs', employerId, {
@@ -51,7 +58,7 @@ export const jobService = {
             // ✅ Comprehensive Input Defense: Validate all fields before inserting
             const title = sanitizeInput(data.title || '', 200);
             const company = sanitizeInput(data.company || '', 200);
-            const description = sanitizeInput(data.description || '', 5000);
+            const description = sanitizeInput(data.description || '', MAX_JOB_DESCRIPTION_LENGTH);
             const location = sanitizeInput(data.location || '', 200);
             const salary = sanitizeInput(data.salary || '', 100);
             const requirements = sanitizeInput(data.requirements || '', 3000);
@@ -145,9 +152,12 @@ export const jobService = {
   },
 
   async updateJob(jobId: string, employerId: string, data: any) {
+    if ((data.description || '').length > MAX_JOB_DESCRIPTION_LENGTH) {
+      return { data: null, error: { message: 'وصف الوظيفة يتجاوز الحد الأقصى 8000 حرف' } };
+    }
     // ✅ Sanitize all inputs before update
     const jobType = ALLOWED_JOB_TYPES.includes(data.jobType) ? data.jobType : 'دوام كامل';
-    const rawDesc = sanitizeInput(data.description || '', 5000);
+    const rawDesc = sanitizeInput(data.description || '', MAX_JOB_DESCRIPTION_LENGTH);
     const finalDescription = data.category
       ? encodeCategoryInDescription(rawDesc, data.category)
       : rawDesc;
@@ -172,161 +182,110 @@ export const jobService = {
 
 
   async applyToJob(applicantId: string, employerId: string, data: any) {
-    console.log("💎 [SERVICE_STEP_4] Starting applyToJob...", { applicantId, employerId, jobId: data.jobId });
-    
     if (!employerId || employerId === 'null' || employerId === 'undefined') {
-      console.error("❌ [SERVICE_ERROR] Employer ID is invalid:", employerId);
-      return { data: null, error: { message: "بيانات صاحب العمل مفقودة.", details: "Employer ID is invalid." } };
+      return { data: null, error: { message: 'بيانات صاحب العمل مفقودة.', details: 'Employer ID is invalid.' } };
     }
 
+    const rawApplicantData = data.applicantData && typeof data.applicantData === 'object' && !Array.isArray(data.applicantData) ? data.applicantData : {};
+    const snapshot = readApplicantCvSnapshot(rawApplicantData.cv);
+    if (rawApplicantData.cv != null && !snapshot) {
+      return { data: null, error: { code: 'INVALID_APPLICANT_CV', message: `السيرة الذاتية المرفقة غير صالحة أو تتجاوز الحد الأقصى ${CV_LIMITS.maxBytes} بايت. أعد تجهيزها وحاول مجدداً.` } };
+    }
+    const cvFields = snapshot ? cvApplicationFields(snapshot.data) : null;
+    const experienceMetadata = sanitizeInput(data.experience || rawApplicantData.experience || cvFields?.experience || '', CV_LIMITS.maxBytes);
+    const educationMetadata = sanitizeInput(data.education || rawApplicantData.education || cvFields?.education || '', CV_LIMITS.maxBytes);
+    const experience = experienceMetadata.slice(0, 2000);
+    const education = educationMetadata.slice(0, 2000);
+    const applicationSkills = Array.isArray(data.skills) ? data.skills : [];
+    const metadataSkills = Array.isArray(rawApplicantData.skills) ? rawApplicantData.skills : typeof rawApplicantData.skills === 'string' ? rawApplicantData.skills.split(',') : [];
+    const rawSkills = applicationSkills.length ? applicationSkills : metadataSkills.length ? metadataSkills : cvFields?.skills || [];
+    const skills = rawSkills.filter((skill: unknown) => typeof skill === 'string').slice(0, 50).map((skill: string) => sanitizeInput(skill, CV_LIMITS.skill));
+    const applicantData = {
+      ...rawApplicantData,
+      experience: experienceMetadata, education: educationMetadata, skills,
+      ...(snapshot ? {
+        cv: snapshot,
+        name: snapshot.data.personal.fullName,
+        title: snapshot.data.personal.title,
+        location: snapshot.data.personal.location,
+        phone: snapshot.data.personal.phone,
+        email: snapshot.data.personal.email,
+        bio: snapshot.data.summary,
+      } : {}),
+    };
     const mutexKey = `job_app_${applicantId}_${data.jobId}`;
     const idempotencyKey = idempotencyEngine.generateKey('job_apps', applicantId, { jobId: data.jobId });
     const coverLetterText = sanitizeInput(data.coverLetter || data.notes || '', 3000);
     const cvUrlText = data.cvUrl || '';
+    // Schema fallbacks must never discard the captured CV.
+    const minimalUpdate = { cover_letter: coverLetterText, applicant_data: applicantData, status: 'pending' };
+    const standardUpdate = { ...minimalUpdate, cv_url: cvUrlText };
+    const fullUpdate = { ...standardUpdate, experience, education, skills };
+    const isMissingColumn = (error: any) => error?.code === '42703' || error?.code === 'PGRST204';
+    const writeError = (error: any) => isMissingColumn(error) && /\bapplicant_data\b/i.test(`${error.message || ''} ${error.details || ''} ${error.hint || ''}`)
+      ? { code: 'CV_APPLICATION_MIGRATION_REQUIRED', message: 'تعذر حفظ بيانات الطلب والسيرة الذاتية. يلزم ترقية قاعدة البيانات لإضافة عمود applicant_data إلى job_applications؛ لم يتم إرسال الطلب بدون السيرة.' }
+      : error;
 
-    // ── 1. Fast Check & Upsert: If application already exists, update it cleanly ──
-    try {
-      const { data: existingApp } = (await withTimeout(
-        (supabase.from('job_applications') as any)
-          .select('id, status')
-          .eq('applicant_id', applicantId)
-          .eq('job_id', data.jobId)
-          .maybeSingle(),
-        6000,
-        'apply.checkExisting'
-      )) as any;
-
-      if (existingApp?.id) {
-        console.log("ℹ️ [applyToJob] Application already exists, updating existing record:", existingApp.id);
-        const updatePayload: any = {
-          cover_letter: coverLetterText,
-          cv_url: cvUrlText,
-          experience: sanitizeInput(data.experience || '', 2000),
-          education: sanitizeInput(data.education || '', 2000),
-          skills: Array.isArray(data.skills) ? data.skills.slice(0, 50) : [],
-          applicant_data: data.applicantData || {},
-          status: 'pending',
-        };
-
-        const resUpdate: any = await withTimeout(
-          (supabase.from('job_applications') as any)
-            .update(updatePayload)
-            .eq('id', existingApp.id)
-            .select(),
-          8000,
-          'apply.updateExisting'
-        );
-
-        if (!resUpdate.error) {
-          return { data: resUpdate.data, error: null, isUpdated: true };
+    const updateApplication = async (filters: Record<string, string>) => {
+      for (const [level, payload] of [fullUpdate, standardUpdate, minimalUpdate].entries()) {
+        let query = (supabase.from('job_applications') as any).update(payload);
+        for (const [column, value] of Object.entries(filters)) query = query.eq(column, value);
+        const res: any = await withTimeout(query.select(), 8000, `apply.update${level + 1}`);
+        if (!res.error) {
+          if (!res.data?.length) return { data: null, error: { code: 'APPLICATION_NOT_UPDATED', message: 'تعذر تحديث الطلب؛ تحقق من صلاحية الوصول وأعد المحاولة.' } };
+          return { data: res.data, error: null, isUpdated: true };
         }
-
-        // Fallback update if extended columns are not present
-        const resMinUpdate: any = await withTimeout(
-          (supabase.from('job_applications') as any)
-            .update({
-              cover_letter: coverLetterText,
-              cv_url: cvUrlText,
-              status: 'pending',
-            })
-            .eq('id', existingApp.id)
-            .select(),
-          8000,
-          'apply.updateExistingFallback'
-        );
-
-        return { data: resMinUpdate.data, error: resMinUpdate.error, isUpdated: true };
+        const error = writeError(res.error);
+        if (error !== res.error || !isMissingColumn(error) || level === 2) return { data: null, error };
       }
-    } catch (checkErr) {
-      console.warn("⚠️ [applyToJob] Non-fatal check error, proceeding to insert:", checkErr);
-    }
+      throw new Error('Application update fallback exhausted');
+    };
 
     try {
-      const result: any = await withMutex(mutexKey, () =>
-        withIdempotency(
-          idempotencyKey,
-          async () => {
-            return withCollisionRetry(async (_attempt, freshId) => {
-              // 1. Try full insert (all fields including extended metadata)
-              const fullPayload = {
-                id: freshId,
-                applicant_id: applicantId,
-                employer_id: employerId,
-                job_id: data.jobId,
-                cover_letter: coverLetterText,
-                cv_url: cvUrlText,
-                experience: sanitizeInput(data.experience || '', 2000),
-                education: sanitizeInput(data.education || '', 2000),
-                skills: Array.isArray(data.skills) ? data.skills.slice(0, 50) : [],
-                applicant_data: data.applicantData || {},
-                status: 'pending'
-              };
+      let existingApp: any = null;
+      try {
+        const res: any = await withTimeout(
+          (supabase.from('job_applications') as any).select('id, status').eq('applicant_id', applicantId).eq('job_id', data.jobId).maybeSingle(),
+          6000, 'apply.checkExisting'
+        );
+        existingApp = res.data;
+      } catch (checkErr) {
+        console.warn('[applyToJob] Non-fatal check error, proceeding to insert:', checkErr);
+      }
+      if (existingApp?.id) return await updateApplication({ id: existingApp.id });
 
-              try {
-                const res: any = await withTimeout((supabase.from('job_applications') as any).insert([fullPayload]).select(), 10000, 'apply.insert1');
-                if (!res.error) return { data: res.data, error: null };
-
-                // If error is duplicate application, try update immediately
-                if (res.error?.code === '23505') {
-                  const resUp: any = await (supabase.from('job_applications') as any)
-                    .update({ cover_letter: coverLetterText, cv_url: cvUrlText, status: 'pending' })
-                    .eq('applicant_id', applicantId)
-                    .eq('job_id', data.jobId)
-                    .select();
-                  if (!resUp.error) return { data: resUp.data, error: null, isUpdated: true };
-                }
-
-                console.warn("⚠️ [applyToJob] Full payload insert returned error, attempting standard fallback:", res.error);
-                
-                // 2. Fallback level 1: Standard columns without extended schema
-                const standardPayload = {
-                  id: freshId,
-                  applicant_id: applicantId,
-                  employer_id: employerId,
-                  job_id: data.jobId,
-                  cover_letter: coverLetterText,
-                  cv_url: cvUrlText,
-                  status: 'pending'
-                };
-
-                const res2: any = await withTimeout((supabase.from('job_applications') as any).insert([standardPayload]).select(), 10000, 'apply.insert2');
-                if (!res2.error) return { data: res2.data, error: null };
-
-                console.warn("⚠️ [applyToJob] Standard payload insert returned error, attempting minimal fallback:", res2.error);
-
-                // 3. Fallback level 2: Minimal essential columns
-                const minPayload = {
-                  id: freshId,
-                  applicant_id: applicantId,
-                  job_id: data.jobId,
-                  cover_letter: coverLetterText,
-                  status: 'pending'
-                };
-
-                const res3: any = await withTimeout((supabase.from('job_applications') as any).insert([minPayload]).select(), 10000, 'apply.insert3');
-                return { data: res3.data, error: res3.error };
-
-              } catch (err: any) {
-                console.error("❌ [applyToJob] exception:", err);
-                return { data: null, error: err };
-              }
-            }, { scope: 'applyToJob' });
-          },
-          { ttlMs: 5000, scope: 'job_applications' }
-        )
-      );
-
-      // 🔁 الحماية من التكرار يتولاها فحص الطلب الموجود + قيد UNIQUE في القاعدة،
-      // لذا نُبطِل الكاش فوراً بعد الاكتمال (نجاحاً أو فشلاً) كي يُعاد الإرسال بدون رفرش.
+      return await withMutex(mutexKey, () => withIdempotency(
+        idempotencyKey,
+        () => withCollisionRetry(async (_attempt, freshId) => {
+          const identity = { id: freshId, applicant_id: applicantId, job_id: data.jobId };
+          const payloads = [
+            { ...identity, employer_id: employerId, ...fullUpdate },
+            { ...identity, employer_id: employerId, ...standardUpdate },
+            { ...identity, ...minimalUpdate },
+          ];
+          for (const [level, payload] of payloads.entries()) {
+            const res: any = await withTimeout((supabase.from('job_applications') as any).insert([payload]).select(), 10000, `apply.insert${level + 1}`);
+            if (!res.error) return { data: res.data, error: null };
+            const error = writeError(res.error);
+            if (error !== res.error) return { data: null, error };
+            // Concurrent submissions can race the existing-application check.
+            if (error.code === '23505') {
+              const updated = await updateApplication({ applicant_id: applicantId, job_id: data.jobId });
+              // Preserve ID collisions for the collision retry mechanism.
+              return updated.error?.code === 'APPLICATION_NOT_UPDATED' ? { data: null, error } : updated;
+            }
+            if (!isMissingColumn(error) || level === 2) return { data: null, error };
+          }
+          throw new Error('Application insert fallback exhausted');
+        }, { scope: 'applyToJob' }),
+        { ttlMs: 5000, scope: 'job_applications' }
+      ));
+    } catch (error: any) {
+      return { data: null, error: writeError(error) };
+    } finally {
+      // Preserve immediate resubmission without refreshing, on all paths.
       idempotencyEngine.invalidate(idempotencyKey);
       concurrencyMutex.clearKey(mutexKey);
-      return result;
-    } catch (e: any) {
-      // Invalidate lock and idempotency on failure so user can retry immediately without refreshing
-      idempotencyEngine.invalidate(idempotencyKey);
-      concurrencyMutex.clearKey(mutexKey);
-      console.error("❌ [applyToJob] Outer catch error:", e);
-      return { data: null, error: e };
     }
   },
 

@@ -264,9 +264,11 @@ export const profileService = {
     // ✅ [SECURITY FIX MED-2] Defense-in-depth: explicitly block privilege-escalation fields.
     // Even though RLS on Supabase prevents is_admin changes at the DB level,
     // we reject them here too to enforce the principle of least privilege.
-    const FORBIDDEN_FIELDS = ['is_admin', 'isAdmin', 'id', 'email'];
+    // Strip role aliases before both DB mapping and the optimistic cache merge.
+    updates = { ...updates };
+    const FORBIDDEN_FIELDS = ['is_admin', 'isAdmin', 'id', 'email', 'role', 'account_type', 'accountType'];
     for (const field of FORBIDDEN_FIELDS) {
-      if (updates[field] !== undefined) {
+      if (Object.prototype.hasOwnProperty.call(updates, field)) {
         console.warn(`[Security] Blocked attempt to update forbidden field: '${field}'. This field cannot be changed by the client.`);
         delete updates[field];
       }
@@ -453,6 +455,34 @@ export const profileService = {
     reason: string
   ) {
     try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) return { error: authError };
+      if (!authData.user || authData.user.id !== userId) {
+        return { error: new Error('يمكنك إرسال طلب لحسابك فقط') };
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles').select('role, is_admin').eq('id', userId).single();
+      if (profileError) return { error: profileError };
+      if (!profile) return { error: new Error('تعذر التحقق من نوع الحساب') };
+
+      const isAdmin = profile.is_admin === true || ['admin', 'superadmin'].includes(profile.role);
+      if (!isAdmin) {
+        // Do not use the cached settings fallback for authorizing a request.
+        const { data: setting, error: settingError } = await supabase
+          .from('platform_settings').select('value').eq('key', 'account_switch_enabled').maybeSingle();
+        if (settingError) return { error: settingError };
+        if (setting?.value !== 'true') {
+          return { error: new Error('خاصية تبديل نوع الحساب مقفلة حالياً وتُفتح من قبل الإدارة') };
+        }
+      }
+      if (!['seeker', 'employer', 'freelancer'].includes(requestedRole) || requestedRole === profile.role) {
+        return { error: new Error('نوع الحساب المطلوب غير صالح') };
+      }
+      if (currentRole !== profile.role) {
+        return { error: new Error('تغير نوع حسابك، يرجى تحديث الملف قبل إرسال الطلب') };
+      }
+
       // إدراج الطلب في الجدول المخصص role_change_requests
       const { data, error } = await (supabase as any)
         .from('role_change_requests')

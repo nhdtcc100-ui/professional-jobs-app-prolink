@@ -319,12 +319,16 @@ export const authService = {
     return supabase.auth.resend({ type: 'signup', email: cleanEmail });
   },
 
-  // ── Role Selection (شاشة اختيار الدور أو تحويل نوع الحساب) ──────────────────
+  // First role assignment only; established roles require an admin-approved request.
   async selectRole(
     userId: string, 
     role: 'seeker' | 'employer' | 'freelancer', 
     userData: Record<string, unknown> = {}
   ) {
+    if (!['seeker', 'employer', 'freelancer'].includes(role)) {
+      return { data: null, error: new Error('نوع الحساب غير صالح') };
+    }
+
     const extraUpdates: Record<string, any> = {};
     if (userData.display_title) extraUpdates.display_title = sanitizeInput(userData.display_title as string, 120);
     if (userData.displayTitle) extraUpdates.display_title = sanitizeInput(userData.displayTitle as string, 120);
@@ -338,19 +342,35 @@ export const authService = {
     if (userData.location) extraUpdates.location = sanitizeInput(userData.location as string, 100);
     if (userData.phone) extraUpdates.phone = sanitizeInput(userData.phone as string, 30);
 
-    // 1. تحقق أولاً إذا كان الحساب والملف الشخصي موجوداً بالفعل
-    const { data: existing } = await supabase
+    const { data: existing, error: lookupError } = await supabase
       .from('profiles')
       .select('id, name, role')
       .eq('id', userId)
       .maybeSingle();
 
+    if (lookupError) return { data: null, error: lookupError };
+
+    if (existing?.role) {
+      if (existing.role !== role) {
+        return { data: null, error: new Error('تغيير نوع الحساب يتطلب طلباً وموافقة الإدارة') };
+      }
+      return { data: existing, error: null };
+    }
+
     if (existing) {
-      // ✅ الحساب موجود: نُحدِّث فقط الدور (role) مع أي بيانات إضافية
-      return supabase
+      // Compare-and-set prevents a concurrent first assignment from being overwritten.
+      const { data, error } = await supabase
         .from('profiles')
-        .update({ role: role, ...extraUpdates })
-        .eq('id', userId);
+        .update({ role, ...extraUpdates })
+        .eq('id', userId)
+        .or('role.is.null,role.eq.')
+        .select('id, name, role')
+        .maybeSingle();
+      if (error) return { data: null, error };
+      if (!data || data.id !== userId || data.role !== role) {
+        return { data: null, error: new Error('لم يتم تأكيد نوع الحساب، يرجى تحديث الملف والمحاولة مجدداً') };
+      }
+      return { data, error: null };
     }
 
     // 2. مستخدم جديد لأول مرة عند التسجيل:
@@ -374,11 +394,16 @@ export const authService = {
       ...extraUpdates,
     };
 
-    // upsert: سينشئ إذا لم يكن موجوداً
-    return supabase.from('profiles').upsert(profileData as any, {
-      onConflict: 'id',
-      ignoreDuplicates: false,
-    });
+    // Insert only: a concurrently created profile must never be overwritten.
+    const { data, error } = await supabase.from('profiles')
+      .insert(profileData as any)
+      .select('id, name, role')
+      .single();
+    if (error) return { data: null, error };
+    if (!data || data.id !== userId || data.role !== role) {
+      return { data: null, error: new Error('لم يتم تأكيد نوع الحساب، يرجى تحديث الملف والمحاولة مجدداً') };
+    }
+    return { data, error: null };
   },
 
   // ── Get Profile (admin status read from DB, never hardcoded) ─────────────────

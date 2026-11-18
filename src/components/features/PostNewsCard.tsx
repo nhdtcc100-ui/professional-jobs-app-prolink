@@ -29,7 +29,7 @@ interface PostNewsCardProps {
 }
 
 export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers, onDeletePost, onEditPost }: PostNewsCardProps) {
-  const { appUser, addToast, setPosts } = useAppContext();
+  const { appUser, addToast, setPosts, handleDeletePost: deletePostChecked } = useAppContext();
   const author = allUsers.find(u => u.id === post.authorId);
   const displayImage = post.imageUrl || author?.coverUrl || author?.avatar || DEFAULT_NEWS_PLACEHOLDER;
   const hasVideo = !!post.videoUrl;
@@ -97,37 +97,11 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
     e.stopPropagation();
     setIsDeleting(true);
     try {
-      if (onDeletePost) {
-        const ok = await onDeletePost(post.id);
-        if (ok !== false) {
-          setDeleted(true);
-          setShowDeleteConfirm(false);
-        }
-      } else {
-        let query = supabase.from('posts').delete().eq('id', post.id);
-        if (!isAdmin && appUser?.id) query = (query as any).eq('author_id', appUser.id);
-        const { data: deletedRows, error } = await (query as any).select('id');
-        if (error) {
-          console.error('[handleDelete] Supabase error:', error);
-          throw new Error(error.message || 'فشل حذف المنشور من قاعدة البيانات');
-        }
-        if (!deletedRows || deletedRows.length === 0) {
-          throw new Error('لا تملك صلاحية حذف هذا المنشور أو لم يعد موجوداً');
-        }
-        try {
-          const del: string[] = JSON.parse(localStorage.getItem('prolink_deleted_posts') || '[]');
-          if (!del.includes(post.id)) { del.push(post.id); localStorage.setItem('prolink_deleted_posts', JSON.stringify(del.slice(-300))); }
-          const cached = JSON.parse(localStorage.getItem('prolink_cached_posts') || '[]');
-          localStorage.setItem('prolink_cached_posts', JSON.stringify(cached.filter((p: any) => p.id !== post.id)));
-        } catch {}
-        setPosts(prev => prev.filter(p => p.id !== post.id));
+      const ok = await (onDeletePost ?? deletePostChecked)(post.id);
+      if (ok !== false) {
         setDeleted(true);
         setShowDeleteConfirm(false);
-        addToast('🗑️ تم حذف المنشور نهائياً من قاعدة البيانات بنجاح', 'success');
       }
-    } catch (err: any) {
-      console.error('[handleDelete] Failed:', err);
-      addToast('فشل حذف المنشور: ' + (err?.message || 'خطأ في قاعدة البيانات'), 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -183,7 +157,7 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
                     تأكيد حذف المنشور نهائياً
                   </h3>
                   <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed px-2">
-                    سيتم حذف هذا المنشور بالكامل من قاعدة البيانات فوراً ولن تتمكن من استرجاعه لاحقاً. هل أنت متأكد من الحذف؟
+                    سيتم حذف هذا المنشور نهائياً ولن تتمكن من استرجاعه لاحقاً. هل أنت متأكد من الحذف؟
                   </p>
                 </div>
 

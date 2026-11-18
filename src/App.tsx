@@ -14,7 +14,7 @@ import {
   loadSettingsPage,
   preloadTab
 } from './lib/lazyPreload';
-import { Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare, Shield } from 'lucide-react';
+import { ArrowRight, Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare, Shield } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { Post, Job, AppUser } from './types';
 import { SkeletonPostCard } from './components/ui';
@@ -115,6 +115,18 @@ function App() {
   useEffect(() => {
     fetchGroups();
   }, []);
+
+  useEffect(() => {
+    if (!appUser && !isGuestMode) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void loadServicesView()
+        .then(module => module.prefetchServices(appUser?.id ?? null, controller.signal))
+        .catch(() => {})
+        .finally(() => controller.abort());
+    }, 1500);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [appUser?.id, isGuestMode]);
 
   // ── خروج وضع الزائر تلقائياً عند تسجيل الدخول ──
   useEffect(() => {
@@ -249,6 +261,11 @@ function App() {
   const [selectedPostDetail, setSelectedPostDetail] = useState<Post | null>(null);
   const [selectedJobDetail, setSelectedJobDetail] = useState<Job | null>(null);
   const [returnToJob, setReturnToJob] = useState<Job | null>(null);
+  const [returnToServicesTab, setReturnToServicesTab] = useState<'home' | 'services' | null>(null);
+
+  useEffect(() => {
+    if (activeTab !== 'profile') setReturnToServicesTab(null);
+  }, [activeTab]);
   const [returnToDetailFeed, setReturnToDetailFeed] = useState<{
     type: 'job' | 'news' | 'post';
     items: any[];
@@ -1043,6 +1060,9 @@ function App() {
                         <ServicesView
                           appUser={appUser}
                           onUserClick={(u) => {
+                            setReturnToServicesTab('home');
+                            setReturnToJob(null);
+                            setReturnToDetailFeed(null);
                             setSelectedProfile(u);
                             setActiveTab('profile');
                           }}
@@ -1439,18 +1459,22 @@ function App() {
                 </div>
               )}
 
-              {activeTab === 'services' && (
+              {(activeTab === 'services' || (activeTab === 'profile' && returnToServicesTab === 'services')) && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.13, ease: 'easeOut' }}
-                  className="pb-safe-bottom px-1 md:px-0"
+                  className={activeTab === 'services' ? 'pb-safe-bottom px-1 md:px-0' : 'hidden'}
+                  aria-hidden={activeTab !== 'services'}
                 >
                   <Suspense fallback={<TabSkeleton />}>
                     <ServicesView
                       appUser={appUser}
                       onUserClick={(u) => {
+                        setReturnToServicesTab('services');
+                        setReturnToJob(null);
+                        setReturnToDetailFeed(null);
                         setSelectedProfile(u);
                         setActiveTab('profile');
                       }}
@@ -1519,6 +1543,22 @@ function App() {
                   }}
                   className="pb-safe-bottom px-1 md:px-0 will-change-transform transform-gpu"
                 >
+                  {returnToServicesTab && (
+                    <div className="max-w-4xl lg:max-w-5xl mx-auto px-3 sm:px-6 pt-2" dir="rtl">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedProfile(null);
+                          setActiveTab(returnToServicesTab);
+                          setReturnToServicesTab(null);
+                        }}
+                        className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 dark:border-slate-700 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-slate-800"
+                      >
+                        <ArrowRight size={18} aria-hidden="true" />
+                        العودة إلى سوق المهن
+                      </button>
+                    </div>
+                  )}
                   <Suspense fallback={<TabSkeleton />}>
                     <ProfilePage
                       profile={selectedProfile || appUser!}
@@ -1533,7 +1573,11 @@ function App() {
                         setReturnToJob(null);
                       }}
                       onBack={() => {
-                        if (returnToDetailFeed) {
+                        if (returnToServicesTab) {
+                          setSelectedProfile(null);
+                          setActiveTab(returnToServicesTab);
+                          setReturnToServicesTab(null);
+                        } else if (returnToDetailFeed) {
                           setSelectedProfile(null);
                           setDetailFeed(returnToDetailFeed);
                           setReturnToDetailFeed(null);

@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useCallback, useRef, startTransition } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  Wrench, Search, MapPin, RefreshCw, Phone, MessageSquare,
-  Star, CheckCircle, User, ChevronDown, Loader2, X, SlidersHorizontal
+  Wrench, Search, MapPin, RefreshCw, MessageSquare,
+  Star, User, ChevronDown, Loader2, X
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { AppUser } from '../../../types';
 import { mockDataService } from '../../../lib/services/mockDataService';
+import { withTimeout } from '../../../lib/utils/withTimeout';
 
 interface ServicesViewProps {
   appUser: AppUser | null;
@@ -15,6 +16,65 @@ interface ServicesViewProps {
 }
 
 const PAGE_SIZE = 10;
+const CACHE_TTL_MS = 30_000;
+const CACHE_MAX_ENTRIES = 20;
+type ProviderPage = { data: AppUser[]; count: number; cachedAt: number };
+// Memory only: never reuse one viewer's results for another viewer.
+const providerCache = new Map<string, ProviderPage>();
+const providerCacheKey = (viewerId: string | null, title: string, location: string, page: number) =>
+  JSON.stringify([viewerId, [title, location, page]]);
+const isFresh = (entry: ProviderPage) => Date.now() - entry.cachedAt < CACHE_TTL_MS;
+
+function cacheProviderPage(key: string, entry: ProviderPage) {
+  providerCache.delete(key);
+  providerCache.set(key, entry);
+  while (providerCache.size > CACHE_MAX_ENTRIES) {
+    providerCache.delete(providerCache.keys().next().value!);
+  }
+}
+
+// Escape LIKE wildcards, then quote the entire value for PostgREST's .or grammar.
+// PostgREST also treats '*' as '%'; discard that operator, preserving Arabic names.
+const searchPattern = (term: string) => `%${term.replace(/\*/g, '').replace(/[\\%_]/g, '\\$&')}%`;
+const quoteFilterValue = (value: string) => `"${value.replace(/[\\"]/g, '\\$&')}"`;
+
+async function fetchProviderPage(viewerId: string | null, title: string, location: string, page: number, signal: AbortSignal): Promise<ProviderPage> {
+  let query = supabase.from('profiles')
+    .select('id, name, avatar_url, title, specialty, location, is_available, role, is_pro, display_title, bio, is_active', { count: 'exact' })
+    .in('role', ['freelancer', 'seeker', 'job_seeker'])
+    .not('is_active', 'eq', false)
+    .order('is_available', { ascending: false })
+    .order('is_pro', { ascending: false })
+    .order('created_at', { ascending: false })
+    .order('id', { ascending: true })
+    .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+  if (title) {
+    const term = quoteFilterValue(searchPattern(title));
+    query = query.or(['title', 'specialty', 'display_title', 'name'].map(column => `${column}.ilike.${term}`).join(','));
+  }
+  if (location) query = query.ilike('location', searchPattern(location));
+  const { data, error, count } = await withTimeout(query.abortSignal(signal), 10_000, 'ServicesView.providers');
+  if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+  if (error) throw error;
+  const entry: ProviderPage = {
+    data: (data || []).map(p => ({
+      id: p.id, name: p.name || 'مجهول', email: '', avatar: p.avatar_url || '',
+      role: p.role === 'freelancer' ? 'freelancer' : 'seeker',
+      isPro: p.is_pro || false, is_pro: p.is_pro || false, title: p.title || '',
+      displayTitle: p.display_title || p.title || p.specialty || (p.role === 'freelancer' ? 'مقدم خدمة' : 'باحث عن وظيفة'),
+      specialty: p.specialty || '', location: p.location || '', isAvailable: Boolean(p.is_available), bio: p.bio || '',
+    })),
+    count: count ?? 0, cachedAt: Date.now(),
+  };
+  cacheProviderPage(providerCacheKey(viewerId, title, location, page), entry);
+  return entry;
+}
+
+export async function prefetchServices(viewerId: string | null, signal: AbortSignal): Promise<void> {
+  if (signal.aborted || mockDataService.isEnabled()) return;
+  const cached = providerCache.get(providerCacheKey(viewerId, '', '', 0));
+  if (!cached || !isFresh(cached)) await fetchProviderPage(viewerId, '', '', 0, signal);
+}
 
 // بطاقة مزود الخدمة
 const ServiceCard: React.FC<{
@@ -158,199 +218,169 @@ const SERVICE_CATEGORIES = [
 
 // ── المكون الرئيسي ─────────────────────────────────────────────────────────
 export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick, onRequireAuth }) => {
+  const viewerId = appUser?.id ?? null;
   const [searchTitle, setSearchTitle] = useState('');
   const [searchLocation, setSearchLocation] = useState('');
-  // القيم المُقدَّمة للاستعلام بعد debounce (300ms)
   const [debouncedTitle, setDebouncedTitle] = useState('');
   const [debouncedLocation, setDebouncedLocation] = useState('');
+  const searchKey = providerCacheKey(viewerId, debouncedTitle, debouncedLocation, 0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
-  // كاش فوري في الذاكرة لمنح سرعة استجابة خارقة 0ms (Stale-While-Revalidate)
-  const searchCacheRef = useRef<Map<string, { data: AppUser[]; count: number }>>(new Map());
-  const [providers, setProviders] = useState<AppUser[]>([]);
-  const [page, setPage] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [totalCount, setTotalCount] = useState(0);
-  const [showFilters, setShowFilters] = useState(false);
-  const [availableOnly, setAvailableOnly] = useState(false);
+  const requestRef = useRef<{ key: string; controller: AbortController } | null>(null);
+  const appUserRef = useRef(appUser);
+  useEffect(() => { appUserRef.current = appUser; }, [appUser]);
 
-  // مزامنة حالة توفر المستخدم الحالي فور تعديلها من الملف الشخصي
-  useEffect(() => {
-    if (!appUser?.id) return;
-    const isAvail = Boolean(appUser.isAvailable ?? (appUser as any).is_available ?? appUser.open_to === 'work');
-    setProviders(prev => prev.map(p => {
-      if (p.id === appUser.id) {
-        return { ...p, isAvailable: isAvail, is_available: isAvail };
-      }
-      return p;
-    }));
-  }, [appUser?.id, appUser?.isAvailable, (appUser as any)?.is_available, appUser?.open_to]);
-
-  // الاستماع لتغييرات البيانات الوهمية من لوحة التحكم
-  useEffect(() => {
-    const handleMockChange = () => {
-      searchCacheRef.current.clear();
-      fetchProviders(0, true);
+  const [result, setResult] = useState(() => {
+    const cached = !mockDataService.isEnabled() ? providerCache.get(searchKey) : undefined;
+    return {
+      viewerId, searchKey, data: cached?.data ?? [], count: cached?.count ?? 0, page: 0,
+      hasMore: Boolean(cached?.data.length && PAGE_SIZE < cached.count),
     };
-    window.addEventListener('prolink_mock_data_change', handleMockChange);
-    return () => window.removeEventListener('prolink_mock_data_change', handleMockChange);
-  }, []);
+  });
+  const [loading, setLoading] = useState(() => {
+    const cached = !mockDataService.isEnabled() ? providerCache.get(searchKey) : undefined;
+    return !cached || !isFresh(cached);
+  });
+  const [fetchError, setFetchError] = useState<{
+    searchKey: string; page: number; reset: boolean; message: string;
+  } | null>(null);
+  const [availableOnly, setAvailableOnly] = useState(false);
+  const error = fetchError?.searchKey === searchKey ? fetchError : null;
+  const pendingSearch = searchTitle.trim() !== debouncedTitle || searchLocation.trim() !== debouncedLocation;
+  const resultsMatchSearch = result.searchKey === searchKey;
+  // Hide previous-account rows immediately, even before the fetch effect runs.
+  const providers = React.useMemo(() => {
+    if (result.viewerId !== viewerId) return [];
+    return result.data.map(p => {
+      if (!appUser || p.id !== appUser.id) return p;
+      const isAvailable = Boolean(appUser.isAvailable ?? appUser.is_available ?? appUser.open_to === 'work');
+      return { ...p, isAvailable, is_available: isAvailable };
+    });
+  }, [result, viewerId, appUser]);
+  const totalCount = result.viewerId === viewerId ? result.count : 0;
+  const hasMore = resultsMatchSearch && result.hasMore;
 
-  // ── Debounce: تأخير 250ms قبل تشغيل البحث اليدوي لتجنب استعلامات متتالية ────────
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      startTransition(() => {
-        setDebouncedTitle(searchTitle);
-        setDebouncedLocation(searchLocation);
-      });
+      setDebouncedTitle(searchTitle.trim());
+      setDebouncedLocation(searchLocation.trim());
     }, 250);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [searchTitle, searchLocation]);
 
-  const fetchProviders = useCallback(async (currentPage: number, reset = false) => {
-    // إذا كانت البيانات الوهمية مفعلة، نقرأ محلياً 100% دون أي طلب لسوبابيس لحماية الباقة المجانية
-    if (mockDataService.isEnabled()) {
-      setLoading(true);
-      const bundle = mockDataService.getBundle();
-      let candidates = bundle.users.filter(u => u.role === 'freelancer' || u.role === 'seeker');
-      if (appUser && (appUser.role === 'freelancer' || appUser.role === 'seeker')) {
-        candidates = [appUser, ...candidates.filter(u => u.id !== appUser.id)];
-      }
-      if (debouncedTitle.trim()) {
-        const t = debouncedTitle.trim().toLowerCase();
-        candidates = candidates.filter(u =>
-          u.name.toLowerCase().includes(t) ||
-          (u.title && u.title.toLowerCase().includes(t)) ||
-          (u.displayTitle && u.displayTitle.toLowerCase().includes(t)) ||
-          (u.specialty && u.specialty.toLowerCase().includes(t))
-        );
-      }
-      if (debouncedLocation.trim()) {
-        const l = debouncedLocation.trim().toLowerCase();
-        candidates = candidates.filter(u => u.location && u.location.toLowerCase().includes(l));
-      }
-      candidates.sort((a, b) => {
-        const aAvail = Boolean(a.isAvailable ?? (a as any).is_available);
-        const bAvail = Boolean(b.isAvailable ?? (b as any).is_available);
-        if (aAvail !== bAvail) return aAvail ? -1 : 1;
-        return (b.isPro ? 1 : 0) - (a.isPro ? 1 : 0);
-      });
+  const fetchProviders = useCallback(async (currentPage: number, reset = false, force = false) => {
+    const cacheKey = providerCacheKey(viewerId, debouncedTitle, debouncedLocation, currentPage);
+    // The ref closes the double-click gap before React renders disabled buttons.
+    if (requestRef.current && (!reset || (!force && requestRef.current.key === cacheKey))) return;
+    requestRef.current?.controller.abort();
+    const controller = new AbortController();
+    const request = { key: cacheKey, controller };
+    requestRef.current = request;
+    const isCurrent = () => requestRef.current === request && !controller.signal.aborted;
+    setLoading(true);
+    setFetchError(null);
 
-      const paged = candidates.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE);
-      if (reset) {
-        setProviders(paged);
-      } else {
-        setProviders(prev => [...prev, ...paged]);
-      }
-      setTotalCount(candidates.length);
-      setHasMore((currentPage + 1) * PAGE_SIZE < candidates.length);
-      setLoading(false);
-      return;
-    }
-    const cacheKey = `${debouncedTitle.trim()}_${debouncedLocation.trim()}_${currentPage}`;
-
-    // إذا كانت الصفحة الأولى وموجودة في الكاش، اعرضها فوراً 0ms دون أي انتظار
-    if (reset && searchCacheRef.current.has(cacheKey)) {
-      const cached = searchCacheRef.current.get(cacheKey)!;
-      setProviders(cached.data);
-      setTotalCount(cached.count);
-      setHasMore(cached.data.length === PAGE_SIZE);
-      // متابعة في الخلفية لتحديث البيانات بصمت (Stale-While-Revalidate)
-    }
-
-    // إلغاء أي طلب شبكة سابق
-    if (abortRef.current) abortRef.current.abort();
-    abortRef.current = new AbortController();
-
-    if (!searchCacheRef.current.has(cacheKey)) {
-      setLoading(true);
-    }
+    const applyPage = (data: AppUser[], count: number) => {
+      if (!isCurrent()) return;
+      setResult(prev => ({
+        viewerId, searchKey, count, page: currentPage,
+        data: Array.from(new Map(
+          [...(!reset && prev.searchKey === searchKey ? prev.data : []), ...data].map(p => [p.id, p])
+        ).values()),
+        hasMore: data.length > 0 && (currentPage + 1) * PAGE_SIZE < count,
+      }));
+    };
 
     try {
-      let query = (supabase as any)
-        .from('profiles')
-        .select('id, name, avatar_url, title, specialty, location, is_available, role, is_pro, display_title, bio, is_active', { count: 'exact' })
-        .in('role', ['freelancer', 'seeker', 'job_seeker'])
-        .not('is_active', 'eq', false)
-        .order('is_available', { ascending: false })
-        .order('is_pro', { ascending: false })
-        .order('created_at', { ascending: false })
-        .range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1);
-
-      if (debouncedTitle.trim()) {
-        const titleTerm = debouncedTitle.trim();
-        query = query.or(
-          `title.ilike.%${titleTerm}%,specialty.ilike.%${titleTerm}%,display_title.ilike.%${titleTerm}%,name.ilike.%${titleTerm}%`
-        );
-      }
-      if (debouncedLocation.trim()) {
-        const locTerm = debouncedLocation.trim();
-        query = query.ilike('location', `%${locTerm}%`);
-      }
-
-      const { data, error, count } = await query;
-      if (error) throw error;
-
-      const mapped: AppUser[] = (data || []).map((p: any) => {
-        const isFreelancer = p.role === 'freelancer';
-        const displayTitle = p.display_title || p.title || p.specialty || (isFreelancer ? 'مقدم خدمة' : 'باحث عن وظيفة');
-
-        return {
-          id: p.id,
-          name: p.name || 'مجهول',
-          email: '',
-          avatar: p.avatar_url || '',
-          role: (isFreelancer ? 'freelancer' : 'seeker') as any,
-          isPro: p.is_pro || false,
-          is_pro: p.is_pro || false,
-          title: p.title || '',
-          displayTitle,
-          specialty: p.specialty || '',
-          location: p.location || '',
-          isAvailable: Boolean(p.is_available || p.open_to === 'work'),
-          bio: p.bio || '',
-        };
-      });
-
-      // حفظ في الكاش
-      searchCacheRef.current.set(cacheKey, { data: mapped, count: count || 0 });
-
-      if (reset) {
-        setProviders(mapped);
-      } else {
-        setProviders(prev => [...prev, ...mapped]);
+      // Development mocks stay local and never enter the shared live-data cache.
+      if (mockDataService.isEnabled()) {
+        const bundle = mockDataService.getBundle();
+        const currentUser = appUserRef.current;
+        let candidates = bundle.users.filter(u => u.role === 'freelancer' || u.role === 'seeker');
+        if (currentUser && (currentUser.role === 'freelancer' || currentUser.role === 'seeker')) {
+          candidates = [currentUser, ...candidates.filter(u => u.id !== currentUser.id)];
+        }
+        if (debouncedTitle) {
+          const term = debouncedTitle.toLowerCase();
+          candidates = candidates.filter(u =>
+            [u.name, u.title, u.displayTitle, u.display_title, u.specialty]
+              .some(value => value?.toLowerCase().includes(term))
+          );
+        }
+        if (debouncedLocation) {
+          const term = debouncedLocation.toLowerCase();
+          candidates = candidates.filter(u => u.location?.toLowerCase().includes(term));
+        }
+        candidates.sort((a, b) => {
+          const aAvail = Boolean(a.isAvailable ?? a.is_available);
+          const bAvail = Boolean(b.isAvailable ?? b.is_available);
+          if (aAvail !== bAvail) return aAvail ? -1 : 1;
+          return Number(b.isPro ?? b.is_pro ?? false) - Number(a.isPro ?? a.is_pro ?? false);
+        });
+        applyPage(candidates.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE), candidates.length);
+        return;
       }
 
-      if (count !== null) setTotalCount(count);
-      setHasMore(mapped.length === PAGE_SIZE);
-    } catch (err: any) {
-      if (err?.name === 'AbortError') return; // طلب ملغى — طبيعي
+      const cached = providerCache.get(cacheKey);
+      if (!force && cached) {
+        // A stale first page remains visible while revalidating; don't append stale pages.
+        if (reset || isFresh(cached)) applyPage(cached.data, cached.count);
+        if (isFresh(cached)) return;
+      }
+
+      const entry = await fetchProviderPage(viewerId, debouncedTitle, debouncedLocation, currentPage, controller.signal);
+      applyPage(entry.data, entry.count);
+    } catch (err) {
+      if (!isCurrent()) return;
       console.error('[ServicesView] fetch error:', err);
+      setFetchError({
+        searchKey, page: currentPage, reset,
+        message: err instanceof Error && err.message.startsWith('TIMEOUT:')
+          ? 'استغرق تحميل الخدمات وقتاً طويلاً. يرجى إعادة المحاولة.'
+          : 'تعذّر تحميل الخدمات. يرجى إعادة المحاولة.',
+      });
     } finally {
-      setLoading(false);
+      // Also abort after a timeout while the SDK is still waiting to dispatch.
+      controller.abort();
+      if (requestRef.current === request) {
+        requestRef.current = null;
+        setLoading(false);
+      }
     }
-  }, [debouncedTitle, debouncedLocation]);
+  }, [viewerId, debouncedTitle, debouncedLocation, searchKey]);
 
-  // جلب عند تغيّر نص البحث المؤجّل
   useEffect(() => {
-    setPage(0);
-    fetchProviders(0, true);
-  }, [debouncedTitle, debouncedLocation]);
+    void fetchProviders(0, true);
+    return () => {
+      const request = requestRef.current;
+      requestRef.current = null;
+      request?.controller.abort();
+    };
+  }, [fetchProviders]);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const handleMockChange = () => {
+      providerCache.clear();
+      void fetchProviders(0, true, true);
+    };
+    window.addEventListener('prolink_mock_data_change', handleMockChange);
+    return () => window.removeEventListener('prolink_mock_data_change', handleMockChange);
+  }, [fetchProviders]);
 
   const handleLoadMore = () => {
-    const nextPage = page + 1;
-    setPage(nextPage);
-    fetchProviders(nextPage, false);
+    if (loading || requestRef.current || pendingSearch || error || !hasMore) return;
+    void fetchProviders(result.page + 1);
   };
 
-  // بحث فوري: يمسح debounce ويشغّل الاستعلام مباشرة
   const handleSearch = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    setDebouncedTitle(searchTitle);
-    setDebouncedLocation(searchLocation);
-    setPage(0);
+    if (!pendingSearch) {
+      void fetchProviders(0, true, Boolean(error));
+    } else {
+      setDebouncedTitle(searchTitle.trim());
+      setDebouncedLocation(searchLocation.trim());
+    }
   };
 
   const handleClearSearch = () => {
@@ -359,14 +389,14 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
     setSearchLocation('');
     setDebouncedTitle('');
     setDebouncedLocation('');
-    setPage(0);
+    setAvailableOnly(false);
+    if (!debouncedTitle && !debouncedLocation) void fetchProviders(0, true, Boolean(error));
   };
 
   const hasActiveSearch = Boolean(searchTitle.trim() || searchLocation.trim() || availableOnly);
-
   const displayedProviders = React.useMemo(() => {
     if (!availableOnly) return providers;
-    return providers.filter(p => Boolean(p.isAvailable ?? (p as any).is_available));
+    return providers.filter(p => Boolean(p.isAvailable ?? p.is_available));
   }, [providers, availableOnly]);
 
   return (
@@ -423,7 +453,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
             <div className="flex gap-2">
               <button
                 onClick={handleSearch}
-                disabled={loading}
+                disabled={loading && !pendingSearch}
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-white text-blue-600 font-black text-xs rounded-2xl shadow-lg hover:bg-blue-50 transition-all active:scale-95 disabled:opacity-70"
               >
                 {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
@@ -432,6 +462,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
               <button
                 type="button"
                 onClick={() => setAvailableOnly(prev => !prev)}
+                aria-pressed={availableOnly}
                 className={`px-3 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-1.5 border ${
                   availableOnly
                     ? 'bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-900/30'
@@ -445,6 +476,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
               {hasActiveSearch && (
                 <button
                   onClick={handleClearSearch}
+                  aria-label="مسح جميع الفلاتر"
                   className="px-3 py-2.5 bg-white/20 text-white font-bold text-xs rounded-2xl border border-white/30 hover:bg-white/30 transition-all active:scale-95"
                 >
                   <X size={14} />
@@ -468,10 +500,8 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
                   const nextVal = isSelected ? '' : cat.search;
                   if (debounceRef.current) clearTimeout(debounceRef.current);
                   setSearchTitle(nextVal);
-                  startTransition(() => {
-                    setDebouncedTitle(nextVal);
-                    setPage(0);
-                  });
+                  setDebouncedTitle(nextVal);
+                  setDebouncedLocation(searchLocation.trim());
                 }}
                 className={`relative flex-shrink-0 w-[86px] h-[82px] rounded-2xl overflow-hidden transition-all duration-200 active:scale-95 ${
                   isSelected
@@ -508,7 +538,9 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
       {hasActiveSearch && (
         <div className="flex items-center justify-between px-1">
           <p className="text-xs font-black text-slate-500 dark:text-slate-400">
-            {loading ? 'جاري البحث...' : `${providers.length} نتيجة${totalCount > providers.length ? ` من ${totalCount}` : ''}`}
+            {loading || pendingSearch ? 'جاري البحث...' : availableOnly
+              ? `${displayedProviders.length} متاحون ضمن ${providers.length} نتيجة محمّلة`
+              : `${providers.length} نتيجة${totalCount > providers.length ? ` من ${totalCount}` : ''}`}
             {searchTitle && <span className="text-blue-600 dark:text-blue-400"> · {searchTitle}</span>}
             {searchLocation && <span className="text-indigo-600 dark:text-indigo-400"> · {searchLocation}</span>}
           </p>
@@ -518,10 +550,32 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
         </div>
       )}
 
+      {error && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs font-bold text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+          <p>{error.message}</p>
+          <button
+            type="button"
+            disabled={loading || pendingSearch}
+            onClick={() => {
+              if (!requestRef.current && !pendingSearch) void fetchProviders(error.page, error.reset, true);
+            }}
+            className="rounded-xl border border-current px-3 py-2 hover:bg-red-100 disabled:opacity-50 dark:hover:bg-red-900/40"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      )}
+      {loading && providers.length > 0 && (
+        <p role="status" className="text-center text-xs font-bold text-blue-600 dark:text-blue-400">جاري تحديث النتائج...</p>
+      )}
+      {providers.length > 0 && (!resultsMatchSearch || pendingSearch) && (
+        <p className="text-center text-xs text-slate-500 dark:text-slate-400">تظهر النتائج السابقة حتى يكتمل البحث الجديد.</p>
+      )}
+
       {/* قائمة المزودين */}
-      <div className="space-y-3">
-        <AnimatePresence mode="popLayout">
-          {!loading && displayedProviders.length === 0 ? (
+      <div className="space-y-3" aria-busy={loading}>
+        <AnimatePresence key={viewerId ?? 'guest'} mode="popLayout">
+          {!loading && !pendingSearch && !error && resultsMatchSearch && displayedProviders.length === 0 ? (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -531,10 +585,10 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
                 <Wrench size={28} className="text-slate-200 dark:text-slate-600" />
               </div>
               <p className="font-black text-slate-400 dark:text-slate-500 text-sm">
-                {hasActiveSearch ? 'لا توجد نتائج مطابقة' : 'لا يوجد مزودو خدمات مسجلون بعد'}
+                {availableOnly && hasMore ? 'لا يوجد متاحون ضمن النتائج المحمّلة' : hasActiveSearch ? 'لا توجد نتائج مطابقة' : 'لا يوجد مزودو خدمات مسجلون بعد'}
               </p>
               <p className="text-[10px] text-slate-300 dark:text-slate-600 mt-1 font-bold">
-                {hasActiveSearch ? 'جرّب تغيير كلمات البحث أو المنطقة' : 'كن أول من يسجّل خدمته في المنصة!'}
+                {availableOnly && hasMore ? 'حمّل المزيد من النتائج أو ألغِ فلتر المتاحين فقط' : hasActiveSearch ? 'جرّب تغيير كلمات البحث أو المنطقة أو مسح الفلاتر' : 'كن أول من يسجّل خدمته في المنصة!'}
               </p>
             </motion.div>
           ) : (
@@ -553,7 +607,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
 
         {/* Loading skeleton */}
         {loading && providers.length === 0 && (
-          <div className="space-y-3">
+          <div role="status" aria-label="جاري تحميل الخدمات" className="space-y-3">
             {[...Array(5)].map((_, i) => (
               <div
                 key={i}
@@ -576,7 +630,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
       </div>
 
       {/* زر تحديث / تحميل المزيد */}
-      {!loading && providers.length > 0 && hasMore && (
+      {providers.length > 0 && hasMore && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -584,18 +638,18 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
         >
           <button
             onClick={handleLoadMore}
-            disabled={loading}
+            disabled={loading || pendingSearch || Boolean(error)}
             className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-xs rounded-2xl shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 hover:from-blue-700 hover:to-indigo-700 transition-all active:scale-95 disabled:opacity-60"
           >
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-            عرض 10 التالية
+            {loading ? 'جاري التحميل...' : 'عرض 10 التالية'}
             <ChevronDown size={13} />
           </button>
         </motion.div>
       )}
 
       {/* رسالة نهاية النتائج */}
-      {!loading && providers.length > 0 && !hasMore && (
+      {!loading && !pendingSearch && !error && resultsMatchSearch && providers.length > 0 && !hasMore && (
         <div className="text-center py-4">
           <p className="text-[10px] font-black text-slate-300 dark:text-slate-600 uppercase tracking-widest">
             · تم عرض جميع النتائج ({providers.length} مزود خدمة) ·
