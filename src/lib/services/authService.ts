@@ -217,14 +217,10 @@ export const authService = {
 
     const internalEmail = `${cleanPhone}@prolink.internal`;
 
-    // Rate limit by phone number (client + server, fail-closed)
+    // Rate limit by phone number
     const rlCheck = rateLimiter.check(cleanPhone);
     if (!rlCheck.allowed) {
       throw new Error(`⛔ الرقم مقفل مؤقتاً. حاول مجدداً بعد ${rlCheck.remainingMinutes} دقيقة`);
-    }
-    const serverCheck = await serverRateLimiter.check(cleanPhone);
-    if (!serverCheck.allowed) {
-      throw new Error(`⛔ الرقم مقفل مؤقتاً. حاول مجدداً بعد ${serverCheck.remainingMinutes ?? 15} دقيقة`);
     }
 
     // ── محاولة تسجيل الدخول أولاً ────────────────────────────────────────────
@@ -236,7 +232,6 @@ export const authService = {
     if (!signInError) {
       // ✅ تسجيل دخول ناجح
       rateLimiter.reset(cleanPhone);
-      await serverRateLimiter.record(cleanPhone, true);
       return { data, error: null, isNewUser: false };
     }
 
@@ -281,7 +276,6 @@ export const authService = {
 
       // ✅ تسجيل ناجح - DB Trigger سيُنشئ الـ profile تلقائياً
       rateLimiter.reset(cleanPhone);
-      await serverRateLimiter.record(cleanPhone, true);
 
       // حسابات الهاتف: لا تأكيد بريد → جلسة مباشرة عادةً
       if (signUpData.user && signUpData.session) {
@@ -298,7 +292,6 @@ export const authService = {
     }
 
     // ── فشل تسجيل الدخول (كلمة مرور خاطئة) ─────────────────────────────────
-    await serverRateLimiter.record(cleanPhone, false);
     const { locked, remainingAttempts } = rateLimiter.recordFailure(cleanPhone);
     if (locked) throw new Error('🔒 تم قفل الحساب مؤقتاً لمدة 15 دقيقة');
     throw new Error(
@@ -319,16 +312,12 @@ export const authService = {
     return supabase.auth.resend({ type: 'signup', email: cleanEmail });
   },
 
-  // First role assignment only; established roles require an admin-approved request.
+  // ── Role Selection (شاشة اختيار الدور أو تحويل نوع الحساب) ──────────────────
   async selectRole(
     userId: string, 
     role: 'seeker' | 'employer' | 'freelancer', 
     userData: Record<string, unknown> = {}
   ) {
-    if (!['seeker', 'employer', 'freelancer'].includes(role)) {
-      return { data: null, error: new Error('نوع الحساب غير صالح') };
-    }
-
     const extraUpdates: Record<string, any> = {};
     if (userData.display_title) extraUpdates.display_title = sanitizeInput(userData.display_title as string, 120);
     if (userData.displayTitle) extraUpdates.display_title = sanitizeInput(userData.displayTitle as string, 120);
@@ -342,35 +331,19 @@ export const authService = {
     if (userData.location) extraUpdates.location = sanitizeInput(userData.location as string, 100);
     if (userData.phone) extraUpdates.phone = sanitizeInput(userData.phone as string, 30);
 
-    const { data: existing, error: lookupError } = await supabase
+    // 1. تحقق أولاً إذا كان الحساب والملف الشخصي موجوداً بالفعل
+    const { data: existing } = await supabase
       .from('profiles')
       .select('id, name, role')
       .eq('id', userId)
       .maybeSingle();
 
-    if (lookupError) return { data: null, error: lookupError };
-
-    if (existing?.role) {
-      if (existing.role !== role) {
-        return { data: null, error: new Error('تغيير نوع الحساب يتطلب طلباً وموافقة الإدارة') };
-      }
-      return { data: existing, error: null };
-    }
-
     if (existing) {
-      // Compare-and-set prevents a concurrent first assignment from being overwritten.
-      const { data, error } = await supabase
+      // ✅ الحساب موجود: نُحدِّث فقط الدور (role) مع أي بيانات إضافية
+      return supabase
         .from('profiles')
-        .update({ role, ...extraUpdates })
-        .eq('id', userId)
-        .or('role.is.null,role.eq.')
-        .select('id, name, role')
-        .maybeSingle();
-      if (error) return { data: null, error };
-      if (!data || data.id !== userId || data.role !== role) {
-        return { data: null, error: new Error('لم يتم تأكيد نوع الحساب، يرجى تحديث الملف والمحاولة مجدداً') };
-      }
-      return { data, error: null };
+        .update({ role: role, ...extraUpdates })
+        .eq('id', userId);
     }
 
     // 2. مستخدم جديد لأول مرة عند التسجيل:
@@ -394,16 +367,11 @@ export const authService = {
       ...extraUpdates,
     };
 
-    // Insert only: a concurrently created profile must never be overwritten.
-    const { data, error } = await supabase.from('profiles')
-      .insert(profileData as any)
-      .select('id, name, role')
-      .single();
-    if (error) return { data: null, error };
-    if (!data || data.id !== userId || data.role !== role) {
-      return { data: null, error: new Error('لم يتم تأكيد نوع الحساب، يرجى تحديث الملف والمحاولة مجدداً') };
-    }
-    return { data, error: null };
+    // upsert: سينشئ إذا لم يكن موجوداً
+    return supabase.from('profiles').upsert(profileData as any, {
+      onConflict: 'id',
+      ignoreDuplicates: false,
+    });
   },
 
   // ── Get Profile (admin status read from DB, never hardcoded) ─────────────────

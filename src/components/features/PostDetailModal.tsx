@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { openContactMenu } from '../../lib/utils/contact';
 import { 
   X, 
   MessageCircle, 
@@ -53,7 +52,7 @@ const FormattedText = ({ text, className }: { text: string, className?: string }
           return <a key={i} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 hover:underline font-bold" onClick={e => e.stopPropagation()}>{part}</a>;
         }
         if (part.match(/\+?[\d\s-]{8,20}\d/) && part.replace(/[\D]/g, '').length >= 8) {
-          return <span key={i} onClick={e => { e.stopPropagation(); openContactMenu({ phone: part.replace(/[\s-]/g, '') }); }} className="inline-flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 px-3 py-1.5 rounded-xl border border-emerald-100 dark:border-emerald-800/30 font-black text-[11px] mx-1 shadow-sm hover:scale-105 transition-all cursor-pointer my-0.5" dir="ltr"><Phone size={12} /> {part}</span>;
+          return <a key={i} href={`tel:${part.replace(/[\s-]/g, '')}`} className="inline-flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 px-3 py-1.5 rounded-xl border border-emerald-100 dark:border-emerald-800/30 font-black text-[11px] mx-1 shadow-sm hover:scale-105 transition-all cursor-pointer my-0.5" dir="ltr" onClick={e => e.stopPropagation()}><Phone size={12} /> {part}</a>;
         }
         return <span key={i}>{part}</span>;
       })}

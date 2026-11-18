@@ -15,7 +15,7 @@ const cv = await loadModule('../src/lib/cv/cvData.ts');
 const pdf = await loadModule('../src/lib/cv/pdfWriter.ts');
 const pagination = await loadModule('../src/lib/cv/cvPagination.ts');
 const { buildImagePdf, isSafePdfUri, PAGE_CSS_WIDTH, PAGE_CSS_HEIGHT, PAGE_PT_WIDTH, PAGE_PT_HEIGHT } = pdf;
-const { allowedBreaks, computePageSlices } = pagination;
+const { fitCvPage, CV_CONTENT_HEIGHT, CV_MIN_SCALE } = pagination;
 
 // A small RGB JPEG; extra binary suffixes below exercise byte-oriented serialization.
 const JPEG = new Uint8Array(Buffer.from(
@@ -226,51 +226,43 @@ test('PDF rejects empty documents, empty images, invalid pixel sizes and invalid
   assert.throws(() => buildImagePdf([imagePage()], { ...OPTIONS, createdAt: new Date(NaN) }));
 });
 
-test('allowed breaks are floored, sorted, deduplicated block tops, not bottoms', () => {
-  assert.deepEqual(allowedBreaks([{ top: 90.9, bottom: 120 }, { top: 0, bottom: 10 }, { top: 90.1, bottom: 100 }, { top: 40.7, bottom: 80 }]), [0, 40, 90]);
-  assert.deepEqual(allowedBreaks([]), []);
-  assert.deepEqual(allowedBreaks([{ top: NaN, bottom: 50 }, { top: -1, bottom: 0 }, { top: Infinity, bottom: Infinity }, { top: 2.8, bottom: 10 }]), [2]);
+test('one-page layout keeps short CVs at original size without enlarging text', () => {
+  assert.deepEqual(fitCvPage(400), { scale: 1, x: 0, height: 400, fits: true });
+  assert.equal(fitCvPage(CV_CONTENT_HEIGHT).fits, true);
 });
 
-test('keepWithNext forbids the next block top, including duplicate positions and heading chains', () => {
-  assert.deepEqual(allowedBreaks([
-    { top: 0, bottom: 40, keepWithNext: true }, { top: 50.8, bottom: 90, keepWithNext: true },
-    { top: 100.9, bottom: 130 }, { top: 100.1, bottom: 140 }, { top: 200, bottom: 220, keepWithNext: true },
-  ]), [0, 200]);
-  assert.deepEqual(computePageSlices(240, allowedBreaks([{ top: 0, bottom: 40, keepWithNext: true }, { top: 50, bottom: 130 }, { top: 140, bottom: 240 }]), 100, 150), [{ start: 0, height: 100 }, { start: 100, height: 140 }]);
+test('one-page layout fits modest overflow and centers the entire document', () => {
+  const height = CV_CONTENT_HEIGHT / 0.95;
+  const result = fitCvPage(height);
+  close(result.scale, 0.95);
+  close(result.height, CV_CONTENT_HEIGHT);
+  close(result.x, PAGE_CSS_WIDTH * (1 - result.scale) / 2);
+  assert.equal(result.fits, true);
 });
 
-test('pagination takes the maximum legal break within distinct first and subsequent capacities', () => {
-  const breaks = [650, 0, 250, 200, 450, 450, -1, NaN, Infinity, 1000];
-  const original = [...breaks];
-  assert.deepEqual(computePageSlices(900, breaks, 300, 400), [{ start: 0, height: 250 }, { start: 250, height: 400 }, { start: 650, height: 250 }]);
-  assert.deepEqual(breaks, original, 'caller break positions are not mutated');
-  assert.deepEqual(computePageSlices(300, [100, 200], 300, 400), [{ start: 0, height: 300 }]);
-  assert.deepEqual(computePageSlices(800, [300, 700], 300, 500), [{ start: 0, height: 300 }, { start: 300, height: 500 }]);
+test('one-page layout refuses excessive shrinking without truncating content', () => {
+  const height = 9000;
+  const result = fitCvPage(height);
+  assert.equal(result.scale, CV_MIN_SCALE);
+  assert.ok(result.scale >= 0.9, 'body text stays at least nine point');
+  assert.equal(result.height, height * CV_MIN_SCALE, 'full content remains measurable and visible');
+  assert.equal(result.fits, false);
 });
 
-test('pagination forces cuts through oversized blocks, covers remainders, and handles empty content', () => {
-  assert.deepEqual(computePageSlices(950, [], 250, 300), [{ start: 0, height: 250 }, { start: 250, height: 300 }, { start: 550, height: 300 }, { start: 850, height: 100 }]);
-  assert.deepEqual(computePageSlices(50, [0, 100], 100, 100), [{ start: 0, height: 50 }]);
-  assert.deepEqual(computePageSlices(0, [], 100, 100), []);
-  assert.deepEqual(computePageSlices(600, [50, 500], 200, 200), [{ start: 0, height: 50 }, { start: 50, height: 200 }, { start: 250, height: 200 }, { start: 450, height: 150 }]);
+test('one-page layout accepts the exact readable limit but rejects a line beyond it', () => {
+  assert.equal(fitCvPage(CV_CONTENT_HEIGHT / CV_MIN_SCALE).fits, true);
+  assert.equal(fitCvPage(CV_CONTENT_HEIGHT / CV_MIN_SCALE + 23).fits, false);
 });
 
-test('pagination permits exactly 40 pages, including fractional boundaries, and errors above the cap', () => {
-  const slices = computePageSlices(4000, [], 100, 100);
-  assert.equal(slices.length, 40);
-  assert.deepEqual(slices.at(-1), { start: 3900, height: 100 });
-  assert.equal(computePageSlices(28, [], 0.7, 0.7).length, 40);
-  assert.throws(() => computePageSlices(4001, [], 100, 100), /40/);
-  assert.throws(() => computePageSlices(4000, Array.from({ length: 40 }, (_, i) => 1 + 100 * i), 100, 100), /40/);
+test('one-page layout reserves space for the branded footer', () => {
+  assert.ok(CV_CONTENT_HEIGHT < PAGE_CSS_HEIGHT - 68);
+  const result = fitCvPage(CV_CONTENT_HEIGHT + 20);
+  assert.ok(result.height <= CV_CONTENT_HEIGHT + 0.001);
+  assert.equal(result.fits, true);
 });
 
-test('pagination rejects non-finite totals and non-positive or non-finite capacities', () => {
-  for (const total of [-1, NaN, Infinity]) assert.throws(() => computePageSlices(total, [], 100, 100));
-  for (const capacity of [0, -1, NaN, Infinity]) {
-    assert.throws(() => computePageSlices(100, [], capacity, 100));
-    assert.throws(() => computePageSlices(100, [], 100, capacity));
-  }
+test('one-page layout rejects invalid browser measurements', () => {
+  for (const height of [0, -1, NaN, Infinity]) assert.throws(() => fitCvPage(height));
 });
 
 test('CV normalization drops malicious URLs but normalizes safe domains and preserves comparison text', () => {
@@ -387,6 +379,27 @@ test('CV byte sizing measures UTF-8 JSON and detects content exceeding the persi
   // normalizeCvData has field limits; the persistence caller must also check maxBytes.
   const oversized = { ...data, summary: 'س'.repeat(cv.CV_LIMITS.maxBytes / 2) };
   assert.ok(cv.cvByteSize(oversized) > cv.CV_LIMITS.maxBytes);
+});
+
+test('new CV automatically imports the profile identity, biography, skills, experience and education', () => {
+  const profile = {
+    name: 'ليلى أحمد', title: 'مهندسة', displayTitle: 'مهندسة برمجيات', location: 'بغداد',
+    phone: '07701234567', email: 'layla@example.test', website: 'https://example.test/',
+    bio: 'أطوّر تطبيقات مفيدة وسهلة الاستخدام.', skills: ['React', 'إدارة المشاريع'],
+    experience: 'تطوير تطبيقات لشركة محلية.', education: 'بكالوريوس هندسة الحاسوب\nجامعة بغداد',
+  };
+  const before = structuredClone(profile);
+  const data = cv.cvFromProfile(profile);
+  assert.deepEqual(data.personal, {
+    fullName: profile.name, title: profile.displayTitle, location: profile.location,
+    phone: profile.phone, email: profile.email, website: profile.website,
+  });
+  assert.equal(data.summary, profile.bio);
+  assert.deepEqual(data.skills, profile.skills);
+  assert.equal(data.experiences[0].description, profile.experience);
+  assert.equal(data.education[0].degree, 'بكالوريوس هندسة الحاسوب');
+  assert.equal(data.education[0].description, 'جامعة بغداد');
+  assert.deepEqual(profile, before);
 });
 
 test('CV profile identity merges only blanks, remains normalized, and does not mutate saved data', () => {

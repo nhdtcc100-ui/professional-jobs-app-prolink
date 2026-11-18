@@ -109,8 +109,7 @@ export const networkService = {
         from_name: currentUser.name,
         from_avatar: currentUser.avatar,
         target_id: connId,
-        read: false,
-        message: `وافق ${currentUser.name || 'صديقك'} على طلب التواصل المهني الخاص بك ✅`,
+        read: false
       }]).then(() => {});
     }
     return res;

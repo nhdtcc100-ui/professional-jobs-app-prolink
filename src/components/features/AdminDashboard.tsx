@@ -11,7 +11,6 @@ import {
 import { supabase } from '../../lib/supabase';
 import { profileService } from '../../lib/services/profileService';
 import { telegramSupportService } from '../../lib/services/telegramSupportService';
-import { platformSettingsService } from '../../lib/services/platformSettingsService';
 import { mockDataService } from '../../lib/services/mockDataService';
 import { NewsSourcesAdmin } from './NewsSourcesAdmin';
 import { useAppContext } from '../../contexts/AppContext';
@@ -51,7 +50,7 @@ interface Stats {
 type Tab = 'overview' | 'reports' | 'support' | 'mock_data' | 'users' | 'posts' | 'resources' | 'news_sources' | 'settings' | 'security';
 
 export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardProps) {
-  const { setAllUsers: setGlobalUsers, setAppUser, appUser: currentAppUser, platformSettings, handleDeletePost: deletePostChecked } = useAppContext();
+  const { setAllUsers: setGlobalUsers, setAppUser, appUser: currentAppUser } = useAppContext();
   const isSupportOnly = !currentAppUser?.isAdmin && currentAppUser?.hasSupportAccess;
 
   // ── Tab Persistence ─────────────────────────────────────────
@@ -161,68 +160,12 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   // ── Telegram Support Configuration State ──────────────────
   const [telegramHandle, setTelegramHandle] = useState<string>(() => telegramSupportService.getCachedHandle());
   const [editingTelegramHandle, setEditingTelegramHandle] = useState<string>(() => telegramSupportService.getCachedHandle());
-  const [editingBotToken, setEditingBotToken] = useState<string>('');
-  const [editingChatId, setEditingChatId] = useState<string>('');
+  const [editingBotToken, setEditingBotToken] = useState<string>(() => telegramSupportService.getCachedBotToken());
+  const [editingChatId, setEditingChatId] = useState<string>(() => telegramSupportService.getCachedChatId());
   const [showBotToken, setShowBotToken] = useState(false);
   const [savingTelegram, setSavingTelegram] = useState(false);
   const [testingTelegram, setTestingTelegram] = useState(false);
   const [detectingChatId, setDetectingChatId] = useState(false);
-
-  // ── Public contact & feature-gate settings ──────────────
-  const [editingSupportWhatsapp, setEditingSupportWhatsapp] = useState('');
-  const [messagingOpen, setMessagingOpen] = useState(false);
-  const [supportChatOpen, setSupportChatOpen] = useState(false);
-  const [groupsOpen, setGroupsOpen] = useState(false);
-  const [networkOpen, setNetworkOpen] = useState(false);
-  const [accountSwitchOpen, setAccountSwitchOpen] = useState(false);
-  const [khakiThemeOpen, setKhakiThemeOpen] = useState(false);
-  const [cvUploadOpen, setCvUploadOpen] = useState(false);
-  const [navStyleSel, setNavStyleSel] = useState('dock');
-  const [savingPublicSettings, setSavingPublicSettings] = useState(false);
-  const [gateMigrationMissing, setGateMigrationMissing] = useState(false);
-
-  useEffect(() => {
-    setEditingSupportWhatsapp(platformSettings.supportWhatsapp);
-    setMessagingOpen(platformSettings.messagingEnabled);
-    setSupportChatOpen(platformSettings.supportChatEnabled);
-    setGroupsOpen(platformSettings.groupsEnabled);
-    setNetworkOpen(platformSettings.networkEnabled);
-    setAccountSwitchOpen(platformSettings.accountSwitchEnabled);
-    setKhakiThemeOpen(platformSettings.khakiThemeEnabled);
-    setCvUploadOpen(platformSettings.cvUploadEnabled);
-    setNavStyleSel(platformSettings.navStyle || 'dock');
-  }, [platformSettings]);
-
-  useEffect(() => {
-    platformSettingsService.isGateMigrationApplied().then(ok => setGateMigrationMissing(!ok));
-  }, []);
-
-  const handleSavePublicSettings = async () => {
-    setSavingPublicSettings(true);
-    try {
-      const res = await platformSettingsService.save({
-        supportWhatsapp: editingSupportWhatsapp,
-        messagingEnabled: messagingOpen,
-        supportChatEnabled: supportChatOpen,
-        groupsEnabled: groupsOpen,
-        networkEnabled: networkOpen,
-        accountSwitchEnabled: accountSwitchOpen,
-        khakiThemeEnabled: khakiThemeOpen,
-        cvUploadEnabled: cvUploadOpen,
-        navStyle: navStyleSel,
-      });
-      if (res.success) {
-        addToast('✅ تم حفظ إعدادات التواصل والميزات', 'success');
-        const ok = await platformSettingsService.isGateMigrationApplied();
-        setGateMigrationMissing(!ok);
-        if (!ok) addToast('⚠️ الحفظ تم لكن بوابة الخادم غير مفعّلة: أعد تشغيل SECURITY_HARDENING_MIGRATION.sql في Supabase SQL Editor حتى تظهر التغييرات لبقية المستخدمين.', 'warning');
-      } else {
-        addToast('فشل الحفظ: ' + (res.error || 'خطأ غير معروف'), 'error');
-      }
-    } finally {
-      setSavingPublicSettings(false);
-    }
-  };
 
   const handleDetectChatId = async () => {
     setDetectingChatId(true);
@@ -504,7 +447,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
         try {
           const { data: fetchedProfiles } = await db
             .from("profiles")
-            .select("id, name, phone, avatar_url, role, email")
+            .select("id, name, full_name, phone, avatar, avatar_url, role, email")
             .in("id", allThreadUserIds);
 
           if (fetchedProfiles && fetchedProfiles.length > 0) {
@@ -515,10 +458,10 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                 thread.user = {
                   ...thread.user,
                   id: p.id,
-                  name: p.name || thread.user.name || "مستخدم",
+                  name: p.full_name || p.name || thread.user.name || "مستخدم",
                   phone: p.phone || thread.user.phone || "",
                   email: p.email || thread.user.email || "",
-                  avatar: p.avatar_url || thread.user.avatar || "",
+                  avatar: p.avatar_url || p.avatar || thread.user.avatar || "",
                   role: p.role || thread.user.role || "seeker",
                 };
               }
@@ -734,15 +677,20 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   };
 
   const handleDeletePost = async (postId: string, reportId?: string) => {
-    const deleted = await deletePostChecked(postId);
-    if (!deleted) return;
-    if (reportId) {
-      const { error: repErr } = await db.from('reports').update({ status: 'resolved' }).eq('id', reportId);
-      if (repErr) console.warn(repErr);
+    try {
+      const { error } = await db.from('posts').delete().eq('id', postId);
+      if (error) throw error;
+      if (reportId) {
+        const { error: repErr } = await db.from('reports').update({ status: 'resolved' }).eq('id', reportId);
+        if (repErr) console.warn(repErr);
+      }
+      setLocalReports(prev => prev.filter((r: any) => r.id !== reportId));
+      setAllPosts(prev => prev.filter((p: any) => p.id !== postId));
+      setStats(prev => ({ ...prev, posts: Math.max(0, prev.posts - 1), pendingReports: Math.max(0, prev.pendingReports - 1) }));
+      addToast('تم حذف المنشور بنجاح ✅', 'success');
+    } catch (e: any) {
+      addToast('فشل الحذف: ' + e.message, 'error');
     }
-    setLocalReports(prev => prev.filter((r: any) => r.id !== reportId));
-    setAllPosts(prev => prev.filter((p: any) => p.id !== postId));
-    setStats(prev => ({ ...prev, posts: Math.max(0, prev.posts - 1), pendingReports: Math.max(0, prev.pendingReports - 1) }));
   };
 
   const handleDismissReport = async (reportId: string) => {
@@ -2366,144 +2314,6 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
             )}
             {activeTab === 'settings' && (
               <motion.div key="settings" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-8">
-                 {/* ── Public Contact & Messaging Gate Card ── */}
-                 <div className="bg-gradient-to-br from-slate-800/60 via-slate-800/40 to-emerald-950/30 border border-emerald-500/30 rounded-[2.5rem] p-8 shadow-2xl backdrop-blur-md relative overflow-hidden">
-                    <div className="relative z-10">
-                       <div className="flex items-center gap-4 mb-6">
-                          <div className="p-3.5 bg-gradient-to-br from-emerald-500 to-green-600 rounded-2xl shadow-[0_0_25px_rgba(16,185,129,0.4)] text-white">
-                             <MessageSquare size={22} />
-                          </div>
-                          <div>
-                             <h3 className="text-base font-black text-white">التواصل العام وخاصية الرسائل</h3>
-                             <p className="text-xs text-slate-400 font-medium">رقم واتساب الدعم الذي يظهر للمستخدمين، وفتح/إغلاق الرسائل للجميع</p>
-                          </div>
-                       </div>
-
-                       <div className="p-6 bg-slate-900/60 border border-slate-700/60 rounded-3xl space-y-6">
-                          <div>
-                             <label className="text-xs font-black text-slate-200 block mb-2">رقم واتساب الدعم (مثال: 07724053748)</label>
-                             <input
-                                type="tel"
-                                dir="ltr"
-                                value={editingSupportWhatsapp}
-                                onChange={(e) => setEditingSupportWhatsapp(e.target.value)}
-                                placeholder="07XXXXXXXXX"
-                                className="w-full px-4 py-3 bg-slate-800/80 border border-slate-600/60 rounded-2xl text-white font-bold text-sm outline-none focus:border-emerald-400 transition-colors"
-                             />
-                             <p className="text-[10px] text-slate-500 font-medium mt-1.5">يظهر زر «واتساب الدعم» في صفحة الدعم وشاشة قفل الرسائل. يُطبَّع تلقائياً بصيغة 964+.</p>
-                          </div>
-
-                          <div className="flex items-center justify-between gap-4 p-4 bg-slate-800/50 border border-slate-700/50 rounded-2xl">
-                             <div>
-                                <p className="text-xs font-black text-slate-200">فتح خاصية الرسائل للجميع</p>
-                                <p className="text-[10px] text-slate-500 font-medium mt-1">
-                                   {messagingOpen
-                                     ? 'الرسائل مفتوحة حالياً لجميع الأعضاء.'
-                                     : 'الرسائل مقفلة حالياً — متاحة للإدارة فقط. لن تظهر أزرار المراسلة للأعضاء.'}
-                                </p>
-                             </div>
-                             <button
-                                type="button"
-                                role="switch"
-                                aria-checked={messagingOpen}
-                                onClick={() => setMessagingOpen(v => !v)}
-                                className={`relative w-14 h-8 rounded-full transition-colors shrink-0 ${messagingOpen ? 'bg-emerald-500' : 'bg-slate-600'}`}
-                             >
-                                <span className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow transition-all ${messagingOpen ? 'right-1' : 'right-7'}`} />
-                             </button>
-                          </div>
-
-                          {([
-                            ['فتح دردشة الدعم داخل التطبيق', supportChatOpen, setSupportChatOpen, 'الدردشة المباشرة مع الدعم داخل التطبيق'],
-                            ['فتح المجموعات المهنية', groupsOpen, setGroupsOpen, 'المجموعات المهنية'],
-                            ['فتح شبكتي المهنية', networkOpen, setNetworkOpen, 'شبكة العلاقات المهنية'],
-                            ['فتح تبديل نوع الحساب', accountSwitchOpen, setAccountSwitchOpen, 'خاصية تبديل نوع الحساب (باحث/صاحب عمل)'],
-                            ['فتح ثيم الكاكي الفاتح', khakiThemeOpen, setKhakiThemeOpen, 'ثيم الكاكي المائل للبياض'],
-                          ] as [string, boolean, React.Dispatch<React.SetStateAction<boolean>>, string][]).map(([label, val, setter, noun]) => (
-                            <div key={label} className="flex items-center justify-between gap-4 p-4 bg-slate-800/50 border border-slate-700/50 rounded-2xl">
-                              <div>
-                                <p className="text-xs font-black text-slate-200">{label}</p>
-                                <p className="text-[10px] text-slate-500 font-medium mt-1">
-                                  {val ? `${noun} مفتوحة حالياً لجميع الأعضاء.` : `${noun} مقفلة حالياً — متاحة للإدارة فقط.`}
-                                </p>
-                              </div>
-                              <button
-                                type="button"
-                                role="switch"
-                                aria-checked={val}
-                                onClick={() => setter(v => !v)}
-                                className={`relative w-14 h-8 rounded-full transition-colors shrink-0 ${val ? 'bg-emerald-500' : 'bg-slate-600'}`}
-                              >
-                                <span className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow transition-all ${val ? 'right-1' : 'right-7'}`} />
-                              </button>
-                            </div>
-                          ))}
-
-                          <div className="flex items-center justify-between gap-4 p-4 bg-slate-800/50 border border-slate-700/50 rounded-2xl">
-                            <div>
-                              <p className="text-xs font-black text-slate-200">فتح رفع ملف السيرة الذاتية</p>
-                              <p className="text-[10px] text-slate-500 font-medium mt-1">
-                                {cvUploadOpen ? 'رفع الملف مفتوح حالياً لجميع الأعضاء.' : 'رفع الملف مقفل حالياً — متاح للإدارة فقط.'}
-                              </p>
-                              <p className="text-[10px] text-slate-500 font-medium mt-1">
-                                يمكن فتح أو إغلاق رفع الملف للمستخدمين. إنشاء السيرة الذاتية وعرضها وتصديرها متاح دائماً.
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              role="switch"
-                              aria-label="فتح رفع ملف السيرة الذاتية"
-                              aria-checked={cvUploadOpen}
-                              onClick={() => setCvUploadOpen(v => !v)}
-                              className={`relative w-14 h-8 rounded-full transition-colors shrink-0 ${cvUploadOpen ? 'bg-emerald-500' : 'bg-slate-600'}`}
-                            >
-                              <span className={`absolute top-1 w-6 h-6 rounded-full bg-white shadow transition-all ${cvUploadOpen ? 'right-1' : 'right-7'}`} />
-                            </button>
-                          </div>
-
-                          <div className="p-4 bg-slate-800/50 border border-slate-700/50 rounded-2xl">
-                            <p className="text-xs font-black text-slate-200 mb-1">نمط التنقل الجانبي</p>
-                            <p className="text-[10px] text-slate-500 font-medium mb-3">اختر شكل البار السفلي للتنقل بين الأقسام (الرئيسية/الوظائف/الأخبار). كل الأنماط تحافظ على البار العلوي والسفلي معاً.</p>
-                            <div className="grid grid-cols-3 gap-2">
-                              {([
-                                ['dock', 'كبسولة عائمة'],
-                                ['drawer', 'شريط كلاسيكي'],
-                                ['compact', 'شريط سفلي مضغوط'],
-                              ] as [string, string][]).map(([val, label]) => (
-                                <button
-                                  key={val}
-                                  type="button"
-                                  onClick={() => setNavStyleSel(val)}
-                                  className={`py-2.5 rounded-xl text-[11px] font-black border transition-all ${navStyleSel === val ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300' : 'bg-slate-900/40 border-slate-700/50 text-slate-400 hover:border-slate-600'}`}
-                                >
-                                  {label}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-
-                          {gateMigrationMissing && (
-                            <div className="p-4 bg-amber-500/10 border border-amber-500/40 rounded-2xl">
-                              <p className="text-[11px] font-black text-amber-300">⚠️ بوابة الخادم غير مفعّلة</p>
-                              <p className="text-[10px] text-amber-200/80 font-medium mt-1 leading-relaxed">
-                                أعد تشغيل ملف <span className="font-mono">SECURITY_HARDENING_MIGRATION.sql</span> (النسخة المحدّثة) في Supabase → SQL Editor. بدونه تُحفظ الإعدادات لكن بقية المستخدمين لا يرونها ولا تُطبَّق الحماية من جهة الخادم.
-                              </p>
-                            </div>
-                          )}
-
-                          <button
-                             type="button"
-                             onClick={handleSavePublicSettings}
-                             disabled={savingPublicSettings}
-                             className="w-full py-3.5 bg-gradient-to-l from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-black text-sm rounded-2xl shadow-lg active:scale-95 transition-all disabled:opacity-50"
-                          >
-                             {savingPublicSettings ? 'جاري الحفظ...' : 'حفظ إعدادات التواصل والميزات'}
-                          </button>
-                          <p className="text-[10px] text-slate-500 font-medium">معرّف تلكرام الدعم يُعدَّل من بطاقة تيليجرام أدناه، ويتحدث لحظياً لدى جميع المستخدمين.</p>
-                       </div>
-                    </div>
-                 </div>
-
                  {/* ── Telegram Support Configuration Card ── */}
                  <div className="bg-gradient-to-br from-slate-800/60 via-slate-800/40 to-sky-950/30 border border-sky-500/30 rounded-[2.5rem] p-8 shadow-2xl backdrop-blur-md relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-96 h-96 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />

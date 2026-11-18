@@ -14,7 +14,7 @@ import {
   loadSettingsPage,
   preloadTab
 } from './lib/lazyPreload';
-import { ArrowRight, Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare, Shield } from 'lucide-react';
+import { Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare, Shield } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { Post, Job, AppUser } from './types';
 import { SkeletonPostCard } from './components/ui';
@@ -38,6 +38,7 @@ import { CallsView } from './components/features';
 import { jobService } from './lib/services/jobService';
 import { AlertBanner } from './components/features/security/AlertBanner';
 import { SecurityAlertToast } from './components/features/security/SecurityAlertToast';
+import { initAntiInspect, setAntiInspectUser } from './lib/security/antiInspect';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { RecedeCard } from './components/common/RecedeCard';
 import { GuestBanner } from './components/common/GuestBanner';
@@ -58,8 +59,6 @@ declare global {
 }
 
 import { MessagingView } from './components/features/MessagingView';
-import { ContactMenuHost } from './components/ui/ContactMenu';
-import { FeatureLocked } from './components/ui/FeatureLocked';
 
 // 🚀 Lazy-loaded heavy feature views (integrated with preloadTab)
 const MissionsView    = lazy(() => loadMissionsView().then(m => ({ default: m.MissionsView })));
@@ -86,7 +85,6 @@ function App() {
     pendingEmailVerification, setPendingEmailVerification,
     posts, setPosts, jobs, allUsers, connections, notifications, messages, reports,
     activeTab, setActiveTab, searchQuery, setSearchQuery,
-    canUseMessaging, canUseGroups, canUseNetwork,
     selectedProfile, setSelectedProfile, isEditingProfile, setIsEditingProfile,
     toasts, showNotifications, setShowNotifications, showAdmin, setShowAdmin,
     selectedChat, setSelectedChat,
@@ -114,19 +112,12 @@ function App() {
 
   useEffect(() => {
     fetchGroups();
+    initAntiInspect(appUser);
   }, []);
 
   useEffect(() => {
-    if (!appUser && !isGuestMode) return;
-    const controller = new AbortController();
-    const timer = setTimeout(() => {
-      void loadServicesView()
-        .then(module => module.prefetchServices(appUser?.id ?? null, controller.signal))
-        .catch(() => {})
-        .finally(() => controller.abort());
-    }, 1500);
-    return () => { clearTimeout(timer); controller.abort(); };
-  }, [appUser?.id, isGuestMode]);
+    setAntiInspectUser(appUser);
+  }, [appUser]);
 
   // ── خروج وضع الزائر تلقائياً عند تسجيل الدخول ──
   useEffect(() => {
@@ -261,11 +252,6 @@ function App() {
   const [selectedPostDetail, setSelectedPostDetail] = useState<Post | null>(null);
   const [selectedJobDetail, setSelectedJobDetail] = useState<Job | null>(null);
   const [returnToJob, setReturnToJob] = useState<Job | null>(null);
-  const [returnToServicesTab, setReturnToServicesTab] = useState<'home' | 'services' | null>(null);
-
-  useEffect(() => {
-    if (activeTab !== 'profile') setReturnToServicesTab(null);
-  }, [activeTab]);
   const [returnToDetailFeed, setReturnToDetailFeed] = useState<{
     type: 'job' | 'news' | 'post';
     items: any[];
@@ -652,10 +638,6 @@ function App() {
 
   const handleShareJobToUser = async (targetUser: AppUser, job: Job) => {
     if (!appUser) return;
-    if (!canUseMessaging) {
-      addToast('🔒 الرسائل مقفلة حالياً ومتاحة للإدارة فقط', 'info');
-      return;
-    }
     try {
       const jobMsg = `[JOB_CARD:${job.id}|${job.title}|${job.company}|${job.location || 'عن بُعد'}|${job.salary || 'غير محدد'}|${job.image_url || ''}]`;
       const { error } = await (supabase as any).from('messages').insert([{ 
@@ -842,7 +824,10 @@ function App() {
     // إغلاق المودال فوراً
     setJobToDeleteFromFeed(null);
     try {
-      await handleDeleteJob(idToDelete);
+      const { error } = await (supabase as any).from('jobs').delete().eq('id', idToDelete);
+      if (error) throw error;
+      // الـ realtime subscription في AppContext سيحذف الوظيفة من القائمة تلقائياً
+      addToast('تم حذف الوظيفة بنجاح ✅');
     } catch (err: any) {
       console.error('Delete job error:', err);
       addToast('فشل حذف الوظيفة: ' + (err?.message || 'خطأ غير معروف'), 'error');
@@ -1060,9 +1045,6 @@ function App() {
                         <ServicesView
                           appUser={appUser}
                           onUserClick={(u) => {
-                            setReturnToServicesTab('home');
-                            setReturnToJob(null);
-                            setReturnToDetailFeed(null);
                             setSelectedProfile(u);
                             setActiveTab('profile');
                           }}
@@ -1284,7 +1266,7 @@ function App() {
               )}
 
               {/* ⚡ Keep-Alive: Network View */}
-              {visitedTabs.network && canUseNetwork && (
+              {visitedTabs.network && (
                 <div
                   key="keepalive-tab-network"
                   className={activeTab === 'network' ? 'pb-safe-bottom px-1 md:px-0 animate-in fade-in duration-150' : 'hidden'}
@@ -1319,13 +1301,6 @@ function App() {
                     />
                   </Suspense>
                 </div>
-              )}
-
-              {activeTab === 'network' && !canUseNetwork && (
-                <FeatureLocked
-                  title="شبكتي المهنية مقفلة حالياً 🔒"
-                  message="خاصية الشبكة المهنية متاحة للإدارة فقط في الوقت الحالي، وسيتم فتحها للجميع قريباً. للتواصل مع الدعم استخدم واتساب أو تلكرام:"
-                />
               )}
 
               {activeTab === 'calls' && appUser?.isAdmin && (
@@ -1373,14 +1348,6 @@ function App() {
                       </button>
                     </motion.div>
                   )
-                ) : !canUseMessaging ? (
-                  activeTab === 'messages' && (
-                    <FeatureLocked
-                      title="الرسائل مقفلة حالياً 🔒"
-                      message="خاصية الرسائل متاحة للإدارة فقط في الوقت الحالي، وسيتم فتحها للجميع قريباً. للتواصل مع صاحب وظيفة أو مرشح استخدم أزرار واتساب / الاتصال على الأرقام المنشورة، أو تواصل مع الدعم:"
-                      icon={<MessageSquare size={30} />}
-                    />
-                  )
                 ) : (
                   <div
                     key="keepalive-tab-messages"
@@ -1408,7 +1375,7 @@ function App() {
                 )
               )}
 
-              {activeTab === 'groups' && (canUseGroups ? (
+              {activeTab === 'groups' && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -1428,12 +1395,7 @@ function App() {
                     />
                   </Suspense>
                 </motion.div>
-              ) : (
-                <FeatureLocked
-                  title="المجموعات المهنية مقفلة حالياً 🔒"
-                  message="خاصية المجموعات المهنية متاحة للإدارة فقط في الوقت الحالي، وسيتم فتحها للجميع قريباً. للتواصل مع الدعم استخدم واتساب أو تلكرام:"
-                />
-              ))}
+              )}
 
               {/* ⚡ Keep-Alive: News View */}
               {visitedTabs.news && (
@@ -1459,22 +1421,18 @@ function App() {
                 </div>
               )}
 
-              {(activeTab === 'services' || (activeTab === 'profile' && returnToServicesTab === 'services')) && (
+              {activeTab === 'services' && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{ duration: 0.13, ease: 'easeOut' }}
-                  className={activeTab === 'services' ? 'pb-safe-bottom px-1 md:px-0' : 'hidden'}
-                  aria-hidden={activeTab !== 'services'}
+                  className="pb-safe-bottom px-1 md:px-0"
                 >
                   <Suspense fallback={<TabSkeleton />}>
                     <ServicesView
                       appUser={appUser}
                       onUserClick={(u) => {
-                        setReturnToServicesTab('services');
-                        setReturnToJob(null);
-                        setReturnToDetailFeed(null);
                         setSelectedProfile(u);
                         setActiveTab('profile');
                       }}
@@ -1543,22 +1501,6 @@ function App() {
                   }}
                   className="pb-safe-bottom px-1 md:px-0 will-change-transform transform-gpu"
                 >
-                  {returnToServicesTab && (
-                    <div className="max-w-4xl lg:max-w-5xl mx-auto px-3 sm:px-6 pt-2" dir="rtl">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedProfile(null);
-                          setActiveTab(returnToServicesTab);
-                          setReturnToServicesTab(null);
-                        }}
-                        className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 dark:border-slate-700 dark:bg-slate-900 dark:text-blue-300 dark:hover:bg-slate-800"
-                      >
-                        <ArrowRight size={18} aria-hidden="true" />
-                        العودة إلى سوق المهن
-                      </button>
-                    </div>
-                  )}
                   <Suspense fallback={<TabSkeleton />}>
                     <ProfilePage
                       profile={selectedProfile || appUser!}
@@ -1573,11 +1515,7 @@ function App() {
                         setReturnToJob(null);
                       }}
                       onBack={() => {
-                        if (returnToServicesTab) {
-                          setSelectedProfile(null);
-                          setActiveTab(returnToServicesTab);
-                          setReturnToServicesTab(null);
-                        } else if (returnToDetailFeed) {
+                        if (returnToDetailFeed) {
                           setSelectedProfile(null);
                           setDetailFeed(returnToDetailFeed);
                           setReturnToDetailFeed(null);
@@ -1767,7 +1705,6 @@ function App() {
       <SecurityAlertToast onOpenAdmin={() => setShowAdmin(true)} />
 
       <ToastContainer toasts={toasts} />
-      <ContactMenuHost />
 
       {/* Onboarding Modal for new users */}
       <AnimatePresence mode="wait">

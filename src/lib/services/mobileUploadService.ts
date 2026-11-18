@@ -1,189 +1,325 @@
+/**
+ * mobileUploadService.ts
+ * ─────────────────────────────────────────────────────────────────
+ * Telegram / WhatsApp-style upload engine for ProLink mobile.
+ *
+ * Core Principles:
+ *  1. INSTANT preview  – show the image/doc name in <16ms via ObjectURL or base64
+ *  2. Memory-first     – snapshot the file into RAM immediately so Android
+ *                        scoped-storage URI permissions never expire
+ *  3. Background upload– upload happens silently after the UI update
+ *  4. Dual transport   – try Supabase Storage → if blocked, compact Base64 DB column
+ *  5. Progress events  – emit progress so UI can show Telegram-style progress bar
+ *
+ * Architecture
+ *  pickAndUpload(type, opts) → { preview, uploadPromise }
+ *    ├─ Pick file (native Capacitor Camera / web <input>)
+ *    ├─ Snapshot into memory immediately (prevents Android URI expiry)
+ *    ├─ Emit instant ObjectURL preview (0ms)
+ *    ├─ [background] compress (images) / validate (docs)
+ *    ├─ [background] upload with retry + presigned URL fallback
+ *    └─ [background] compact Base64 fallback for small files
+ */
+
+import { supabase } from '../supabase';
 import { generateUUID } from '../security/distributedId';
+import { snapshotFile, resolveMimeType } from './imageService';
 import { cvService } from './cvService';
-import { readUploadFile, uploadToStorageDirect } from './directUpload';
-import { withTimeout } from '../utils/withTimeout';
+
+// ── Types ────────────────────────────────────────────────────────────────────
 
 export type UploadType = 'avatar' | 'cover' | 'cv' | 'post-image' | 'post-video';
 
 export interface UploadProgressEvent {
   type: UploadType;
   phase: 'picking' | 'reading' | 'compressing' | 'uploading' | 'done' | 'error';
+  /** 0-100, -1 means indeterminate */
   percent: number;
-  preview?: string;
-  url?: string;
+  preview?: string;   // instant ObjectURL or base64 thumbnail
+  url?: string;       // final persistent URL (Storage or base64)
   error?: string;
 }
 
 export type ProgressCallback = (ev: UploadProgressEvent) => void;
 
 export interface PickAndUploadResult {
-  // The caller owns this URL and must revoke it after its last render, including on failure.
+  /** Instant local preview URL (revoke when done) */
   preview: string | null;
+  /** Resolves with the final persistent URL or rejects */
   uploadPromise: Promise<string>;
 }
 
-const MAX_MEDIA_SIZE_BYTES = 50 * 1024 * 1024;
-const READ_TIMEOUT_MS = 10_000;
-const COMPRESSION_TIMEOUT_MS = 15_000;
-const PICKER_TIMEOUT_MS = 120_000;
-const IMAGE_MAX_DIM = 1000;
+// ── Constants ────────────────────────────────────────────────────────────────
 
-const MEDIA_MIME: Record<string, string> = {
-  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
-  gif: 'image/gif', bmp: 'image/bmp', heic: 'image/heic', heif: 'image/heif',
-  mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm', m4v: 'video/x-m4v',
-  '3gp': 'video/3gpp', '3g2': 'video/3gpp2', avi: 'video/x-msvideo',
-  ogv: 'video/ogg', mpg: 'video/mpeg', mpeg: 'video/mpeg',
+const IMAGE_MAX_DIM  = 1000;   // px
+const IMAGE_QUALITY  = 0.82;
+const THUMB_MAX_DIM  = 200;    // px – compact Base64 thumbnail
+const THUMB_QUALITY  = 0.55;
+const UPLOAD_TIMEOUT = 30_000; // 30 s per bucket attempt
+
+const IMAGE_BUCKETS: Record<string, string[]> = {
+  avatar:       ['profiles', 'images'],
+  cover:        ['profiles', 'images'],
+  'post-image': ['posts', 'images'],
+  'post-video': ['posts'],
 };
 
-function mediaFormat(file: File, type: UploadType): { contentType: string; extension: string } {
-  const nameExtension = /\.([^.]+)$/.exec(file.name || '')?.[1].toLowerCase() || '';
-  let contentType = file.type.toLowerCase().split(';')[0].trim();
-  if (!contentType || contentType === 'application/octet-stream') {
-    contentType = Object.hasOwn(MEDIA_MIME, nameExtension) ? MEDIA_MIME[nameExtension] : '';
-  }
-  if (contentType === 'image/jpg') contentType = 'image/jpeg';
-  const extension = Object.keys(MEDIA_MIME).find(ext => MEDIA_MIME[ext] === contentType);
-  const prefix = type === 'post-video' ? 'video/' : 'image/';
-  if (!extension || !contentType.startsWith(prefix)) {
-    throw new Error(type === 'post-video' ? 'اختر ملف فيديو مدعوماً.' : 'اختر ملف صورة مدعوماً.');
-  }
-  return { contentType, extension };
-}
+// ── Internal helpers ─────────────────────────────────────────────────────────
 
-function isHeic(file: File): boolean {
-  return /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name);
-}
-
-async function compressImageFile(file: File): Promise<File> {
-  const resources: { image?: HTMLImageElement; canvas?: HTMLCanvasElement; objectUrl?: string } = {};
-  let finished = false;
-  const errorMessage = 'تعذرت معالجة الصورة. جرّب صورة أخرى أو حوّلها إلى JPEG.';
-  const processing = (async () => {
-    if (isHeic(file)) {
-      const { default: heic2any } = await import('heic2any');
-      if (finished) throw new Error(errorMessage);
-      const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
-      const blob = Array.isArray(converted) ? converted[0] : converted;
-      if (!blob?.size) throw new Error(errorMessage);
-      file = new File([blob], 'photo.jpg', { type: 'image/jpeg', lastModified: file.lastModified });
-    }
-    if (finished) throw new Error(errorMessage);
-    const image = resources.image = new Image();
-    const objectUrl = resources.objectUrl = URL.createObjectURL(file);
-    await new Promise<void>((resolve, reject) => {
-      image.onload = () => resolve();
-      image.onerror = () => reject(new Error(errorMessage));
-      image.src = objectUrl;
-    });
-    if (finished || !image.naturalWidth || !image.naturalHeight) throw new Error(errorMessage);
-    const scale = Math.min(1, IMAGE_MAX_DIM / Math.max(image.naturalWidth, image.naturalHeight));
-    const canvas = resources.canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
-    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error(errorMessage);
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
-    const encode = (quality: number) => new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', quality));
-    let blob = await encode(0.82);
-    if (finished) throw new Error(errorMessage);
-    if (blob && blob.size > 800 * 1024) blob = await encode(0.65);
-    if (finished || !blob?.size) throw new Error(errorMessage);
-    return new File([blob], 'photo.jpg', { type: blob.type, lastModified: file.lastModified });
-  })();
+/** Convert HEIC/HEIF to JPEG if needed (iOS Safari / Camera) */
+async function convertHeicIfNeeded(file: File): Promise<File> {
+  const isHeic = (file.type && (file.type.includes('heic') || file.type.includes('heif'))) ||
+                 (file.name && /\.(heic|heif)$/i.test(file.name));
+  if (!isHeic) return file;
   try {
-    return await withTimeout(processing, COMPRESSION_TIMEOUT_MS, errorMessage);
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith('TIMEOUT:')) throw error;
-    throw new Error(errorMessage);
-  } finally {
-    finished = true;
-    const { image, canvas, objectUrl } = resources;
-    if (image) {
-      image.onload = null;
-      image.onerror = null;
-      image.src = '';
-    }
-    if (objectUrl) URL.revokeObjectURL(objectUrl);
-    if (canvas) { canvas.width = 0; canvas.height = 0; }
+    const heic2anyModule = await import('heic2any');
+    const heic2any = heic2anyModule.default || heic2anyModule;
+    const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.85 });
+    const blob = Array.isArray(converted) ? converted[0] : converted;
+    const newName = (file.name || 'photo').replace(/\.(heic|heif)$/i, '.jpg');
+    const out = new File([blob], newName, { type: 'image/jpeg', lastModified: Date.now() });
+    (out as any).__isSnapshot = true;
+    return out;
+  } catch (err) {
+    console.warn('[mobileUpload] HEIC conversion warning:', err);
+    return file;
   }
 }
+
+/** Downscale an in-memory image File to ≤ maxDim px using hardware GPU bitmap */
+async function compressImageFile(
+  file: File,
+  maxDim = IMAGE_MAX_DIM,
+  quality = IMAGE_QUALITY
+): Promise<File> {
+  // Convert HEIC before any canvas or bitmap operation
+  file = await convertHeicIfNeeded(file);
+
+  // Fast path: createImageBitmap with hardware downscale (prevents OOM on 108MP mobile photos)
+  if (typeof createImageBitmap === 'function') {
+    try {
+      let bmp: ImageBitmap | null = null;
+      try {
+        // Hardware subsampling decode
+        bmp = await Promise.race([
+          (createImageBitmap as any)(file, { resizeWidth: maxDim, resizeQuality: 'medium' }),
+          new Promise<null>(res => setTimeout(() => res(null), 8000)),
+        ]);
+      } catch {
+        bmp = await Promise.race([
+          createImageBitmap(file),
+          new Promise<null>(res => setTimeout(() => res(null), 8000)),
+        ]);
+      }
+
+      if (bmp && bmp.width > 0) {
+        let w = bmp.width, h = bmp.height;
+        if (w >= h && w > maxDim) { h = Math.max(1, Math.round(h * maxDim / w)); w = maxDim; }
+        else if (h > maxDim)      { w = Math.max(1, Math.round(w * maxDim / h)); h = maxDim; }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(bmp, 0, 0, w, h);
+        bmp.close();
+
+        let blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', quality));
+        // Strict cloud payload cap: if > 800KB, re-compress to ensure < 1MB limit for Cloudflare/Vercel
+        if (blob && blob.size > 800 * 1024) {
+          blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.65));
+        }
+        if (blob && blob.size > 0) {
+          const out = new File([blob], (file.name || 'photo.jpg').replace(/\.[^.]+$/, '.jpg'), {
+            type: 'image/jpeg', lastModified: Date.now(),
+          });
+          (out as any).__isSnapshot = true;
+          return out;
+        }
+      }
+    } catch {/* fall through */}
+  }
+
+  // Slow path: Image + Canvas
+  return new Promise<File>((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    const timer = setTimeout(() => { URL.revokeObjectURL(url); resolve(file); }, 12000);
+    img.onload = () => {
+      clearTimeout(timer);
+      URL.revokeObjectURL(url);
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (w >= h && w > maxDim) { h = Math.max(1, Math.round(h * maxDim / w)); w = maxDim; }
+      else if (h > maxDim)      { w = Math.max(1, Math.round(w * maxDim / h)); h = maxDim; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      canvas.toBlob(async (blob) => {
+        if (blob && blob.size > 800 * 1024) {
+          blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.65));
+        }
+        if (blob && blob.size > 0) {
+          const out = new File([blob], (file.name || 'photo.jpg').replace(/\.[^.]+$/, '.jpg'), {
+            type: 'image/jpeg', lastModified: Date.now(),
+          });
+          (out as any).__isSnapshot = true;
+          resolve(out);
+        } else {
+          resolve(file);
+        }
+      }, 'image/jpeg', quality);
+    };
+    img.onerror = () => { clearTimeout(timer); URL.revokeObjectURL(url); resolve(file); };
+    img.src = url;
+  });
+}
+
+/** Compact to base64 JPEG for DB storage fallback */
+async function toCompactBase64(file: File, type: UploadType = 'avatar'): Promise<string | null> {
+  try {
+    const maxDim = type === 'cover' ? 800 : THUMB_MAX_DIM;
+    const quality = type === 'cover' ? 0.72 : THUMB_QUALITY;
+    const compressed = await compressImageFile(file, maxDim, quality);
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(compressed);
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** Upload a file to Supabase Storage with multi-bucket retry */
+async function uploadToStorage(
+  file: File,
+  userId: string,
+  buckets: string[],
+  contentType: string
+): Promise<string | null> {
+  const uuid = generateUUID();
+  let ext = file.name ? file.name.split('.').pop()?.toLowerCase() || 'jpg' : 'jpg';
+  // If ext has no dot or is invalid (e.g. Android URI "image:12345" or "blob")
+  if (!['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) {
+    ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
+  }
+  const fileName = `${userId}/${uuid}.${ext}`;
+
+  // Ensure auth session headers are fresh (required for Storage RLS)
+  try { await supabase.auth.getSession(); } catch {}
+
+  for (const bucket of buckets) {
+    try {
+      const uploadPromise = supabase.storage
+        .from(bucket)
+        .upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' });
+
+      const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
+        setTimeout(() => reject(new Error(`Storage timeout (${UPLOAD_TIMEOUT / 1000}s) – bucket: ${bucket}`)), UPLOAD_TIMEOUT)
+      );
+
+      const { error } = await Promise.race([uploadPromise, timeoutPromise]);
+
+      if (!error) {
+        const { data } = supabase.storage.from(bucket).getPublicUrl(fileName);
+        if (data?.publicUrl) {
+          // Cache-bust so fresh image always loads
+          const sep = data.publicUrl.includes('?') ? '&' : '?';
+          return `${data.publicUrl}${sep}t=${uuid}`;
+        }
+      } else {
+        console.warn(`[mobileUpload] bucket '${bucket}' failed:`, error.message);
+      }
+    } catch (err) {
+      console.warn(`[mobileUpload] bucket '${bucket}' exception:`, err);
+    }
+  }
+  return null;
+}
+
+// ── Native / Web file picker ─────────────────────────────────────────────────
 
 async function pickFile(type: UploadType): Promise<File | null> {
-  const isImage = type !== 'cv' && type !== 'post-video';
-  const capacitor = (window as any).Capacitor;
-  if (isImage && capacitor?.isNativePlatform?.()) {
-    let finished = false;
+  const isImage = type !== 'cv';
+  const accept  = isImage ? 'image/*' : '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+  // 1. Native Capacitor Camera / Gallery for images
+  if (isImage && typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
     try {
-      return await withTimeout((async () => {
-        const { Camera, CameraSource, CameraResultType } = await import('@capacitor/camera');
-        if (finished) return null;
-        const photo = await Camera.getPhoto({
-          quality: 80,
-          allowEditing: false,
-          resultType: CameraResultType.Base64,
-          source: CameraSource.Prompt,
-        });
-        if (finished || !photo?.base64String) return null;
-        if (photo.base64String.length > Math.ceil(MAX_MEDIA_SIZE_BYTES / 3) * 4) {
-          throw new Error('حجم الملف يجب ألا يتجاوز 50 ميغابايت.');
+      const { Camera, CameraSource, CameraResultType } = await import('@capacitor/camera');
+      const photo = await Camera.getPhoto({
+        quality: 80,
+        allowEditing: false,
+        resultType: CameraResultType.Base64,
+        source: CameraSource.Prompt,
+      });
+      if (photo?.base64String) {
+        const byteCharacters = atob(photo.base64String);
+        const byteNumbers = new Uint8Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
         }
-        const characters = atob(photo.base64String);
-        const bytes = new Uint8Array(characters.length);
-        for (let index = 0; index < characters.length; index++) bytes[index] = characters.charCodeAt(index);
-        const extension = (photo.format || 'jpeg').toLowerCase();
-        return new File([bytes], `photo.${extension}`, {
-          type: `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+        const ext = photo.format || 'jpg';
+        const mime = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+        const blob = new Blob([byteNumbers], { type: mime });
+        const f = new File([blob], `photo_${Date.now()}.${ext}`, {
+          type: mime,
           lastModified: Date.now(),
         });
-      })(), PICKER_TIMEOUT_MS, 'انتهت مهلة اختيار الصورة. حاول مجدداً.');
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String((error as any)?.message || error);
-      if (/cancel|dismiss|aborted/i.test(`${(error as any)?.code || ''} ${message}`)) return null;
-      throw error;
-    } finally {
-      finished = true;
+        (f as any).__isSnapshot = true;
+        return f;
+      }
+      return null;
+    } catch (e: any) {
+      if (e?.message?.includes('cancel') || e?.message?.includes('User cancel')) return null;
+      console.warn('[mobileUpload] Native picker error, fallback to web:', e);
     }
   }
 
-  return new Promise<File | null>((resolve, reject) => {
+  // 2. Web <input type="file"> – opens native photo picker on Android 11+
+  return new Promise<File | null>(resolve => {
     const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = type === 'post-video' ? 'video/*' : isImage ? 'image/*'
-      : '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    input.type  = 'file';
+    input.accept = accept;
+    // capture="" removed intentionally so Android shows Gallery, not Camera
     input.style.cssText = 'position:fixed;opacity:0;pointer-events:none;top:0;left:0;width:1px;height:1px;';
     document.body.appendChild(input);
 
     let handled = false;
-    let pickerTimer: ReturnType<typeof setTimeout> | undefined;
-    let focusTimer: ReturnType<typeof setTimeout> | undefined;
-    const finish = (file: File | null, error?: unknown) => {
+    const finish = (f: File | null) => {
       if (handled) return;
       handled = true;
-      clearTimeout(pickerTimer);
-      clearTimeout(focusTimer);
-      window.removeEventListener('focus', onFocus);
-      input.removeEventListener('change', onChange);
-      input.removeEventListener('cancel', onCancel);
-      input.remove();
-      if (error) reject(error);
-      else resolve(file);
+      try { document.body.removeChild(input); } catch {}
+      resolve(f);
     };
-    const onChange = () => finish(input.files?.[0] ?? null);
-    const onCancel = () => finish(null);
+
+    input.onchange = () => finish(input.files?.[0] ?? null);
+    // User cancelled (focus returns without selection)
     const onFocus = () => {
-      clearTimeout(focusTimer);
-      focusTimer = setTimeout(() => finish(input.files?.[0] ?? null), 800);
+      setTimeout(() => {
+        if (!handled && (!input.files || input.files.length === 0)) finish(null);
+      }, 800);
+      window.removeEventListener('focus', onFocus);
     };
-    input.addEventListener('change', onChange);
-    input.addEventListener('cancel', onCancel);
-    window.addEventListener('focus', onFocus, { once: true });
-    pickerTimer = setTimeout(() => finish(null, new Error('انتهت مهلة اختيار الملف. حاول مجدداً.')), PICKER_TIMEOUT_MS);
-    try { input.click(); } catch (error) { finish(null, error); }
+    window.addEventListener('focus', onFocus);
+
+    setTimeout(() => finish(null), 120_000);
+    input.click();
   });
 }
 
+// ── Main API ─────────────────────────────────────────────────────────────────
+
 export const mobileUploadService = {
+  /**
+   * Telegram-style pick + instant preview + background upload.
+   *
+   * Usage:
+   *   const { preview, uploadPromise } = await mobileUploadService.pickAndUpload('avatar', { userId });
+   *   setAvatarPreview(preview);          // instant – shown immediately
+   *   const url = await uploadPromise;    // background – final persistent URL
+   *   saveToDatabase(url);
+   */
   async pickAndUpload(
     type: UploadType,
     opts: {
@@ -192,18 +328,99 @@ export const mobileUploadService = {
       userContext?: { name?: string; email?: string };
     }
   ): Promise<PickAndUploadResult> {
-    opts.onProgress?.({ type, phase: 'picking', percent: 0 });
-    let file: File | null;
-    try {
-      file = await pickFile(type);
-      if (!file) throw new Error('cancelled');
-    } catch (error) {
-      opts.onProgress?.({ type, phase: 'error', percent: 0, error: error instanceof Error ? error.message : String(error) });
-      throw error;
+    const { userId, onProgress, userContext } = opts;
+    const emit = (ev: UploadProgressEvent) => onProgress?.(ev);
+
+    emit({ type, phase: 'picking', percent: 0 });
+
+    // 1. Pick file
+    const rawFile = await pickFile(type);
+    if (!rawFile) {
+      // User cancelled
+      return {
+        preview: null,
+        uploadPromise: Promise.reject(new Error('cancelled')),
+      };
     }
-    return mobileUploadService.uploadFile(file, type, opts.userId, opts);
+
+    emit({ type, phase: 'reading', percent: 5 });
+
+    // 2. Snapshot into memory IMMEDIATELY (prevents Android URI permission expiry)
+    let workingFile: File;
+    try {
+      workingFile = await snapshotFile(rawFile);
+    } catch {
+      workingFile = rawFile;
+    }
+
+    // 3. Create instant ObjectURL preview for immediate UI feedback (Telegram UX)
+    let preview: string | null = null;
+    if (type !== 'cv') {
+      try { preview = URL.createObjectURL(workingFile); } catch {}
+    }
+    emit({ type, phase: 'compressing', percent: 20, preview: preview ?? undefined });
+
+    // 4. Background upload promise
+    const uploadPromise = (async (): Promise<string> => {
+      try {
+        // 4a. CV documents → delegate to cvService (has its own multi-bucket logic)
+        if (type === 'cv') {
+          emit({ type, phase: 'uploading', percent: 40 });
+          const { data: url, error } = await cvService.uploadCV(userId, workingFile, userContext);
+          if (error || !url) throw error || new Error('CV upload failed');
+          emit({ type, phase: 'done', percent: 100, url });
+          return url;
+        }
+
+        // 4b. Images (avatar / cover / post-image)
+        const isImageType = type !== 'post-video';
+        const contentType = resolveMimeType(workingFile);
+
+        // Compress if needed (skip if already small snapshot ≤ 300 KB)
+        let uploadFile = workingFile;
+        if (isImageType && !(workingFile as any).__isCompressed && workingFile.size > 300 * 1024) {
+          emit({ type, phase: 'compressing', percent: 30 });
+          uploadFile = await compressImageFile(workingFile);
+        }
+
+        emit({ type, phase: 'uploading', percent: 50 });
+
+        // Strategy 1: Supabase Storage (multi-bucket)
+        const buckets = IMAGE_BUCKETS[type] ?? ['profiles'];
+        const storageUrl = await uploadToStorage(uploadFile, userId, buckets, contentType);
+
+        if (storageUrl) {
+          // Revoke the temporary ObjectURL now that we have a permanent URL
+          if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
+          emit({ type, phase: 'done', percent: 100, url: storageUrl });
+          return storageUrl;
+        }
+
+        // Strategy 2: Compact Base64 thumbnail in DB (WhatsApp compressed preview fallback)
+        console.warn('[mobileUpload] Storage failed → compact Base64 fallback');
+        emit({ type, phase: 'uploading', percent: 75 });
+        const b64 = await toCompactBase64(uploadFile, type);
+        if (b64) {
+          if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
+          emit({ type, phase: 'done', percent: 100, url: b64 });
+          return b64;
+        }
+
+        throw new Error('All upload strategies failed');
+      } catch (err: any) {
+        if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
+        emit({ type, phase: 'error', percent: 0, error: err?.message });
+        throw err;
+      }
+    })();
+
+    return { preview, uploadPromise };
   },
 
+  /**
+   * Convenience: upload an already-picked File directly (no picker dialog).
+   * Useful for <input> onChange handlers where the file is already available.
+   */
   async uploadFile(
     file: File,
     type: UploadType,
@@ -213,55 +430,67 @@ export const mobileUploadService = {
       userContext?: { name?: string; email?: string };
     }
   ): Promise<{ preview: string | null; uploadPromise: Promise<string> }> {
-    const emit = (event: UploadProgressEvent) => opts?.onProgress?.(event);
-    let workingFile = file;
+    const { onProgress, userContext } = opts ?? {};
+    const emit = (ev: UploadProgressEvent) => onProgress?.(ev);
+
+    emit({ type, phase: 'reading', percent: 5 });
+
+    // Snapshot immediately
+    let workingFile: File;
+    try { workingFile = await snapshotFile(file); }
+    catch { workingFile = file; }
+
+    // Instant preview
     let preview: string | null = null;
-    try {
-      if (!userId?.trim()) throw new Error('يرجى تسجيل الدخول أولاً.');
-      if (!file?.size) throw new Error('الملف فارغ أو غير قابل للقراءة.');
-      const maxSize = type === 'cv' ? 25 * 1024 * 1024 : MAX_MEDIA_SIZE_BYTES;
-      if (file.size > maxSize) throw new Error(`حجم الملف يجب ألا يتجاوز ${maxSize / 1024 / 1024} ميغابايت.`);
-      emit({ type, phase: 'reading', percent: 5 });
-      if (type !== 'cv') {
-        mediaFormat(file, type);
-        workingFile = await readUploadFile(file, READ_TIMEOUT_MS);
-        preview = URL.createObjectURL(workingFile);
-      }
-    } catch (error) {
-      emit({ type, phase: 'error', percent: 0, error: error instanceof Error ? error.message : String(error) });
-      throw error;
+    if (type !== 'cv') {
+      try { preview = URL.createObjectURL(workingFile); } catch {}
     }
+
+    emit({ type, phase: 'compressing', percent: 20, preview: preview ?? undefined });
 
     const uploadPromise = (async (): Promise<string> => {
       try {
-        let url: string;
         if (type === 'cv') {
           emit({ type, phase: 'uploading', percent: 40 });
-          const result = await cvService.uploadCV(userId, file, opts?.userContext);
-          if (result.error || !result.data) throw result.error || new Error('تعذر رفع السيرة الذاتية.');
-          url = result.data;
-        } else {
-          if (type !== 'post-video' && (workingFile.size > 300 * 1024 || isHeic(workingFile))) {
-            emit({ type, phase: 'compressing', percent: 30, preview: preview ?? undefined });
-            workingFile = await compressImageFile(workingFile);
-          }
-          const { contentType, extension } = mediaFormat(workingFile, type);
-          emit({ type, phase: 'uploading', percent: 50, preview: preview ?? undefined });
-          url = await uploadToStorageDirect(workingFile, {
-            bucket: type === 'avatar' || type === 'cover' ? 'profiles' : 'posts',
-            path: `${userId}/${generateUUID()}.${extension}`,
-            contentType,
-          });
+          const { data: url, error } = await cvService.uploadCV(userId, workingFile, userContext);
+          if (error || !url) throw error || new Error('CV upload failed');
+          emit({ type, phase: 'done', percent: 100, url });
+          return url;
         }
-        emit({ type, phase: 'done', percent: 100, url });
-        return url;
-      } catch (error) {
-        emit({ type, phase: 'error', percent: 0, error: error instanceof Error ? error.message : String(error) });
-        throw error;
+
+        const contentType = resolveMimeType(workingFile);
+        let uploadFile = workingFile;
+        if (!(workingFile as any).__isCompressed && workingFile.size > 300 * 1024) {
+          emit({ type, phase: 'compressing', percent: 30 });
+          uploadFile = await compressImageFile(workingFile);
+        }
+
+        emit({ type, phase: 'uploading', percent: 50 });
+        const buckets = IMAGE_BUCKETS[type] ?? ['profiles'];
+        const storageUrl = await uploadToStorage(uploadFile, userId, buckets, contentType);
+
+        if (storageUrl) {
+          if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
+          emit({ type, phase: 'done', percent: 100, url: storageUrl });
+          return storageUrl;
+        }
+
+        emit({ type, phase: 'uploading', percent: 75 });
+        const b64 = await toCompactBase64(uploadFile, type);
+        if (b64) {
+          if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
+          emit({ type, phase: 'done', percent: 100, url: b64 });
+          return b64;
+        }
+
+        throw new Error('All upload strategies exhausted');
+      } catch (err: any) {
+        if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
+        emit({ type, phase: 'error', percent: 0, error: err?.message });
+        throw err;
       }
     })();
-    // Observe early failures before the caller receives the nested promise, without changing its result.
-    void uploadPromise.catch(() => {});
+
     return { preview, uploadPromise };
   },
 };

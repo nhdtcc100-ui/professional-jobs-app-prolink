@@ -7,8 +7,6 @@ import {
 } from 'lucide-react';
 import { Course, AppUser } from '../../../types';
 import { courseService } from '../../../lib/services/courseService';
-import { cvService } from '../../../lib/services/cvService';
-import { useAppContext } from '../../../contexts/AppContext';
 
 interface ApplyCourseModalProps {
   course: Course | null;
@@ -27,7 +25,6 @@ export const ApplyCourseModal: React.FC<ApplyCourseModalProps> = ({
   onSuccess,
   addToast
 }) => {
-  const { canUseCvUpload } = useAppContext();
   const [motivation, setMotivation] = useState('');
   const [experience, setExperience] = useState((appUser as any)?.experience || '');
   const [education, setEducation] = useState((appUser as any)?.education || '');
@@ -48,15 +45,6 @@ export const ApplyCourseModal: React.FC<ApplyCourseModalProps> = ({
 
   const handleSubmit = async () => {
     if (!appUser || !course) return;
-    if (cvFileObj && !canUseCvUpload) {
-      setCvFileObj(null);
-      addToast('رفع ملف السيرة الذاتية مقفل حالياً. يمكنك إعادة إرسال الطلب بالسيرة المحفوظة.', 'warning');
-      return;
-    }
-    if (cvFileObj && cvFileObj.size > cvService.MAX_CV_SIZE_BYTES) {
-      addToast(`حجم السيرة الذاتية يجب ألا يتجاوز ${cvService.MAX_CV_SIZE_BYTES / (1024 * 1024)} ميغابايت.`, 'error');
-      return;
-    }
 
     setIsApplying(true);
     let succeeded = false;
@@ -73,6 +61,7 @@ export const ApplyCourseModal: React.FC<ApplyCourseModalProps> = ({
       let uploadedCvUrl = (appUser as any)?.cv_url || (appUser as any)?.cvUrl || '';
       if (cvFileObj) {
         try {
+          const { cvService } = await import('../../../lib/services/cvService');
           const { data: uploadedUrl, error: cvErr } = await cvService.uploadCV(appUser.id, cvFileObj);
           if (uploadedUrl) {
             uploadedCvUrl = uploadedUrl;
@@ -272,49 +261,40 @@ export const ApplyCourseModal: React.FC<ApplyCourseModalProps> = ({
           </div>
 
           {/* CV / Portfolio Document Attachment */}
-          {canUseCvUpload && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <Paperclip size={14} className="text-slate-500" />
-                إرفاق سيرة ذاتية أو معرض أعمال (اختياري)
-              </label>
-              {cvFileObj ? (
-                <div className="flex items-center justify-between p-3.5 bg-blue-50/60 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <FileText size={18} className="text-blue-600 shrink-0" />
-                    <span className="text-xs font-bold text-slate-800 dark:text-white truncate">{cvFileObj.name}</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setCvFileObj(null)}
-                    className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-all cursor-pointer"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+          <div className="space-y-1.5">
+            <label className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Paperclip size={14} className="text-slate-500" />
+              إرفاق سيرة ذاتية أو معرض أعمال (اختياري)
+            </label>
+            {cvFileObj ? (
+              <div className="flex items-center justify-between p-3.5 bg-blue-50/60 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <FileText size={18} className="text-blue-600 shrink-0" />
+                  <span className="text-xs font-bold text-slate-800 dark:text-white truncate">{cvFileObj.name}</span>
                 </div>
-              ) : (
-                <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-blue-400 rounded-2xl cursor-pointer bg-white dark:bg-slate-800 text-xs font-bold text-slate-500 dark:text-slate-400 transition-all">
-                  <Paperclip size={16} />
-                  <span>اختر ملف PDF أو Word من جهازك (حتى {cvService.MAX_CV_SIZE_BYTES / (1024 * 1024)} ميغابايت)</span>
-                  <input
-                    type="file"
-                    accept=".pdf,.doc,.docx"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = '';
-                      if (!file || !canUseCvUpload) return;
-                      if (file.size > cvService.MAX_CV_SIZE_BYTES) {
-                        addToast(`حجم السيرة الذاتية يجب ألا يتجاوز ${cvService.MAX_CV_SIZE_BYTES / (1024 * 1024)} ميغابايت.`, 'error');
-                        return;
-                      }
-                      setCvFileObj(file);
-                    }}
-                  />
-                </label>
-              )}
-            </div>
-          )}
+                <button
+                  type="button"
+                  onClick={() => setCvFileObj(null)}
+                  className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-xl transition-all cursor-pointer"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ) : (
+              <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-blue-400 rounded-2xl cursor-pointer bg-white dark:bg-slate-800 text-xs font-bold text-slate-500 dark:text-slate-400 transition-all">
+                <Paperclip size={16} />
+                <span>اختر ملف PDF أو Word من جهازك</span>
+                <input
+                  type="file"
+                  accept=".pdf,.doc,.docx"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) setCvFileObj(e.target.files[0]);
+                  }}
+                />
+              </label>
+            )}
+          </div>
 
         </div>
 

@@ -42,7 +42,7 @@ const EMPTY_JOB_FORM = {
 };
 
 export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, searchQuery, setSearchQuery }) => {
-  const { setPosts, refreshData, setActiveTab, appUser: contextUser, setIsPublishingArticle, searchQuery: ctxSearchQuery, setSearchQuery: ctxSetSearchQuery } = useAppContext();
+  const { setPosts, refreshData, setActiveTab, appUser: contextUser, setIsPublishingArticle, searchQuery: ctxSearchQuery, setSearchQuery: ctxSetSearchQuery, addPostToState, updatePostInState, removePostFromState } = useAppContext();
   const effectiveSearchQuery = searchQuery !== undefined ? searchQuery : (ctxSearchQuery || '');
   const handleSearchChange = (val: string) => {
     if (setSearchQuery) setSearchQuery(val);
@@ -158,7 +158,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
     const rawContent = (uploadType === 'article' && articleTitle.trim())
       ? `# ${articleTitle.trim()}\n\n${content}`
       : content;
-    const postContent = sanitizeInput(rawContent, 20000, {
+    const postContent = sanitizeInput(rawContent, {
       id: appUser?.id,
       name: appUser?.name,
       email: appUser?.email
@@ -177,7 +177,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
     setUploadType(null);
     setIsPosting(true);
 
-    // 2. Optimistic Update
+    // 2. Optimistic Update (Immediate state + localStorage cache persistence)
     const optimisticPost = {
       id: tempId,
       authorId: appUser.id,
@@ -190,7 +190,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       likesCount: 0,
       timestamp: { toDate: () => new Date() }
     };
-    setPosts(prev => [optimisticPost as any, ...prev]);
+    addPostToState(optimisticPost as any);
 
     try {
       let finalImageUrl: string | null = null;
@@ -235,14 +235,14 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       postService.invalidateCache();
 
       if (newPost?.id) {
-        setPosts(prev => prev.map(p => p.id === tempId ? { ...p, id: newPost.id } : p));
+        updatePostInState(tempId, { id: newPost.id });
       }
 
       addToast('تم النشر بنجاح! 🚀');
     } catch (e: any) {
       console.error(e);
       addToast('فشل الإرسال: ' + e.message, 'error');
-      setPosts(prev => prev.filter(p => p.id !== tempId));
+      removePostFromState(tempId);
     } finally {
       setIsPosting(false);
       setIsPublishingArticle(false);

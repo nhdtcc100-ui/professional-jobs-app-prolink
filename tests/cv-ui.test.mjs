@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { build } from 'esbuild';
+import { fileURLToPath } from 'node:url';
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const viewerSource = read('src/components/features/cv/CvViewerModal.tsx');
@@ -61,10 +63,64 @@ test('CV editor is layered above its job application parent and uses the canonic
   assert.doesNotMatch(builder, /function CvPreview\(/);
 });
 
+test('CV setup is a single page without a wizard and retains all editable sections', () => {
+  const builder = read('src/components/features/cv/CvBuilderView.tsx');
+  assert.doesNotMatch(builder, /const steps\s*=|setStep\(|step ===|الخطوة السابقة/);
+  for (const name of ['CvPersonalFields', 'CvSummaryField', 'CvExperienceFields', 'CvEducationFields', 'CvSkillsLanguageFields', 'CvCertificationLinkFields', 'CvPreviewSettings']) {
+    assert.match(builder, new RegExp(`<${name}\\b`), name);
+  }
+  assert.match(builder, /إعداد السيرة الذاتية/);
+});
+
 test('a profile card cannot keep an editor mounted for another user', () => {
   const card = read('src/components/features/cv/CvProfileCard.tsx');
   assert.match(card, /props\.isMe && editing &&/);
   assert.match(card, /setEditing\(false\);\s*setViewing\(false\);/);
+});
+
+const validationBundle = await build({
+  stdin: { contents: "export * from './src/lib/cv/cvData'; export { isContactPhone, normalizePhoneDigits } from './src/lib/utils/contact';", resolveDir: fileURLToPath(new URL('../', import.meta.url)) },
+  bundle: true, write: false, platform: 'node', format: 'esm', logLevel: 'silent',
+});
+const validationDependencies = await import(`data:text/javascript;base64,${Buffer.from(validationBundle.outputFiles[0].text).toString('base64')}`);
+const builderFile = ts.createSourceFile('builder.tsx', read('src/components/features/cv/CvBuilderView.tsx'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const validationDeclaration = builderFile.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === 'validateFields');
+assert.ok(validationDeclaration);
+const validationJs = ts.transpileModule(validationDeclaration.getText(builderFile), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+const validateFields = vm.runInNewContext(`${validationJs}\nvalidateFields;`, validationDependencies);
+
+for (const [name, skills] of [
+  ['too many skills', Array.from({ length: 31 }, (_, i) => `Skill ${i}`)],
+  ['an oversized individual skill', ['x'.repeat(41)]],
+]) {
+  test(`skills textarea rejects ${name} before normalization can discard data`, () => {
+    const data = { ...validationDependencies.normalizeCvData({}), skills };
+    assert.ok(validateFields(data).skills);
+    assert.deepEqual(data.skills, skills);
+  });
+}
+
+test('skills textarea accepts boundary lengths and ignores empty lines', () => {
+  const skills = ['', ...Array.from({ length: 30 }, (_, i) => String(i).padEnd(40, 'x')), '  '];
+  assert.equal(validateFields({ ...validationDependencies.normalizeCvData({}), skills }).skills, undefined);
+});
+
+test('Tab from the preview section continues within the preview instead of jumping to Back', () => {
+  let declaration;
+  const visit = node => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(builderFile) === 'keydown') declaration = node.getText(builderFile);
+    ts.forEachChild(node, visit);
+  };
+  visit(builderFile);
+  assert.ok(declaration);
+  const document = { activeElement: {} };
+  const elements = Array.from({ length: 3 }, () => ({ getClientRects: () => [{}], closest: () => null, focus() { document.activeElement = this; } }));
+  const dialog = { current: { querySelectorAll: () => elements, contains: () => true } };
+  const js = ts.transpileModule(`const ${declaration}`, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText;
+  const keydown = vm.runInNewContext(`${js}\nkeydown;`, { document, dialog });
+  let prevented = false;
+  keydown({ key: 'Tab', shiftKey: false, preventDefault() { prevented = true; } });
+  assert.equal(prevented, false);
 });
 
 function viewerKeyboardBoundary() {

@@ -2,8 +2,6 @@ import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Rocket, Shield, Target, Award, Globe, Users, Zap } from 'lucide-react';
 import { GlassCard } from '../ui';
-import { useAppContext } from '../../contexts/AppContext';
-import { whatsappUrl } from '../../lib/utils/contact';
 
 interface AboutPlatformModalProps {
   show: boolean;
@@ -11,14 +9,6 @@ interface AboutPlatformModalProps {
 }
 
 export const AboutPlatformModal: React.FC<AboutPlatformModalProps> = ({ show, onClose }) => {
-  const { platformSettings } = useAppContext();
-  const openSupport = () => {
-    if (platformSettings.supportWhatsapp) {
-      window.open(whatsappUrl(platformSettings.supportWhatsapp), '_blank', 'noopener');
-    } else if (platformSettings.supportTelegram) {
-      window.open(`https://t.me/${platformSettings.supportTelegram.replace(/^@+/, '').replace(/^https?:\/\/t\.me\//, '')}`, '_blank', 'noopener');
-    }
-  };
   return (
     <AnimatePresence>
       {show && (
@@ -139,7 +129,7 @@ export const AboutPlatformModal: React.FC<AboutPlatformModalProps> = ({ show, on
                   <p className="text-blue-200/70 text-sm font-medium mb-8">فريق الدعم الفني متواجد على مدار الساعة لخدمتكم</p>
                   
                   <div className="flex flex-col md:flex-row justify-center gap-4">
-                    <button onClick={openSupport} className="px-8 py-4 bg-blue-600 text-white rounded-2xl font-black text-xs hover:bg-blue-500 transition-all shadow-xl shadow-blue-500/20">
+                    <button className="px-8 py-4 bg-blue-600 text-white rounded-2xl font-black text-xs hover:bg-blue-500 transition-all shadow-xl shadow-blue-500/20">
                       مراسلة الدعم الفني
                     </button>
                     <button className="px-8 py-4 bg-white/10 text-white rounded-2xl font-black text-xs hover:bg-white/20 transition-all border border-white/10 backdrop-blur-md">

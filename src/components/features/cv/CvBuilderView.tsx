@@ -3,14 +3,14 @@ import type { Dispatch, SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import { App as CapacitorApp } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
-import { ArrowRight, Check, Download, FileText, Loader2, Save, Share2, X } from 'lucide-react';
+import { ArrowRight, Award, Briefcase, Check, Download, Eye, FileText, GraduationCap, Languages, Loader2, LockKeyhole, Save, Share2, SlidersHorizontal, UserRound } from 'lucide-react';
 import type { AppUser } from '../../../types';
 import { useAppContext } from '../../../contexts/AppContext';
 import { profileService } from '../../../lib/services/profileService';
 import { cvProfileService } from '../../../lib/services/cvProfileService';
 import type { CvProfileRecord } from '../../../lib/services/cvProfileService';
 import {
-  CV_LABELS, CV_LIMITS, cvByteSize, cvCompleteness, cvFromProfile, cvHasContent,
+  CV_LABELS, CV_LIMITS, cvByteSize, cvFromProfile, cvHasContent,
   normalizeCvData, normalizeCvEmail, normalizeCvPhone, normalizeCvUrl,
 } from '../../../lib/cv/cvData';
 import type { CvData } from '../../../lib/cv/cvData';
@@ -18,7 +18,7 @@ import { isContactPhone, normalizePhoneDigits } from '../../../lib/utils/contact
 import { downloadCvPdf, exportCvPdf, shareCvPdf } from '../../../lib/cv/cvExport';
 import { CvPreview } from './CvPreview';
 import {
-  CvCertificationLinkFields, CvEducationFields, CvExperienceFields, CvPersonalFields,
+  CvCertificationLinkFields, CvEditorSection, CvEducationFields, CvExperienceFields, CvPersonalFields,
   CvPreviewSettings, CvSkillsLanguageFields, CvSummaryField,
 } from './CvBuilderFields';
 import type { CvFieldErrors } from './CvBuilderFields';
@@ -32,11 +32,9 @@ export interface CvBuilderViewProps {
 type Notice = { tone: 'info' | 'success' | 'warning' | 'error'; text: string };
 type Operation = 'save' | 'prepare' | 'share' | 'download';
 type PreparedPdf = { blob: Blob; data: CvData; revision: number; avatarUrl?: string };
-const steps = ['البيانات الشخصية', 'النبذة المهنية', 'الخبرات', 'التعليم', 'المهارات واللغات', 'الشهادات والروابط', 'المعاينة والتصدير'];
-const buttonBase = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-50';
-const button = `${buttonBase} border-slate-300 bg-white text-slate-800 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800`;
-const primaryButton = `${buttonBase} border-blue-700 bg-blue-700 text-white hover:bg-blue-800 dark:border-blue-600 dark:bg-blue-600 dark:text-white dark:hover:bg-blue-700`;
-const activeStepButton = `${buttonBase} border-blue-600 bg-blue-50 text-blue-800 hover:bg-blue-100 dark:border-blue-500 dark:bg-blue-950 dark:text-blue-100 dark:hover:bg-blue-900`;
+const buttonBase = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border px-4 py-2.5 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-50';
+const button = `${buttonBase} border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800`;
+const primaryButton = `${buttonBase} border-[#0a66c2] bg-[#0a66c2] text-white hover:bg-[#004182]`;
 
 // Validate BEFORE normalization: invalid supplied contacts/links must never disappear silently.
 function validateFields(data: CvData, requireName = false): CvFieldErrors {
@@ -64,6 +62,9 @@ function validateFields(data: CvData, requireName = false): CvFieldErrors {
     if (!(e.degree.trim() || e.school.trim() || e.field.trim() || e.description.trim()) && (e.start.trim() || e.end.trim())) errors[`education.${e.id}.degree`] = 'أضف مؤهلاً أو جهة تعليم أو تخصصاً أو وصفاً، أو احذف هذا العنصر.';
     checkLines(e.description, `education.${e.id}.description`);
   });
+  const skills = data.skills.map(skill => skill.trim()).filter(Boolean);
+  if (skills.length > CV_LIMITS.skills) errors.skills = `اختر ${CV_LIMITS.skills} مهارة كحد أقصى؛ لن نحذف المهارات الزائدة تلقائياً.`;
+  else if (skills.some(skill => skill.length > CV_LIMITS.skill)) errors.skills = `اختصر كل مهارة إلى ${CV_LIMITS.skill} حرفاً، واكتب كل مهارة في سطر مستقل.`;
   data.languages.forEach(l => {
     if (!l.name.trim() && l.level) errors[`languages.${l.id}.name`] = 'أدخل اسم اللغة أو احذفها.';
   });
@@ -118,7 +119,6 @@ function CvBuilderSession({ user, onClose, onSaved }: CvBuilderViewProps) {
   const id = useId();
   const [data, setData] = useState<CvData>(() => cvFromProfile(user));
   const [isPublic, setIsPublic] = useState(false);
-  const [step, setStep] = useState(0);
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [loadNotice, setLoadNotice] = useState<Notice | null>(null);
@@ -139,12 +139,12 @@ function CvBuilderSession({ user, onClose, onSaved }: CvBuilderViewProps) {
   const pendingFocus = useRef<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
-  const scrollArea = useRef<HTMLDivElement>(null);
+  const preview = useRef<HTMLElement>(null);
   const closeHeading = useRef<HTMLHeadingElement>(null);
   const authenticatedSessionSeen = useRef(Boolean(appUser));
   if (appUser) authenticatedSessionSeen.current = true;
-  const latest = useRef({ data, isPublic, loadState, appUser, onClose, onSaved, step, closeWarning, user });
-  latest.current = { data, isPublic, loadState, appUser, onClose, onSaved, step, closeWarning, user };
+  const latest = useRef({ data, isPublic, loadState, appUser, onClose, onSaved, closeWarning, user });
+  latest.current = { data, isPublic, loadState, appUser, onClose, onSaved, closeWarning, user };
   const isActive = useCallback(() => alive.current && !closed.current && (!authenticatedSessionSeen.current || latest.current.appUser?.id === user.id), [user.id]);
   const normalized = useMemo(() => normalizeCvData(data), [data]);
   const errors = useMemo(() => validateFields(data, requireName), [data, requireName]);
@@ -285,8 +285,7 @@ function CvBuilderSession({ user, onClose, onSaved }: CvBuilderViewProps) {
   }, [finishClose, persistDraft]);
   const goBack = useCallback(() => {
     if (latest.current.closeWarning) { setCloseWarning(false); return; }
-    if (latest.current.step > 0) setStep(current => current - 1);
-    else requestClose();
+    requestClose();
   }, [requestClose]);
 
   useEffect(() => {
@@ -300,11 +299,11 @@ function CvBuilderSession({ user, onClose, onSaved }: CvBuilderViewProps) {
         if (latest.current.closeWarning) setCloseWarning(false);
         else requestClose();
       } else if (event.key === 'Tab' && dialog.current) {
-        const focusable = Array.from(dialog.current.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]')).filter(element => element.getClientRects().length && !element.closest('fieldset:disabled'));
+        const focusable = Array.from(dialog.current.querySelectorAll<HTMLElement>('summary, button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href], [tabindex="0"]')).filter(element => element.getClientRects().length && !element.closest('fieldset:disabled'));
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
         if (!first) { event.preventDefault(); heading.current?.focus(); return; }
-        const outside = !focusable.includes(document.activeElement as HTMLElement);
+        const outside = !dialog.current.contains(document.activeElement);
         if (event.shiftKey && (document.activeElement === first || outside)) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && (document.activeElement === last || outside)) { event.preventDefault(); first.focus(); }
       }
@@ -329,17 +328,19 @@ function CvBuilderSession({ user, onClose, onSaved }: CvBuilderViewProps) {
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
-      scrollArea.current?.scrollTo({ top: 0 });
       if (closeWarning) { closeHeading.current?.focus(); return; }
-      heading.current?.focus();
       if (pendingFocus.current) {
         const field = Array.from(dialog.current?.querySelectorAll<HTMLElement>('[data-cv-field]') || []).find(element => element.dataset.cvField === pendingFocus.current);
+        for (let parent = field?.parentElement; parent; parent = parent.parentElement) {
+          if (parent instanceof HTMLDetailsElement) parent.open = true;
+        }
         field?.focus();
+        field?.scrollIntoView({ block: 'center' });
         pendingFocus.current = null;
-      }
+      } else heading.current?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [step, loadState, closeWarning, focusRequest]);
+  }, [loadState, closeWarning, focusRequest]);
 
   const validated = (forExport: boolean): CvData | null => {
     const current = latest.current.data;
@@ -348,15 +349,14 @@ function CvBuilderSession({ user, onClose, onSaved }: CvBuilderViewProps) {
     const first = Object.keys(problems)[0];
     if (first) {
       pendingFocus.current = first;
-      const section = first.split('.')[0];
-      setStep(section === 'personal' ? 0 : section === 'summary' ? 1 : section === 'experiences' ? 2 : section === 'education' ? 3 : section === 'languages' || section === 'skills' ? 4 : section === 'document' ? 6 : 5);
       setFocusRequest(value => value + 1);
       setActionNotice({ tone: 'error', text: `صحّح الحقل قبل الحفظ أو التصدير: ${problems[first]}` });
       return null;
     }
     const result = normalizeCvData(current);
     if (forExport && !cvHasContent(result)) {
-      setStep(1);
+      pendingFocus.current = 'summary';
+      setFocusRequest(value => value + 1);
       setActionNotice({ tone: 'error', text: 'أضف نبذة أو خبرة أو تعليماً أو مهارة أو شهادة قبل تجهيز السيرة للمشاركة.' });
       return null;
     }
@@ -414,7 +414,7 @@ function CvBuilderSession({ user, onClose, onSaved }: CvBuilderViewProps) {
         if (!result || result.error || !result.data || (Array.isArray(result.data) && !result.data.length)) throw new Error('Profile sync failed');
         // AppContext supports functional updates at runtime; merge into the live user, never a stale prop.
         (setAppUser as Dispatch<SetStateAction<AppUser | null>>)(previous => previous?.id === user.id ? { ...previous, ...updates } : previous);
-        setActionNotice({ tone: record.storage === 'local' ? 'warning' : 'success', text: `${cvReport} تمت مزامنة الاسم والمسمى والموقع والهاتف والموقع الإلكتروني والمهارات والخبرة والتعليم مع ملفك الشخصي. لم تتغير النبذة أو بريد الدخول أو ملف PDF المرفوع سابقاً.` });
+        setActionNotice({ tone: record.storage === 'local' ? 'warning' : 'success', text: `${cvReport} تم تحديث بيانات ملفك الشخصي.` });
       } catch {
         if (!isActive()) return;
         setActionNotice({ tone: 'warning', text: `${cvReport} حفظ جزئي: تعذرت مزامنة الملف الشخصي، ولا نؤكد حفظ بياناته. أعد الضغط على «حفظ السيرة» للمحاولة مجدداً.` });
@@ -445,8 +445,8 @@ function CvBuilderSession({ user, onClose, onSaved }: CvBuilderViewProps) {
       if (!blob.size) throw new Error('Empty PDF');
       setPrepared({ blob, data: snapshot, revision: ticket, avatarUrl: photo });
       setActionNotice({ tone: 'success', text: 'تم تجهيز PDF بنجاح. اختر «مشاركة PDF» أو «تنزيل PDF». التجهيز والمشاركة لا ينشران السيرة على المنصة.' });
-    } catch {
-      if (isActive()) setActionNotice({ tone: 'error', text: 'تعذر تجهيز PDF. تحقق من اتصالك لتحميل الخط والصورة ثم أعد المحاولة، أو جرّب إخفاء الصورة.' });
+    } catch (error) {
+      if (isActive()) setActionNotice({ tone: 'error', text: error instanceof Error ? error.message : 'تعذر تجهيز PDF؛ أعد المحاولة.' });
     } finally { endOperation('prepare'); }
   };
 
@@ -467,74 +467,82 @@ function CvBuilderSession({ user, onClose, onSaved }: CvBuilderViewProps) {
   const fieldsProps = { data, onChange: changeData, errors };
   const disabled = Boolean(busy) || closeWarning;
   const pdfReady = Boolean(prepared && prepared.revision === revision.current && prepared.avatarUrl === (data.settings.showPhoto ? avatarUrl : undefined) && canExport);
-  const content = <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} dir="rtl" lang="ar" className="fixed inset-0 z-[1400] flex min-w-0 flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}>
-    <header className="shrink-0 border-b border-slate-200 bg-white px-3 py-3 sm:px-6 dark:border-slate-700 dark:bg-slate-900">
-      <div className="mx-auto flex max-w-5xl items-center gap-3">
-        <button type="button" className={button} onClick={goBack} aria-label={step > 0 ? 'الرجوع إلى الخطوة السابقة' : 'الرجوع وإغلاق المعالج'}><ArrowRight size={20} aria-hidden="true" /></button>
-        <div className="min-w-0 flex-1"><h1 id={`${id}-title`} className="text-lg font-bold">إنشاء السيرة الذاتية</h1><p className="text-xs leading-5 text-slate-500 dark:text-slate-400">خاص افتراضياً · مسودة محلية · PDF عربي أو إنجليزي</p></div>
-        <button type="button" className={button} onClick={requestClose} aria-label="إغلاق معالج السيرة الذاتية"><X size={20} aria-hidden="true" /></button>
+  const content = <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={`${id}-title`} dir="rtl" lang="ar" className="fixed inset-0 z-[1400] flex min-w-0 flex-col bg-[#f3f6f8] text-slate-900 dark:bg-slate-950 dark:text-slate-100" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}>
+    <header className="shrink-0 border-b border-slate-100 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+      <div className="mx-auto flex max-w-6xl items-center gap-3">
+        <button type="button" className={button} onClick={goBack} aria-label="الرجوع وإغلاق إعداد السيرة"><ArrowRight size={20} aria-hidden="true" /></button>
+        <div className="min-w-0 flex-1"><h1 ref={heading} tabIndex={-1} id={`${id}-title`} className="text-base font-extrabold outline-none sm:text-lg">إعداد السيرة الذاتية</h1><p className="mt-0.5 text-xs leading-5 text-slate-500 dark:text-slate-400">بياناتك، بتنسيق احترافي في ورقة واحدة</p></div>
+        <span className="hidden items-center gap-1.5 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-bold text-[#0a66c2] dark:bg-blue-950 dark:text-blue-300 sm:inline-flex"><FileText size={14} aria-hidden="true" />A4 · PDF</span>
       </div>
     </header>
-    <nav aria-label="خطوات إنشاء السيرة الذاتية" className="shrink-0 overflow-x-auto border-b border-slate-200 bg-white px-3 dark:border-slate-700 dark:bg-slate-900">
-      <ol className="mx-auto flex w-max min-w-full gap-2 py-2 sm:w-auto sm:max-w-5xl sm:flex-wrap">
-        {steps.map((label, index) => <li key={label}><button type="button" onClick={() => setStep(index)} disabled={loadState !== 'ready' || disabled} aria-current={step === index ? 'step' : undefined} className={step === index ? activeStepButton : button}><span aria-hidden="true">{index + 1}.</span>{label}</button></li>)}
-      </ol>
-    </nav>
-    <div ref={scrollArea} className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain" aria-busy={loadState === 'loading'}>
-      <div className="mx-auto max-w-5xl space-y-4 px-3 py-5 sm:px-6">
-        <h2 ref={heading} tabIndex={-1} className="text-xl font-bold outline-none">{steps[step]} <span className="text-sm font-normal text-slate-500 dark:text-slate-400">({step + 1}/{steps.length})</span></h2>
+    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain" aria-busy={loadState === 'loading'}>
+      <div className="mx-auto max-w-6xl space-y-4 px-3 py-5 sm:px-6 sm:py-6">
         <NoticeBlock notice={loadNotice} />
-        {loadState === 'loading' && <div role="status" className="space-y-4 py-4"><p className="text-sm text-slate-600 dark:text-slate-300">جارٍ تحميل سيرتك ومسودة الجهاز…</p><div className="h-12 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" /><div className="h-32 animate-pulse rounded-lg bg-slate-200 dark:bg-slate-800" /></div>}
+        {loadState === 'loading' && <div role="status" className="space-y-4 py-4"><p className="text-sm text-slate-600 dark:text-slate-300">جارٍ تحميل سيرتك…</p><div className="h-12 animate-pulse rounded-2xl bg-slate-200 dark:bg-slate-800" /><div className="h-64 animate-pulse rounded-3xl bg-slate-200 dark:bg-slate-800" /></div>}
         {loadState === 'error' && <div className="flex flex-wrap gap-3"><button type="button" className={primaryButton} onClick={() => setLoadAttempt(value => value + 1)}>إعادة المحاولة</button><button type="button" className={button} onClick={() => {
           applyLoaded(fallback.current);
-          setLoadNotice({ tone: 'warning', text: 'تتابع دون التحقق من نسخة الحساب. الحفظ قد يستبدلها؛ تأكد من محتوى المسودة قبل الحفظ.' });
+          setLoadNotice({ tone: 'warning', text: 'تتابع دون التحقق من نسخة الحساب. الحفظ قد يستبدلها؛ تأكد من المحتوى قبل الحفظ.' });
         }}>{fallback.current ? 'المتابعة بمسودة الجهاز' : 'المتابعة ببيانات الملف الشخصي'}</button></div>}
         {loadState === 'ready' && <>
-          <NoticeBlock notice={draftNotice} />
-          <NoticeBlock notice={actionNotice} />
-          {closeWarning && <section role="alertdialog" aria-labelledby={`${id}-close-warning`} className="space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
-            <h3 ref={closeHeading} id={`${id}-close-warning`} tabIndex={-1} className="font-bold outline-none">آخر التغييرات ليست محفوظة على الجهاز</h3>
-            <p className="text-sm leading-6">صحّح أخطاء الحقول أو مشكلة التخزين قبل الإغلاق. الإغلاق الآن قد يفقد آخر التغييرات.</p>
+          {draftNotice?.tone !== 'info' && <NoticeBlock notice={draftNotice} />}
+          {closeWarning && <section role="alertdialog" aria-labelledby={`${id}-close-warning`} className="space-y-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+            <h2 ref={closeHeading} id={`${id}-close-warning`} tabIndex={-1} className="font-bold outline-none">آخر التغييرات ليست محفوظة</h2>
+            <p className="text-sm leading-6">صحّح أخطاء الحقول أو مشكلة التخزين قبل الإغلاق كي لا تفقد تغييراتك.</p>
             <div className="flex flex-wrap gap-2"><button type="button" className={primaryButton} onClick={() => setCloseWarning(false)}>البقاء وتصحيح المشكلة</button><button type="button" className={button} onClick={finishClose}>إغلاق دون حفظ آخر التغييرات</button></div>
           </section>}
-          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300"><span>اكتمال مقترح: {cvCompleteness(normalized)}٪ — ليس شرطاً للحفظ</span><span>كل الحقول اختيارية عدا الاسم للحفظ والتصدير.</span></div>
-          <fieldset disabled={disabled} className="min-w-0 space-y-5">
-            <legend className="sr-only">{steps[step]}</legend>
-            {step === 0 && <CvPersonalFields {...fieldsProps} />}
-            {step === 1 && <CvSummaryField {...fieldsProps} />}
-            {step === 2 && <CvExperienceFields {...fieldsProps} />}
-            {step === 3 && <CvEducationFields {...fieldsProps} />}
-            {step === 4 && <CvSkillsLanguageFields {...fieldsProps} />}
-            {step === 5 && <CvCertificationLinkFields {...fieldsProps} />}
-            {step === 6 && <>
-              <CvPreviewSettings settings={data.settings} onChange={settings => changeData({ ...data, settings })} />
-              {Object.keys(errors).length > 0 && <NoticeBlock notice={{ tone: 'warning', text: 'المعاينة تستبعد بيانات التواصل أو الروابط غير الصالحة مؤقتاً. صحّح أخطاء الحقول قبل الحفظ أو تجهيز PDF.' }} />}
-              {errors.document && <NoticeBlock notice={{ tone: 'error', text: errors.document }} />}
-              {!canExport && <NoticeBlock notice={{ tone: 'info', text: 'للمشاركة، أدخل الاسم وأضف نبذة أو خبرة أو تعليماً أو مهارة أو شهادة.' }} />}
-              <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">المعاينة مصغّرة لتناسب الشاشة؛ PDF يُجهّز بحجم A4 وترقيم صفحاته النهائي قد يختلف عن هذه المعاينة.</p>
+          <div className="grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+            <fieldset disabled={disabled} className="min-w-0 space-y-4">
+              <legend className="sr-only">بيانات وإعدادات السيرة الذاتية</legend>
+              <p className="px-1 text-sm leading-6 text-slate-500 dark:text-slate-400">ملأنا بيانات ملفك لتبدأ أسرع. عدّل ما تحتاجه واترك الأقسام غير المناسبة فارغة.</p>
+              <CvEditorSection title="معلوماتك الأساسية" subtitle="الاسم مطلوب، وباقي التفاصيل حسب حاجتك" icon={UserRound} initiallyOpen>
+                <CvPersonalFields {...fieldsProps} />
+                <CvSummaryField {...fieldsProps} />
+              </CvEditorSection>
+              <CvEditorSection title="الخبرة العملية" subtitle={data.experiences.length ? `${data.experiences.length} خبرة مضافة · الأحدث أولاً` : 'أضف آخر وظيفة وأبرز إنجازاتك'} icon={Briefcase} initiallyOpen={data.experiences.length > 0}>
+                <CvExperienceFields {...fieldsProps} />
+              </CvEditorSection>
+              <CvEditorSection title="التعليم" subtitle={data.education.length ? `${data.education.length} مؤهل مضاف` : 'شهادتك أو تخصصك الدراسي'} icon={GraduationCap} initiallyOpen={data.education.length > 0}>
+                <CvEducationFields {...fieldsProps} />
+              </CvEditorSection>
+              <CvEditorSection title="المهارات واللغات" subtitle="اختر المهارات الأقرب للوظيفة التي تريدها" icon={Languages} initiallyOpen>
+                <CvSkillsLanguageFields {...fieldsProps} />
+              </CvEditorSection>
+              <CvEditorSection title="إضافات اختيارية" subtitle="الشهادات والدورات وروابط أعمالك" icon={Award}>
+                <CvCertificationLinkFields {...fieldsProps} />
+              </CvEditorSection>
+              <CvEditorSection title="التنسيق والخصوصية" subtitle={`${data.settings.language === 'ar' ? 'العربية' : 'English'} · ${isPublic ? 'نشر السيرة مفعّل عند الحفظ' : 'السيرة خاصة بك'}`} icon={SlidersHorizontal}>
+                <CvPreviewSettings settings={data.settings} onChange={settings => changeData({ ...data, settings })} />
+                <section className="space-y-3 border-t border-slate-100 pt-4 dark:border-slate-800" aria-label="خصوصية السيرة وحفظ الملف الشخصي">
+                  <label className="flex min-h-11 items-start gap-3 text-sm font-bold"><input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-[#0a66c2]" checked={isPublic} onChange={event => changeVisibility(event.target.checked)} /><span>إتاحة سيرتي للمستخدمين المسجّلين</span></label>
+                  <p className="text-xs leading-6 text-slate-500 dark:text-slate-400">عند التفعيل والحفظ تظهر جميع بيانات السيرة، حتى الهاتف والبريد المخفيان في PDF. عند الإيقاف والحفظ تبقى خاصة؛ المشاركة والتنزيل لا ينشرانها.</p>
+                  <p className="text-xs leading-6 text-slate-500 dark:text-slate-400">الحفظ يحدّث بياناتك المهنية والتواصل في الملف الشخصي، ولا يغيّر بريد الدخول أو النبذة أو الصورة أو الملفات المرفوعة سابقاً.</p>
+                </section>
+              </CvEditorSection>
+            </fieldset>
+            <section ref={preview} tabIndex={-1} aria-label="معاينة وتنزيل السيرة" className="min-w-0 space-y-4 rounded-3xl border border-slate-200 bg-slate-100 p-3 outline-none dark:border-slate-800 dark:bg-slate-900 sm:p-4 lg:sticky lg:top-0">
+              <div className="flex items-center gap-2"><Eye size={18} className="text-[#0a66c2] dark:text-blue-300" aria-hidden="true" /><h2 className="flex-1 text-sm font-extrabold">معاينة مباشرة</h2><span className="text-xs text-slate-500 dark:text-slate-400">عربي / English</span></div>
               <CvPreview data={normalized} avatarUrl={avatarUrl} />
-              <div className="flex flex-wrap gap-2">
-                <button type="button" className={primaryButton} onClick={() => void preparePdf()} disabled={disabled || !canExport}>{busy === 'prepare' ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : <FileText size={18} aria-hidden="true" />}{busy === 'prepare' ? 'جارٍ تجهيز PDF…' : 'تجهيز PDF'}</button>
-                <button type="button" className={button} onClick={() => void deliverPdf('share')} disabled={disabled || !pdfReady}><Share2 size={18} aria-hidden="true" />مشاركة PDF</button>
-                <button type="button" className={button} onClick={() => void deliverPdf('download')} disabled={disabled || !pdfReady}><Download size={18} aria-hidden="true" />تنزيل PDF</button>
-              </div>
-              {pdfReady && <p role="status" className="flex items-center gap-2 text-sm text-green-800 dark:text-green-300"><Check size={18} aria-hidden="true" />ملف PDF جاهز. أي تعديل يُلغي التجهيز السابق.</p>}
-            </>}
-            <section className="space-y-3 border-t border-slate-200 pt-4 dark:border-slate-700" aria-label="خصوصية السيرة وحفظ الملف الشخصي">
-              <label className="flex min-h-11 items-start gap-3 text-sm font-semibold"><input type="checkbox" className="mt-1 h-5 w-5 shrink-0 accent-blue-600" checked={isPublic} onChange={event => changeVisibility(event.target.checked)} /><span>نشر السيرة: جميع بيانات السيرة ستكون مرئية لأي مستخدم مسجّل الدخول عند تفعيل الخيار وحفظها.</span></label>
-              <p className="text-xs leading-6 text-slate-600 dark:text-slate-300">عند إيقاف الخيار وحفظها، تبقى السيرة خاصة بك. تغيير الخيار وحده أو حفظ المسودة لا يغيّر ظهور نسخة الحساب. إخفاء الهاتف والبريد في PDF لا يخفيهما من السيرة العامة.</p>
-              <p className="text-xs leading-6 text-slate-600 dark:text-slate-300">«حفظ السيرة» يزامن الاسم والمسمى والموقع والهاتف والموقع الإلكتروني والمهارات والخبرة والتعليم مع ملفك الشخصي، وفق خصوصية ذلك الملف. لا يغيّر نبذته أو بريد تسجيل الدخول أو صورة الحساب أو ملفات PDF المرفوعة سابقاً.</p>
+              {Object.keys(errors).length > 0 && <NoticeBlock notice={{ tone: 'warning', text: 'صحّح الحقول غير الصالحة قبل التصدير؛ لا تظهر في المعاينة.' }} />}
+              {!canExport && <p className="text-xs leading-6 text-slate-500 dark:text-slate-400">أدخل اسمك وأضف نبذة أو مهارة أو خبرة لتصدير السيرة.</p>}
+              <button type="button" className={`${primaryButton} w-full`} onClick={() => void preparePdf()} disabled={disabled || !canExport}>{busy === 'prepare' ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : <FileText size={18} aria-hidden="true" />}{busy === 'prepare' ? 'جارٍ تجهيز PDF…' : 'تجهيز PDF'}</button>
+              {pdfReady && <>
+                <div className="grid grid-cols-2 gap-2"><button type="button" className={button} onClick={() => void deliverPdf('share')} disabled={disabled}><Share2 size={16} aria-hidden="true" />مشاركة PDF</button><button type="button" className={button} onClick={() => void deliverPdf('download')} disabled={disabled}><Download size={16} aria-hidden="true" />تنزيل PDF</button></div>
+                <p role="status" className="flex items-center gap-2 text-xs text-green-800 dark:text-green-300"><Check size={16} aria-hidden="true" />جاهز للمشاركة · ورقة واحدة</p>
+              </>}
+              <p className="flex items-start gap-1.5 text-xs leading-5 text-slate-500 dark:text-slate-400"><LockKeyhole size={14} className="mt-0.5 shrink-0" aria-hidden="true" />تنزيل الملف أو مشاركته لا يغيّر خصوصية سيرتك.</p>
             </section>
-          </fieldset>
+          </div>
         </>}
       </div>
     </div>
-    <footer className="shrink-0 border-t border-slate-200 bg-white px-3 pt-3 sm:px-6 dark:border-slate-700 dark:bg-slate-900" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}>
-      <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap gap-2"><button type="button" className={button} onClick={goBack} disabled={disabled}>السابق</button>{step < steps.length - 1 && <button type="button" className={button} onClick={() => setStep(current => current + 1)} disabled={loadState !== 'ready' || disabled}>التالي</button>}</div>
-        <button type="button" className={primaryButton} onClick={() => void save()} disabled={loadState !== 'ready' || disabled}>{busy === 'save' ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}{busy === 'save' ? 'جارٍ الحفظ والمزامنة…' : 'حفظ السيرة'}</button>
+    <footer className="shrink-0 border-t border-slate-100 bg-white px-3 pt-3 dark:border-slate-800 dark:bg-slate-900 sm:px-6" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}>
+      {actionNotice && <div className="mx-auto mb-3 max-h-[25vh] max-w-6xl overflow-y-auto"><NoticeBlock notice={actionNotice} /></div>}
+      <div className="mx-auto flex max-w-6xl items-center gap-2 sm:gap-3">
+        <button type="button" className={`${primaryButton} flex-1 sm:flex-none sm:min-w-44`} onClick={() => void save()} disabled={loadState !== 'ready' || disabled}>{busy === 'save' ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : <Save size={18} aria-hidden="true" />}{busy === 'save' ? 'جارٍ الحفظ…' : 'حفظ السيرة'}</button>
+        <button type="button" className={`${button} flex-1 sm:flex-none`} disabled={loadState !== 'ready' || disabled} onClick={() => { preview.current?.focus({ preventScroll: true }); preview.current?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }}><Eye size={18} aria-hidden="true" />معاينة وتنزيل</button>
+        <p role="status" className="hidden flex-1 text-xs leading-5 text-slate-500 dark:text-slate-400 sm:block">{busy ? 'جارٍ إتمام العملية…' : draftNotice?.tone === 'info' ? draftNotice.text : 'تُحفظ مسودة الجهاز تلقائياً؛ احفظ السيرة لتحديث الحساب.'}</p>
       </div>
-      {busy && <p role="status" className="mx-auto mt-2 max-w-5xl text-xs text-slate-600 dark:text-slate-300">{busy === 'prepare' ? 'جارٍ تجهيز PDF…' : busy === 'save' ? 'جارٍ حفظ السيرة ومزامنة الملف الشخصي…' : busy === 'share' ? 'جارٍ مشاركة PDF…' : 'جارٍ تنزيل PDF…'}</p>}
+      <p className="mt-2 text-center text-[11px] text-slate-500 dark:text-slate-400 sm:hidden">المسودة تلقائية؛ زر الحفظ يحدّث سيرتك على الحساب.</p>
     </footer>
   </div>;
   return typeof document === 'undefined' ? content : createPortal(content, document.body);

@@ -1,13 +1,28 @@
-import React, { useId } from 'react';
-import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
+import React, { useId, useState } from 'react';
+import { ArrowDown, ArrowUp, ChevronDown, Plus, Trash2 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { CV_LABELS, CV_LANGUAGE_LEVELS, CV_LIMITS, newCvId } from '../../../lib/cv/cvData';
 import type { CvData, CvLanguageLevel, CvSettings } from '../../../lib/cv/cvData';
 
 export type CvFieldErrors = Record<string, string>;
 type FieldsProps = { data: CvData; onChange: (data: CvData) => void; errors: CvFieldErrors };
-const controlBase = 'w-full min-w-0 rounded-lg border bg-white px-3 py-2.5 text-base text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-600/20 dark:bg-slate-900 dark:text-slate-100';
-const control = `${controlBase} border-slate-300 dark:border-slate-600`;
-const smallButton = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800';
+const controlBase = 'w-full min-w-0 min-h-11 rounded-2xl border bg-slate-50/80 px-4 py-3 text-base text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-[#0a66c2] focus:bg-white focus:ring-2 focus:ring-blue-100 dark:bg-slate-800/60 dark:text-slate-100 dark:focus:bg-slate-800 dark:focus:ring-blue-900';
+const control = `${controlBase} border-slate-200 dark:border-slate-700`;
+const smallButton = 'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 text-sm font-bold text-[#0a66c2] hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-blue-300 dark:hover:bg-slate-800';
+
+export function CvEditorSection({ title, subtitle, icon: Icon, children, initiallyOpen = false }: {
+  title: string; subtitle: string; icon: LucideIcon; children: React.ReactNode; initiallyOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(initiallyOpen);
+  return <details open={open} onToggle={event => setOpen(event.currentTarget.open)} className="group rounded-3xl border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <summary className="flex min-h-16 cursor-pointer list-none items-center gap-3 rounded-3xl p-4 outline-none focus-visible:ring-2 focus-visible:ring-blue-600 sm:p-5 [&::-webkit-details-marker]:hidden">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-[#0a66c2] dark:bg-blue-950 dark:text-blue-300"><Icon size={20} aria-hidden="true" /></span>
+      <span className="min-w-0 flex-1"><h2 className="text-base font-extrabold text-slate-800 dark:text-white">{title}</h2><span className="mt-0.5 block text-xs leading-5 text-slate-500 dark:text-slate-400">{subtitle}</span></span>
+      <ChevronDown size={18} aria-hidden="true" className="shrink-0 text-slate-400 transition-transform group-open:rotate-180" />
+    </summary>
+    <div className="space-y-5 px-4 pb-5 sm:px-5">{children}</div>
+  </details>;
+}
 
 function TextField({ field, label, value, onChange, max, error, multiline = false, placeholder, dir = 'auto', type = 'text', hint }: {
   field: string; label: string; value: string; onChange: (value: string) => void; max: number;
@@ -17,27 +32,28 @@ function TextField({ field, label, value, onChange, max, error, multiline = fals
   const props = {
     id, value, maxLength: max, placeholder, dir, 'data-cv-field': field,
     onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => onChange(event.target.value),
-    'aria-invalid': Boolean(error), 'aria-describedby': `${id}-help${error ? ` ${id}-error` : ''}`,
+    'aria-invalid': Boolean(error), 'aria-required': field === 'personal.fullName',
+    'aria-describedby': [hint || multiline || value.length > max * 0.8 ? `${id}-help` : '', error ? `${id}-error` : ''].filter(Boolean).join(' ') || undefined,
     className: error ? `${controlBase} border-red-500 dark:border-red-400` : control,
   };
   return <div className="min-w-0 space-y-1.5">
     <label htmlFor={id} className="block text-sm font-semibold text-slate-800 dark:text-slate-200">{label}</label>
-    {multiline ? <textarea {...props} rows={5} /> : <input {...props} type={type} autoComplete="off" />}
-    <p id={`${id}-help`} className="text-xs leading-5 text-slate-500 dark:text-slate-400">{hint ? `${hint} · ` : ''}{value.length}/{max}</p>
+    {multiline ? <textarea {...props} rows={3} /> : <input {...props} type={type} autoComplete="off" />}
+    {(hint || multiline || value.length > max * 0.8) && <p id={`${id}-help`} className="text-xs leading-5 text-slate-500 dark:text-slate-400">{hint}{(multiline || value.length > max * 0.8) && <span className="ms-2 tabular-nums">{value.length}/{max}</span>}</p>}
     {error && <p id={`${id}-error`} className="text-sm text-red-700 dark:text-red-300">{error}</p>}
   </div>;
 }
 
 function AddButton({ onClick, count, limit, children }: { onClick: () => void; count: number; limit: number; children: React.ReactNode }) {
   return <button type="button" className={smallButton} disabled={count >= limit} onClick={onClick}>
-    <Plus size={18} aria-hidden="true" />{children}<span className="text-xs">({count}/{limit})</span>
+    <Plus size={18} aria-hidden="true" />{children}{count >= limit && <span className="text-xs">وصلت للحد الأقصى</span>}
   </button>;
 }
 
 function Entry({ title, onRemove, children, onUp, onDown, first, last }: {
   title: string; onRemove: () => void; children: React.ReactNode; onUp?: () => void; onDown?: () => void; first?: boolean; last?: boolean;
 }) {
-  return <section aria-label={title} className="space-y-4 rounded-lg border border-slate-200 bg-white p-3 sm:p-4 dark:border-slate-700 dark:bg-slate-900">
+  return <section aria-label={title} className="space-y-4 rounded-2xl border border-slate-100 bg-slate-50/60 p-3 sm:p-4 dark:border-slate-800 dark:bg-slate-950/40">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h3 className="font-semibold text-slate-900 dark:text-slate-100">{title}</h3>
       <div className="flex gap-1">
@@ -51,13 +67,13 @@ function Entry({ title, onRemove, children, onUp, onDown, first, last }: {
 }
 
 function EmptyNote({ children }: { children: React.ReactNode }) {
-  return <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm leading-6 text-slate-600 dark:border-slate-600 dark:text-slate-300">{children} يمكنك ترك هذا القسم فارغاً.</p>;
+  return <p className="text-sm leading-6 text-slate-500 dark:text-slate-400">{children}</p>;
 }
 
 export function CvPersonalFields({ data, onChange, errors }: FieldsProps) {
   const change = (key: keyof CvData['personal'], value: string) => onChange({ ...data, personal: { ...data.personal, [key]: value } });
   return <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-    <TextField field="personal.fullName" label="الاسم الكامل (مطلوب للحفظ والتصدير)" value={data.personal.fullName} onChange={v => change('fullName', v)} max={CV_LIMITS.name} error={errors['personal.fullName']} />
+    <TextField field="personal.fullName" label="الاسم الكامل" value={data.personal.fullName} onChange={v => change('fullName', v)} max={CV_LIMITS.name} error={errors['personal.fullName']} />
     <TextField field="personal.title" label="المسمى المهني" value={data.personal.title} onChange={v => change('title', v)} max={CV_LIMITS.title} placeholder="مثال: مهندس مدني" />
     <TextField field="personal.location" label="المدينة / الموقع" value={data.personal.location} onChange={v => change('location', v)} max={CV_LIMITS.location} placeholder="مثال: بغداد، العراق" />
     <TextField field="personal.phone" label="رقم التواصل" value={data.personal.phone} onChange={v => change('phone', v)} max={CV_LIMITS.phone} type="tel" dir="ltr" error={errors['personal.phone']} hint="رقم عراقي أو دولي مع رمز الدولة" />
@@ -67,7 +83,7 @@ export function CvPersonalFields({ data, onChange, errors }: FieldsProps) {
 }
 
 export function CvSummaryField({ data, onChange, errors }: FieldsProps) {
-  return <TextField field="summary" label="النبذة المهنية" value={data.summary} onChange={summary => onChange({ ...data, summary })} max={CV_LIMITS.summary} multiline error={errors.summary} placeholder="اكتب تخصصك، أبرز خبراتك وإنجازاتك، والقيمة التي تقدمها لجهة العمل." hint={`حتى ${CV_LIMITS.descriptionLines} سطراً؛ لا تغيّر نبذة ملفك الشخصي`} />;
+  return <TextField field="summary" label="النبذة المهنية" value={data.summary} onChange={summary => onChange({ ...data, summary })} max={CV_LIMITS.summary} multiline error={errors.summary} placeholder="اكتب تخصصك، أبرز خبراتك وإنجازاتك، والقيمة التي تقدمها لجهة العمل." hint="سطران أو ثلاثة عن تخصصك وأهم ما تقدّمه؛ لا تغيّر نبذة ملفك الشخصي" />;
 }
 
 export function CvExperienceFields({ data, onChange, errors }: FieldsProps) {
@@ -119,14 +135,7 @@ export function CvSkillsLanguageFields({ data, onChange, errors }: FieldsProps) 
   return <div className="space-y-6">
     <section aria-labelledby={`${id}-skills`} className="space-y-4">
       <h3 id={`${id}-skills`} className="font-semibold">المهارات</h3>
-      {!data.skills.length && <EmptyNote>أضف مهارات مهنية محددة مثل Excel أو إدارة المشاريع.</EmptyNote>}
-      <div className="grid gap-3 sm:grid-cols-2">
-        {data.skills.map((skill, index) => <div key={index} className="flex min-w-0 items-start gap-2">
-          <div className="min-w-0 flex-1"><TextField field={`skills.${index}`} label={`المهارة ${index + 1}`} value={skill} onChange={value => onChange({ ...data, skills: data.skills.map((s, i) => i === index ? value : s) })} max={CV_LIMITS.skill} /></div>
-          <button type="button" className={`${smallButton} mt-7`} onClick={() => onChange({ ...data, skills: data.skills.filter((_, i) => i !== index) })} aria-label={`حذف المهارة ${index + 1}`}><Trash2 size={18} aria-hidden="true" /></button>
-        </div>)}
-      </div>
-      <AddButton count={data.skills.length} limit={CV_LIMITS.skills} onClick={() => onChange({ ...data, skills: [...data.skills, ''] })}>إضافة مهارة</AddButton>
+      <TextField field="skills" label="مهاراتك الأساسية" value={data.skills.join('\n')} onChange={value => onChange({ ...data, skills: value.split('\n') })} max={(CV_LIMITS.skill + 1) * CV_LIMITS.skills - 1} multiline error={errors.skills} placeholder={'إدارة المشاريع\nExcel\nالتواصل مع العملاء'} hint="اكتب كل مهارة في سطر؛ اختر أهم 5 إلى 8 مهارات" />
     </section>
     <section aria-labelledby={`${id}-languages`} className="space-y-4 border-t border-slate-200 pt-5 dark:border-slate-700">
       <h3 id={`${id}-languages`} className="font-semibold">اللغات</h3>
@@ -177,8 +186,8 @@ export function CvCertificationLinkFields({ data, onChange, errors }: FieldsProp
 }
 
 export function CvPreviewSettings({ settings, onChange }: { settings: CvSettings; onChange: (settings: CvSettings) => void }) {
-  return <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-    <label className="block space-y-2 text-sm font-semibold">لغة عناوين السيرة وملف PDF<select className={control} value={settings.language} onChange={event => onChange({ ...settings, language: event.target.value === 'en' ? 'en' : 'ar' })}>
+  return <div className="space-y-4">
+    <label className="block space-y-2 text-sm font-semibold">لغة السيرة<select className={control} value={settings.language} onChange={event => onChange({ ...settings, language: event.target.value === 'en' ? 'en' : 'ar' })}>
       <option value="ar">العربية — RTL</option><option value="en">English — LTR</option>
     </select></label>
     <p className="text-xs leading-5 text-slate-500 dark:text-slate-400">لا تُترجم النصوص تلقائياً؛ اكتب محتواك باللغة المطلوبة.</p>

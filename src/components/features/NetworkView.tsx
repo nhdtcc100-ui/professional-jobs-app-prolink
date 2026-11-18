@@ -35,7 +35,7 @@ type NetworkTab = 'discover' | 'connections' | 'requests' | 'radar';
 export function NetworkView({ users, appUser, connections, onUserClick, onSyncSignal, onAcceptConnection, onRejectConnection, onMessageClick, currentId }: NetworkViewProps) {
   const [activeTab, setActiveTab] = useState<NetworkTab>('discover');
   const [searchQuery, setSearchQuery] = useState('');
-  const { markConnectionAsSeen, seenConnectionIds, addToast, canUseMessaging } = useAppContext();
+  const { markConnectionAsSeen, seenConnectionIds, addToast } = useAppContext();
 
   // --- Logic ---
   const myConnections = useMemo(() => connections.filter(c => c.status === 'accepted'), [connections]);
@@ -290,7 +290,7 @@ export function NetworkView({ users, appUser, connections, onUserClick, onSyncSi
                         </button>
                       )}
 
-                      {status === 'accepted' && canUseMessaging && (
+                      {status === 'accepted' && (
                         <button 
                           onClick={(e) => {
                             e.stopPropagation();

@@ -5,14 +5,12 @@ import { Capacitor } from '@capacitor/core';
 import { CvDocument, CvFooter, CV_DOCUMENT_RESET, CvAssets } from '../../components/features/cv/CvDocument';
 import { CvData, CV_LABELS, cvFileName, cvHasContent, normalizeCvData } from './cvData';
 import { loadCvFonts } from './cvFonts';
-import { allowedBreaks, computePageSlices } from './cvPagination';
-import { buildImagePdf, PdfLink, PdfImagePage } from './pdfWriter';
+import { CV_FOOTER_TOP, CV_OVERFLOW_MESSAGE, fitCvPage } from './cvPagination';
+import { buildImagePdf, PdfLink } from './pdfWriter';
 import { shareCvFile } from '../utils/cv';
 
 const WIDTH = 794;
 const HEIGHT = 1123;
-const CONTENT_HEIGHT = 1027;
-const NEXT_TOP = 28;
 let exportBusy = false;
 
 async function blobDataUrl(blob: Blob): Promise<string> {
@@ -102,34 +100,19 @@ export async function exportCvPdf(input: CvData, avatarUrl?: string): Promise<Bl
     await document.fonts.load('400 13px ProlinkCv', 'عمل Curriculum Vitae');
     await Promise.all(Array.from(host.querySelectorAll('img')).map(image => image.decode()));
     const doc = host.querySelector<HTMLElement>('.prolink-cv')!;
-    const docRect = doc.getBoundingClientRect();
-    const total = Math.ceil(docRect.height);
-    const breaks = allowedBreaks(Array.from(doc.querySelectorAll<HTMLElement>('[data-cv-block]')).map(block => {
-      const rect = block.getBoundingClientRect();
-      return { top: rect.top - docRect.top, bottom: rect.bottom - docRect.top, keepWithNext: block.hasAttribute('data-cv-keep') };
-    }));
-    const slices = computePageSlices(total, breaks, CONTENT_HEIGHT, CONTENT_HEIGHT - NEXT_TOP);
+    const total = Math.ceil(doc.getBoundingClientRect().height);
+    const layout = fitCvPage(total);
+    if (!layout.fits) throw new Error(CV_OVERFLOW_MESSAGE);
     const serialized = new XMLSerializer().serializeToString(doc);
-    const allLinks = collectLinks(doc);
-    const pages: PdfImagePage[] = [];
-    for (let index = 0; index < slices.length; index++) {
-      const slice = slices[index];
-      const top = index === 0 ? 0 : NEXT_TOP;
-      flushSync(() => root.render(<><CvDocument data={data} assets={assets} /><div data-cv-footer><CvFooter data={data} assets={assets} page={index + 1} total={slices.length} /></div></>));
-      const footer = host.querySelector<HTMLElement>('[data-cv-footer] .prolink-cv')!;
-      const footerMarkup = new XMLSerializer().serializeToString(footer);
-      const footerY = HEIGHT - 68;
-      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH * 2}" height="${HEIGHT * 2}" viewBox="0 0 ${WIDTH} ${HEIGHT}"><rect width="${WIDTH}" height="${HEIGHT}" fill="white"/><svg x="0" y="${top}" width="${WIDTH}" height="${slice.height}" viewBox="0 ${slice.start} ${WIDTH} ${slice.height}" style="overflow:hidden"><foreignObject x="0" y="0" width="${WIDTH}" height="${total}"><div xmlns="http://www.w3.org/1999/xhtml"><style>${fontCss}${CV_DOCUMENT_RESET}</style>${serialized}</div></foreignObject></svg><foreignObject x="0" y="${footerY}" width="${WIDTH}" height="48"><div xmlns="http://www.w3.org/1999/xhtml"><style>${fontCss}${CV_DOCUMENT_RESET}</style>${footerMarkup}</div></foreignObject></svg>`;
-      const links = allLinks.flatMap(link => {
-        const yStart = Math.max(link.y, slice.start);
-        const yEnd = Math.min(link.y + link.height, slice.start + slice.height);
-        if (yEnd <= yStart) return [];
-        return [{ ...link, y: yStart - slice.start + top, height: yEnd - yStart }];
-      });
-      links.push(...collectLinks(footer).map(link => ({ ...link, y: link.y + footerY })));
-      pages.push({ jpeg: await rasterPage(svg), width: WIDTH * 2, height: HEIGHT * 2, links });
-    }
-    const pdf = buildImagePdf(pages, { title: `${CV_LABELS[data.settings.language].documentTitle} — ${data.personal.fullName}`, language: data.settings.language });
+    const footer = host.querySelector<HTMLElement>('[data-cv-footer] .prolink-cv')!;
+    const footerMarkup = new XMLSerializer().serializeToString(footer);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH * 2}" height="${HEIGHT * 2}" viewBox="0 0 ${WIDTH} ${HEIGHT}"><rect width="${WIDTH}" height="${HEIGHT}" fill="white"/><g transform="translate(${layout.x} 0) scale(${layout.scale})"><foreignObject x="0" y="0" width="${WIDTH}" height="${total}"><div xmlns="http://www.w3.org/1999/xhtml"><style>${fontCss}${CV_DOCUMENT_RESET}</style>${serialized}</div></foreignObject></g><foreignObject x="0" y="${CV_FOOTER_TOP}" width="${WIDTH}" height="48"><div xmlns="http://www.w3.org/1999/xhtml"><style>${fontCss}${CV_DOCUMENT_RESET}</style>${footerMarkup}</div></foreignObject></svg>`;
+    const links = collectLinks(doc).map(link => ({
+      ...link, x: link.x * layout.scale + layout.x, y: link.y * layout.scale,
+      width: link.width * layout.scale, height: link.height * layout.scale,
+    }));
+    links.push(...collectLinks(footer).map(link => ({ ...link, y: link.y + CV_FOOTER_TOP })));
+    const pdf = buildImagePdf([{ jpeg: await rasterPage(svg), width: WIDTH * 2, height: HEIGHT * 2, links }], { title: `${CV_LABELS[data.settings.language].documentTitle} — ${data.personal.fullName}`, language: data.settings.language });
     return new Blob([pdf as Uint8Array<ArrayBuffer>], { type: 'application/pdf' });
   } catch (error) {
     if (error instanceof Error && error.message) throw error;

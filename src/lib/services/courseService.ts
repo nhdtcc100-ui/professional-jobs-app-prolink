@@ -120,11 +120,11 @@ export const courseService = {
         try {
           await (supabase.from('notifications') as any).insert([{
             user_id: providerId,
-            from_id: applicantId,
+            actor_id: applicantId,
             type: 'course_registration',
-            message: `قام ${data.applicantData?.name || 'مستخدم'} بالتسجيل في دورتك التدريبية`,
+            content: `قام ${data.applicantData?.name || 'مستخدم'} بالتسجيل في دورتك التدريبية`,
             target_id: courseId,
-            read: false,
+            is_read: false,
             created_at: new Date().toISOString()
           }]);
         } catch (notifErr) {

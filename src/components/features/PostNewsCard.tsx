@@ -21,7 +21,7 @@ import { supabase } from '../../lib/supabase';
 interface PostNewsCardProps {
   post: Post;
   delay?: number;
-  onClick: (post: any) => void;
+  onClick: () => void;
   onAuthorClick?: (e: React.MouseEvent) => void;
   allUsers: any[];
   onDeletePost?: (id: string) => Promise<boolean> | void;
@@ -29,7 +29,7 @@ interface PostNewsCardProps {
 }
 
 export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers, onDeletePost, onEditPost }: PostNewsCardProps) {
-  const { appUser, addToast, setPosts, handleDeletePost: deletePostChecked } = useAppContext();
+  const { appUser, addToast } = useAppContext();
   const author = allUsers.find(u => u.id === post.authorId);
   const displayImage = post.imageUrl || author?.coverUrl || author?.avatar || DEFAULT_NEWS_PLACEHOLDER;
   const hasVideo = !!post.videoUrl;
@@ -97,11 +97,27 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
     e.stopPropagation();
     setIsDeleting(true);
     try {
-      const ok = await (onDeletePost ?? deletePostChecked)(post.id);
-      if (ok !== false) {
+      if (onDeletePost) {
+        const ok = await onDeletePost(post.id);
+        if (ok !== false) {
+          setDeleted(true);
+          setShowDeleteConfirm(false);
+        }
+      } else {
+        let query = supabase.from('posts').delete().eq('id', post.id);
+        if (!isAdmin && appUser?.id) query = (query as any).eq('author_id', appUser.id);
+        const { error } = await query;
+        if (error) {
+          console.error('[handleDelete] Supabase error:', error);
+          throw new Error(error.message || 'فشل حذف المنشور من قاعدة البيانات');
+        }
         setDeleted(true);
         setShowDeleteConfirm(false);
+        addToast('🗑️ تم حذف المنشور نهائياً من قاعدة البيانات بنجاح', 'success');
       }
+    } catch (err: any) {
+      console.error('[handleDelete] Failed:', err);
+      addToast('فشل حذف المنشور: ' + (err?.message || 'خطأ في قاعدة البيانات'), 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -157,7 +173,7 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
                     تأكيد حذف المنشور نهائياً
                   </h3>
                   <p className="text-xs font-bold text-slate-500 dark:text-slate-400 leading-relaxed px-2">
-                    سيتم حذف هذا المنشور نهائياً ولن تتمكن من استرجاعه لاحقاً. هل أنت متأكد من الحذف؟
+                    سيتم حذف هذا المنشور بالكامل من قاعدة البيانات فوراً ولن تتمكن من استرجاعه لاحقاً. هل أنت متأكد من الحذف؟
                   </p>
                 </div>
 
@@ -208,7 +224,7 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
 
       {/* ── Main Foreground Card ── */}
       <motion.div
-        onClick={isEditing || showDeleteConfirm ? undefined : () => onClick(post)}
+        onClick={isEditing || showDeleteConfirm ? undefined : onClick}
         whileHover={isEditing || showDeleteConfirm ? {} : { y: -4, scale: 1.003 }}
         animate={showDeleteConfirm ? { scale: 0.985 } : { scale: 1 }}
         className={`relative z-10 flex flex-col md:flex-row items-stretch gap-4 p-4 md:p-5 bg-white dark:bg-[#0f172a] rounded-[2rem] border ${

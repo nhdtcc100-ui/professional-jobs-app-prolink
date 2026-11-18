@@ -1,4 +1,4 @@
-import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, AUTH_STORAGE_KEY, LEGACY_AUTH_STORAGE_KEY } from '../supabase';
+import { supabase } from '../supabase';
 import { logger } from '../logger';
 import { threatEngine } from '../security/threatEngine';
 import { validateName } from '../security/inputValidator';
@@ -264,11 +264,9 @@ export const profileService = {
     // ✅ [SECURITY FIX MED-2] Defense-in-depth: explicitly block privilege-escalation fields.
     // Even though RLS on Supabase prevents is_admin changes at the DB level,
     // we reject them here too to enforce the principle of least privilege.
-    // Strip role aliases before both DB mapping and the optimistic cache merge.
-    updates = { ...updates };
-    const FORBIDDEN_FIELDS = ['is_admin', 'isAdmin', 'id', 'email', 'role', 'account_type', 'accountType'];
+    const FORBIDDEN_FIELDS = ['is_admin', 'isAdmin', 'id', 'email'];
     for (const field of FORBIDDEN_FIELDS) {
-      if (Object.prototype.hasOwnProperty.call(updates, field)) {
+      if (updates[field] !== undefined) {
         console.warn(`[Security] Blocked attempt to update forbidden field: '${field}'. This field cannot be changed by the client.`);
         delete updates[field];
       }
@@ -362,17 +360,30 @@ export const profileService = {
           );
         }
       }
+
+      const sqliRes = threatEngine.scanForSQLi(strVal);
+      if (sqliRes.detected) {
+        threatEngine.logThreat({
+          user_id: userId,
+          user_name: dbUpdates.name || updates.name || 'مستخدم الملف الشخصي',
+          user_email: updates.email,
+          attack_type: 'SQL_INJECTION',
+          severity: 'CRITICAL',
+          endpoint: '/api/profile/update',
+          payload_sample: strVal.slice(0, 150),
+        });
+      }
     }
 
     let result: any = null;
-    const supabaseUrl = SUPABASE_URL;
-    const supabaseAnonKey = SUPABASE_ANON_KEY;
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
+    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
 
     // 1. Direct REST PATCH — ultra-fast, bypasses navigator.locks & supabase-js client deadlock (50ms)
     let token = supabaseAnonKey;
     try {
-      const raw = localStorage.getItem(AUTH_STORAGE_KEY) ||
-                  localStorage.getItem(LEGACY_AUTH_STORAGE_KEY);
+      const raw = localStorage.getItem('prolink_v2_auth_session') ||
+                  localStorage.getItem('sb-ubeqmsyyyojojmswmidq-auth-token');
       if (raw) {
         const parsed = JSON.parse(raw);
         token = parsed?.access_token || parsed?.currentSession?.access_token || supabaseAnonKey;
@@ -455,34 +466,6 @@ export const profileService = {
     reason: string
   ) {
     try {
-      const { data: authData, error: authError } = await supabase.auth.getUser();
-      if (authError) return { error: authError };
-      if (!authData.user || authData.user.id !== userId) {
-        return { error: new Error('يمكنك إرسال طلب لحسابك فقط') };
-      }
-
-      const { data: profile, error: profileError } = await supabase
-        .from('profiles').select('role, is_admin').eq('id', userId).single();
-      if (profileError) return { error: profileError };
-      if (!profile) return { error: new Error('تعذر التحقق من نوع الحساب') };
-
-      const isAdmin = profile.is_admin === true || ['admin', 'superadmin'].includes(profile.role);
-      if (!isAdmin) {
-        // Do not use the cached settings fallback for authorizing a request.
-        const { data: setting, error: settingError } = await supabase
-          .from('platform_settings').select('value').eq('key', 'account_switch_enabled').maybeSingle();
-        if (settingError) return { error: settingError };
-        if (setting?.value !== 'true') {
-          return { error: new Error('خاصية تبديل نوع الحساب مقفلة حالياً وتُفتح من قبل الإدارة') };
-        }
-      }
-      if (!['seeker', 'employer', 'freelancer'].includes(requestedRole) || requestedRole === profile.role) {
-        return { error: new Error('نوع الحساب المطلوب غير صالح') };
-      }
-      if (currentRole !== profile.role) {
-        return { error: new Error('تغير نوع حسابك، يرجى تحديث الملف قبل إرسال الطلب') };
-      }
-
       // إدراج الطلب في الجدول المخصص role_change_requests
       const { data, error } = await (supabase as any)
         .from('role_change_requests')
@@ -516,20 +499,16 @@ export const profileService = {
 
       // إرسال إشعار للإدارة في جدول notifications ليظهر فوراً للأدمن
       try {
-        const { data: admins } = await supabase.from('profiles').select('id').eq('is_admin', true);
-        const adminIds = (admins || []).map((a: any) => a.id).filter(Boolean);
-        if (adminIds.length) {
-          await supabase.from('notifications').insert(adminIds.map((adminId: string) => ({
-            user_id: adminId,
-            type: 'role_change_request',
-            from_id: userId,
-            from_name: userName,
-            from_avatar: userAvatar,
-            target_id: JSON.stringify({ userId, requestedRole, requestId: data?.id }),
-            read: false,
-            message: `طلب تحويل الحساب إلى ${requestedRole === 'employer' ? 'صاحب عمل 🏢' : 'باحث عن عمل 👤'}${reason.trim() ? ': ' + reason.trim() : ''}`
-          })) as any);
-        }
+        await supabase.from('notifications').insert([{
+          user_id: 'admin',
+          type: 'role_change_request',
+          from_id: userId,
+          from_name: userName,
+          from_avatar: userAvatar,
+          target_id: JSON.stringify({ userId, requestedRole, requestId: data?.id }),
+          read: false,
+          message: `طلب تحويل الحساب إلى ${requestedRole === 'employer' ? 'صاحب عمل 🏢' : 'باحث عن عمل 👤'}${reason.trim() ? ': ' + reason.trim() : ''}`
+        }] as any);
       } catch (notifErr) {
         logger.warn('Failed to insert admin notification:', notifErr);
       }
@@ -684,7 +663,7 @@ export const profileService = {
         await supabase.from('notifications').insert([{
           user_id: targetUserId,
           type: 'role_change_approved',
-          from_id: adminId || null,
+          from_id: adminId || 'admin',
           from_name: 'إدارة ProLink',
           from_avatar: 'https://ui-avatars.com/api/?name=Admin&background=0284c7&color=fff',
           target_id: JSON.stringify({ userId: targetUserId, newRole }),
@@ -762,7 +741,7 @@ export const profileService = {
         await supabase.from('notifications').insert([{
           user_id: targetUserId,
           type: 'role_change_rejected',
-          from_id: adminId || null,
+          from_id: adminId || 'admin',
           from_name: 'إدارة ProLink',
           from_avatar: 'https://ui-avatars.com/api/?name=Admin&background=ef4444&color=fff',
           target_id: JSON.stringify({ userId: targetUserId }),

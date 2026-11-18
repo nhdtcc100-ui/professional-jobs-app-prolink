@@ -47,7 +47,7 @@ export const callService = {
         from_id: callerId,
         from_name: callerName,
         target_id: callerId, // Link to the caller's profile
-        message: `مكالمة ${type === 'video' ? 'فيديو' : 'صوتية'} فائتة من ${callerName}`,
+        content: `مكالمة ${type === 'video' ? 'فيديو' : 'صوتية'} فائتة من ${callerName}`,
         created_at: new Date().toISOString()
       });
     return { error };

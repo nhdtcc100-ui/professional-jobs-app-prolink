@@ -64,7 +64,7 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
   onScrollToTop,
   pendingCVName,
 }) => {
-  const { appUser, canUseAccountSwitch } = useAppContext();
+  const { appUser } = useAppContext();
   const effectiveUserId = formData?.id || (formData as any)?.user_id || appUser?.id;
 
   const [skillsText, setSkillsText] = React.useState<string>(() =>
@@ -144,10 +144,6 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
 
   const handleRoleCardClick = (role: 'seeker' | 'employer' | 'freelancer') => {
     if (role === currentRole) return;
-    if (!canUseAccountSwitch) {
-      addToast('خاصية تبديل نوع الحساب مقفلة حالياً وتُفتح من قبل الإدارة 🔒', 'error');
-      return;
-    }
     if (isPendingRoleChange) {
       addToast('لديك طلب قيد المراجعة، يرجى انتظار رد الإدارة أولاً.', 'error');
       return;
@@ -157,18 +153,7 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
     setShowRoleModal(true);
   };
 
-  useEffect(() => {
-    if (!canUseAccountSwitch) {
-      setShowRoleModal(false);
-      setTargetRoleToRequest(null);
-    }
-  }, [canUseAccountSwitch]);
-
   const handleSendRoleRequest = async () => {
-    if (!canUseAccountSwitch) {
-      addToast('خاصية تبديل نوع الحساب مقفلة حالياً وتُفتح من قبل الإدارة', 'error');
-      return;
-    }
     console.log("🔘 [ProfileEditView] تم الضغط على زر إرسال الطلب للإدارة...", {
       targetRoleToRequest,
       effectiveUserId,
@@ -261,7 +246,6 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
 
 
       {/* ─── Section 0: نوع الحساب والصلاحيات ───────────────── */}
-      {canUseAccountSwitch && (
       <div className="bg-gradient-to-br from-slate-50 to-blue-50/40 dark:from-slate-800/60 dark:to-blue-950/20 rounded-[2.5rem] border border-blue-100/60 dark:border-blue-900/40 p-6 md:p-8 space-y-6 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200/60 dark:border-slate-700/60">
           <div>
@@ -367,11 +351,9 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
         </div>
       </div>
 
-      )}
-
       {/* ─── Modal طلب تغيير نوع الحساب — يُرسل مباشرة لجدول role_change_requests ─── */}
       <AnimatePresence>
-        {canUseAccountSwitch && showRoleModal && targetRoleToRequest && (
+        {showRoleModal && targetRoleToRequest && (
           <div
             className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md"
             dir="rtl"

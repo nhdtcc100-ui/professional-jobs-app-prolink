@@ -14,7 +14,7 @@ interface EditJobModalProps {
 }
 
 export const EditJobModal = ({ job, onClose, onSuccess }: EditJobModalProps) => {
-  const { addToast, refreshData, appUser } = useAppContext();
+  const { addToast, refreshData, appUser, updateJobInState } = useAppContext();
   const [isPosting, setIsPosting] = useState(false);
   const [formData, setFormData] = useState({
     title: job?.title || "",
@@ -57,6 +57,22 @@ export const EditJobModal = ({ job, onClose, onSuccess }: EditJobModalProps) => 
         is_active: formData.is_active,
         updated_at: new Date().toISOString(),
       };
+      // Optimistic state & cache update immediately
+      updateJobInState(job.id, {
+        title: formData.title.trim(),
+        company: formData.company.trim(),
+        description: descriptionWithCat,
+        requirements: formData.requirements.trim(),
+        location: formData.location.trim(),
+        salary: formData.salary.trim(),
+        jobType: formData.jobType,
+        workingHours: formData.working_hours.trim(),
+        working_hours: formData.working_hours.trim(),
+        image_url: formData.imageUrl.trim() || undefined,
+        is_active: formData.is_active,
+        category: formData.category.trim(),
+      });
+
       const { data, error } = await (supabase as any)
         .from("jobs")
         .update(payload)

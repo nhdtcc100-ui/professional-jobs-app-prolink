@@ -242,55 +242,6 @@ body {
 .dark .to-slate-600 { --tw-gradient-to: #cbd5e1 var(--tw-gradient-to-position); }
 
 /* =========================================
-   🎨 KHAKI THEME — كاكي يميل إلى البياض (حصري للأدمن)
-   Light-based warm palette: off-white surfaces with
-   muted olive/khaki accents. Keeps dark text for contrast.
-   ========================================= */
-.khaki body {
-  --pro-bg-soft: #f4f2e9;
-  --glass-bg: rgba(250, 249, 243, 0.72);
-  --glass-border: rgba(140, 140, 95, 0.18);
-  --pro-blue: #7a7d4f;
-  --pro-blue-dark: #5f623c;
-  --premium-blue: #7a7d4f;
-  --premium-blue-dark: #5f623c;
-  --premium-bg: #f4f2e9;
-  background-color: #f4f2e9;
-  color: #2f2f24;
-}
-
-/* Warm off-white surfaces */
-.khaki .bg-white { background-color: #fbfaf4 !important; }
-.khaki .bg-slate-50 { background-color: #f3f1e6 !important; }
-.khaki .bg-slate-100 { background-color: #e9e6d6 !important; }
-.khaki .bg-slate-900, .khaki .bg-black { background-color: #3a3a2c !important; }
-
-/* Khaki-tinted borders */
-.khaki .border-slate-50 { border-color: #eceadb !important; }
-.khaki .border-slate-100 { border-color: #e2dfcd !important; }
-.khaki .border-slate-200 { border-color: #d8d4bd !important; }
-.khaki .border-white { border-color: rgba(122, 125, 79, 0.15) !important; }
-
-/* Muted olive accents replace the corporate blue */
-.khaki .bg-blue-600 { background-color: #7a7d4f !important; }
-.khaki .bg-blue-700 { background-color: #5f623c !important; }
-.khaki .bg-blue-50 { background-color: #eef0e0 !important; }
-.khaki .text-blue-600 { color: #6b6e42 !important; }
-.khaki .text-blue-500 { color: #7a7d4f !important; }
-.khaki .border-blue-100 { border-color: #dfe2c8 !important; }
-.khaki .border-blue-500 { border-color: #7a7d4f !important; }
-.khaki .ring-blue-500 { --tw-ring-color: #7a7d4f !important; }
-.khaki .from-blue-600 { --tw-gradient-from: #7a7d4f var(--tw-gradient-from-position); }
-.khaki .to-blue-500 { --tw-gradient-to: #9a9d68 var(--tw-gradient-to-position); }
-.khaki .shadow-blue-500\/25, .khaki .shadow-blue-500\/20 { --tw-shadow-color: rgba(122, 125, 79, 0.25) !important; }
-
-/* Soft warm shadows */
-.khaki .shadow-sm, .khaki .shadow, .khaki .shadow-md, .khaki .shadow-lg, .khaki .shadow-xl, .khaki .shadow-2xl {
-  box-shadow: 0 10px 35px -12px rgba(120, 118, 80, 0.28), 0 6px 14px -8px rgba(120, 118, 80, 0.18) !important;
-}
-.khaki svg { filter: drop-shadow(0px 3px 6px rgba(120, 118, 80, 0.22)); }
-
-/* =========================================
    PREMIUM GLOBAL SHADOWS & 3D AESTHETICS
    ========================================= */
 

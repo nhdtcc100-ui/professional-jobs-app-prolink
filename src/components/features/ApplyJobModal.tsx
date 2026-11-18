@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Briefcase, MapPin, Info, Sparkles, FileText, Trash2, Paperclip,
@@ -6,11 +6,6 @@ import {
 } from 'lucide-react';
 import { Job, AppUser } from '../../types';
 import { jobService } from '../../lib/services/jobService';
-import { cvService } from '../../lib/services/cvService';
-import { cvApplicationFields, getApplicationCv } from '../../lib/cv/cvApplication';
-import { useAppContext } from '../../contexts/AppContext';
-
-const CvBuilderView = lazy(() => import('./cv/CvBuilderView').then(module => ({ default: module.CvBuilderView })));
 
 interface ApplyJobModalProps {
   applyingJob: Job | null;
@@ -50,8 +45,6 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
   cvEducation, setCvEducation, isApplying, setIsApplying,
   isUploadingCv, setIsUploadingCv, addToast
 }) => {
-  const { canUseCvUpload } = useAppContext();
-  const [showCvBuilder, setShowCvBuilder] = useState(false);
   const [prevWorks, setPrevWorks] = useState<PrevWork[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -79,13 +72,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
   };
 
   const handleSubmit = async () => {
-    if (!appUser || !applyingJob || isApplying) return;
-    if (cvFileObj && !canUseCvUpload) {
-      setCvFileObj(null); addToast('رفع الملفات مغلق حالياً؛ أعد الإرسال بالسيرة المحفوظة', 'warning'); return;
-    }
-    if (cvFileObj && cvFileObj.size > cvService.MAX_CV_SIZE_BYTES) {
-      addToast('حجم الملف يجب ألا يتجاوز 25 ميغابايت', 'error'); return;
-    }
+    if (!appUser || !applyingJob) return;
     const isJobPub = !appUser.isAdmin && (appUser.id === applyingJob.employer_id || appUser.id === (applyingJob as any).employerId);
     if (isJobPub) {
       addToast('أنت ناشر هذه الوظيفة، لا يمكنك التقديم عليها 🏢', 'error');
@@ -140,9 +127,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
         `🏢 الشركة: ${pw.company}\n🎯 المسمى: ${pw.role}\n📋 المهام: ${pw.tasks}\n🛠️ المهارات: ${pw.skills}\n⏰ الساعات: ${pw.hours}\n💰 الراتب: ${pw.salary}`
       ).join('\n\n');
 
-      const cv = await getApplicationCv(appUser.id);
-      const cvFields = cv ? cvApplicationFields(cv.data) : null;
-      const fullExperience = (cvExperience || cvFields?.experience || appUser.experience || '') + (formattedPrevWorks ? `\n\n--- خبرات سابقة ---\n${formattedPrevWorks}` : '');
+      const fullExperience = cvExperience + (formattedPrevWorks ? `\n\n--- خبرات سابقة ---\n${formattedPrevWorks}` : '');
 
       console.log("💎 [UI_STEP_3] Calling service.applyToJob...");
       const applyResult = await jobService.applyToJob(appUser.id, applyingJob.employer_id!, {
@@ -150,8 +135,8 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
         coverLetter: cvCoverLetter,
         cvUrl,
         experience: fullExperience,
-        education: cvEducation || cvFields?.education || appUser.education || '',
-        skills: cvFields?.skills || appUser.skills || [],
+        education: cvEducation,
+        skills: appUser.skills || [],
         applicantData: {
           name: appUser.name,
           avatar: appUser.avatar,
@@ -159,8 +144,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
           location: (appUser as any).location,
           phone: (appUser as any).phone,
           bio: (appUser as any).bio,
-          prevWorks,
-          cv: cv || undefined
+          prevWorks
         }
       });
       
@@ -170,6 +154,34 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
       succeeded = true;
       setApplySuccess(true);
       setSubmitError(null);
+
+      // 🔖 Optimistically cache sent application in localStorage so it persists on reload
+      try {
+        const appliedKey = `prolink_applied_jobs_${appUser.id}`;
+        const existing = JSON.parse(localStorage.getItem(appliedKey) || '[]') as string[];
+        if (!existing.includes(applyingJob.id)) {
+          existing.push(applyingJob.id);
+          localStorage.setItem(appliedKey, JSON.stringify(existing.slice(-500)));
+        }
+
+        const sentCacheKey = `prolink_cached_sent_apps_${appUser.id}`;
+        const existingSent = JSON.parse(localStorage.getItem(sentCacheKey) || '[]') as any[];
+        const newSentApp = {
+          id: `opt-app-${Date.now()}`,
+          job_id: applyingJob.id,
+          applicant_id: appUser.id,
+          employer_id: applyingJob.employer_id,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          jobTitle: applyingJob.title,
+          company: applyingJob.company,
+          cover_letter: cvCoverLetter,
+          cv_url: cvUrl,
+          jobs: { title: applyingJob.title, company: applyingJob.company, description: applyingJob.description, requirements: applyingJob.requirements }
+        };
+        const updatedSent = [newSentApp, ...existingSent.filter((a: any) => a.job_id !== applyingJob.id)];
+        localStorage.setItem(sentCacheKey, JSON.stringify(updatedSent.slice(0, 100)));
+      } catch (_) {}
 
       if ((applyResult as any).isUpdated) {
         addToast('تم تحديث طلب التقديم الخاص بك بنجاح! 🚀');
@@ -461,12 +473,8 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
               </div>
             </div>
 
-            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 space-y-2">
-              <p className="text-xs text-slate-600">سيرتك المعدّة في المنصة تُرفق تلقائياً بهذا الطلب، حتى إن كانت خاصة.</p>
-              <button type="button" onClick={() => setShowCvBuilder(true)} className="text-[#0a66c2] text-sm font-bold">إعداد أو تعديل السيرة الذاتية</button>
-              {!canUseCvUpload && ((appUser as any).cv_url || appUser.cvUrl) && <p className="text-xs text-slate-500">سيُرفق أيضاً ملف السيرة المحفوظ سابقاً.</p>}
-            </div>
-            {canUseCvUpload && <div>
+            {/* CV Upload */}
+            <div>
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">السيرة الذاتية (PDF / Word)</label>
               <label
                 htmlFor="cv-upload-main"
@@ -495,7 +503,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
                   <>
                     <div className="p-3 bg-white rounded-2xl shadow-sm text-slate-300 mb-3"><Paperclip size={24} /></div>
                     <p className="text-xs font-bold text-slate-600">اضغط لرفع السيرة الذاتية</p>
-                    <p className="text-[10px] text-slate-400 font-medium mt-1">PDF, DOC, DOCX — الحد الأقصى 25 ميغابايت</p>
+                    <p className="text-[10px] text-slate-400 font-medium mt-1">PDF, DOC, DOCX — الحد الأقصى 20 ميجابايت</p>
                   </>
                 )}
                 <input
@@ -503,8 +511,8 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
                   accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                   onChange={async (e) => {
                     const file = e.target.files?.[0];
-                    if (!file || !canUseCvUpload) return;
-                    if (file.size > cvService.MAX_CV_SIZE_BYTES) { addToast('حجم الملف يجب أن لا يتجاوز 25 ميغابايت', 'error'); return; }
+                    if (!file) return;
+                    if (file.size > 20 * 1024 * 1024) { addToast('حجم الملف يجب أن لا يتجاوز 20 ميجابايت', 'error'); return; }
                     
                     // تجميد فوري لمحتوى الملف في الذاكرة RAM لحمايته من إفراغ نظام الهاتف
                     try {
@@ -521,8 +529,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
                   }}
                 />
               </label>
-            </div>}
-            {showCvBuilder && <Suspense fallback={<p role="status">جاري فتح محرر السيرة...</p>}><CvBuilderView user={appUser} onClose={() => setShowCvBuilder(false)} /></Suspense>}
+            </div>
           </div>
         </div>
 

@@ -18,14 +18,32 @@ export interface NewsItem {
 
 type ProxyDef = { url: string; isJson: boolean };
 
-// Reliable, active CORS proxies for production (no 401 corsproxy.io, no dead thingproxy)
+const proxyCooldowns: Record<string, number> = {};
+
+function isProxyThrottled(url: string): boolean {
+  try {
+    const host = new URL(url).hostname;
+    return Date.now() < (proxyCooldowns[host] || 0);
+  } catch {
+    return false;
+  }
+}
+
+function throttleProxyHost(url: string, durationMs = 5 * 60 * 1000) {
+  try {
+    const host = new URL(url).hostname;
+    proxyCooldowns[host] = Date.now() + durationMs;
+  } catch {}
+}
+
+// Resilient, rotated CORS proxies for production with rate-limit protection
 const PUBLIC_PROXIES: ProxyDef[] = [
-  { url: 'https://api.allorigins.win/get?url=', isJson: true },
+  { url: 'https://api.codetabs.com/v1/proxy?quest=', isJson: false },
   { url: 'https://api.allorigins.win/raw?url=', isJson: false },
 ];
 
 // Fetch with short timeout
-async function fetchWithTimeout(url: string, timeoutMs = 4500, options: RequestInit = {}): Promise<Response> {
+async function fetchWithTimeout(url: string, timeoutMs = 3500, options: RequestInit = {}): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -125,9 +143,14 @@ export const newsService = {
 
     // 4. Sequential Public Proxy Fallback (Tries one by one without blasting the console)
     for (const proxy of PUBLIC_PROXIES) {
+      if (isProxyThrottled(proxy.url)) continue;
       try {
         const proxyUrl = proxy.url + encodeURIComponent(url);
-        const response = await fetchWithTimeout(proxyUrl, 4500);
+        const response = await fetchWithTimeout(proxyUrl, 3500);
+        if (response.status === 429) {
+          throttleProxyHost(proxy.url, 10 * 60 * 1000);
+          continue;
+        }
         if (!response.ok) continue;
 
         let text = '';
@@ -171,96 +194,101 @@ export const newsService = {
     let currentUrl = `https://t.me/s/${cleanUser}`;
     const collectedWraps: Element[] = [];
 
-    // 1. Multi-page HTML scraping of public channel preview (fetches up to 3 pages for the entire day's posts!)
-    try {
-      const parser = new DOMParser();
+    const isLocalDev = typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
-      for (let page = 0; page < 3; page++) {
-        try {
-          const html = await this.fetchWithFallback(currentUrl);
-          if (html && html.includes('tgme_widget_message')) {
-            const doc = parser.parseFromString(html, 'text/html');
-            const wraps = Array.from(doc.querySelectorAll('.tgme_widget_message_wrap'));
-            if (wraps.length > 0) {
-              collectedWraps.push(...wraps);
-            }
-            // Check if there is a 'before=' link for older posts of the day
-            const matchBefore = html.match(/href="([^"]*before=\d+[^"]*)"/i);
-            if (matchBefore && wraps.length >= 15) {
-              currentUrl = 'https://t.me' + matchBefore[1];
+    // 1. Multi-page HTML scraping of public channel preview (only in local dev via Vite /tg-proxy)
+    if (isLocalDev) {
+      try {
+        const parser = new DOMParser();
+
+        for (let page = 0; page < 3; page++) {
+          try {
+            const html = await this.fetchWithFallback(currentUrl);
+            if (html && html.includes('tgme_widget_message')) {
+              const doc = parser.parseFromString(html, 'text/html');
+              const wraps = Array.from(doc.querySelectorAll('.tgme_widget_message_wrap'));
+              if (wraps.length > 0) {
+                collectedWraps.push(...wraps);
+              }
+              // Check if there is a 'before=' link for older posts of the day
+              const matchBefore = html.match(/href="([^"]*before=\d+[^"]*)"/i);
+              if (matchBefore && wraps.length >= 15) {
+                currentUrl = 'https://t.me' + matchBefore[1];
+              } else {
+                break;
+              }
             } else {
               break;
             }
-          } else {
+          } catch {
             break;
           }
-        } catch {
-          break;
         }
-      }
 
-      if (collectedWraps.length > 0) {
-        // Deduplicate messages by ID / link
-        const seenLinks = new Set<string>();
-        const parsedItems: NewsItem[] = [];
+        if (collectedWraps.length > 0) {
+          const seenLinks = new Set<string>();
+          const parsedItems: NewsItem[] = [];
 
-        collectedWraps.forEach((msg, idx) => {
-          const textEl = msg.querySelector('.tgme_widget_message_text');
-          const photoEl = msg.querySelector('.tgme_widget_message_photo_wrap') as HTMLElement;
-          const dateEl = msg.querySelector('.tgme_widget_message_date time') as HTMLTimeElement;
-          const linkEl = msg.querySelector('.tgme_widget_message_date') as HTMLAnchorElement;
+          collectedWraps.forEach((msg, idx) => {
+            const textEl = msg.querySelector('.tgme_widget_message_text');
+            const photoEl = msg.querySelector('.tgme_widget_message_photo_wrap') as HTMLElement;
+            const dateEl = msg.querySelector('.tgme_widget_message_date time') as HTMLTimeElement;
+            const linkEl = msg.querySelector('.tgme_widget_message_date') as HTMLAnchorElement;
 
-          const link = linkEl?.href || `https://t.me/${cleanUser}/${idx + 1}`;
-          if (seenLinks.has(link)) return;
-          seenLinks.add(link);
+            const link = linkEl?.href || `https://t.me/${cleanUser}/${idx + 1}`;
+            if (seenLinks.has(link)) return;
+            seenLinks.add(link);
 
-          const content = this.cleanText(textEl?.innerHTML || '');
-          const rawTitle = textEl?.textContent?.split('\n').filter(t => t.trim().length > 0)[0] || 'فرصة وظيفية وإعلان جديد';
-          const title = rawTitle.slice(0, 100).trim();
+            const content = this.cleanText(textEl?.innerHTML || '');
+            const rawTitle = textEl?.textContent?.split('\n').filter(t => t.trim().length > 0)[0] || 'فرصة وظيفية وإعلان جديد';
+            const title = rawTitle.slice(0, 100).trim();
 
-          let thumbnail = '';
-          if (photoEl) {
-            const style = photoEl.getAttribute('style') || '';
-            const match = style.match(/url\(['"]?([^'"]+)['"]?\)/);
-            if (match) {
-              thumbnail = this.proxyImage(match[1]);
+            let thumbnail = '';
+            if (photoEl) {
+              const style = photoEl.getAttribute('style') || '';
+              const match = style.match(/url\(['"]?([^'"]+)['"]?\)/);
+              if (match) {
+                thumbnail = this.proxyImage(match[1]);
+              }
             }
-          }
 
-          if (content.length > 5) {
-            parsedItems.push({
-              id: generateDistributedId(`tg-${cleanUser}-${idx}`),
-              title: this.cleanText(title),
-              link: link,
-              pubDate: dateEl?.dateTime || new Date(Date.now() - idx * 1800000).toISOString(),
-              content: content || title,
-              description: content || title,
-              author: `@${cleanUser}`,
-              thumbnail: thumbnail,
-              source: sourceName,
-              region: 'iraq' as const,
-              topic: 'وظائف'
-            });
-          }
-        });
+            if (content.length > 5) {
+              parsedItems.push({
+                id: generateDistributedId(`tg-${cleanUser}-${idx}`),
+                title: this.cleanText(title),
+                link: link,
+                pubDate: dateEl?.dateTime || new Date(Date.now() - idx * 1800000).toISOString(),
+                content: content || title,
+                description: content || title,
+                author: `@${cleanUser}`,
+                thumbnail: thumbnail,
+                source: sourceName,
+                region: 'iraq' as const,
+                topic: 'وظائف'
+              });
+            }
+          });
 
-        if (parsedItems.length > 0) {
-          // Sort descending by pubDate so newest is first
-          return parsedItems.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+          if (parsedItems.length > 0) {
+            return parsedItems.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+          }
         }
+      } catch {
+        // Continue to RSS bridge fallback
       }
-    } catch {
-      // Continue to RSS bridge fallback
     }
 
-    // 2. Fallback: Telegram RSS bridge
-    try {
-      const rssBridgeUrl = `https://tg.i-c-a.su/rss/${cleanUser}`;
-      const xml = await this.fetchWithFallback(rssBridgeUrl);
-      const items = this.parseXML(xml, sourceName);
-      if (items.length > 0) return items;
-    } catch {
-      // Continue to channel-specific fallback
+    // 2. Fallback: Telegram RSS bridge (only if proxies are healthy)
+    if (!isProxyThrottled(PUBLIC_PROXIES[0]?.url || '')) {
+      try {
+        const rssBridgeUrl = `https://tg.i-c-a.su/rss/${cleanUser}`;
+        const xml = await this.fetchWithFallback(rssBridgeUrl);
+        const items = this.parseXML(xml, sourceName);
+        if (items.length > 0) return items;
+      } catch {
+        // Continue to channel-specific fallback
+      }
     }
 
     // 3. Graceful Offline / Fallback Data for known channels (Complete full-day jobs catalog)
@@ -436,7 +464,7 @@ export const newsService = {
   cleanText(html: string): string {
     if (!html) return '';
     let cleaned = html.replace(/\r/g, '').replace(/<p[^>]*>/gi, '\n\n').replace(/<br\s*\/?>/gi, '\n');
-    cleaned = cleaned.replace(/<\/?[a-z][a-z0-9:-]*(?:\s+[^<>]*)?\s*\/?>/gi, ' ');
+    cleaned = cleaned.replace(/<[^>]*>?/gm, ' ');
     cleaned = cleaned.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
     cleaned = cleaned.replace(/[ \t]+/g, ' ');
     cleaned = cleaned.replace(/\n\s*\n\s*\n+/g, '\n\n');
@@ -449,9 +477,7 @@ export const newsService = {
       const items = Array.from(doc.querySelectorAll('item, entry')).slice(0, 80);
       return items.map(el => {
         const get = (tag: string) => el.querySelector(tag)?.textContent?.trim() || '';
-        const rawSummary = get('description') || get('summary');
-        const rawContent = el.getElementsByTagNameNS('http://purl.org/rss/1.0/modules/content/', 'encoded')[0]?.textContent?.trim()
-          || get('content') || rawSummary;
+        const rawContent = get('description') || get('content') || get('summary') || '';
         const link = get('link') || el.querySelector('link')?.getAttribute('href') || '#';
         const title = this.cleanText(get('title'));
 
@@ -461,7 +487,7 @@ export const newsService = {
           link: link,
           pubDate: get('pubDate') || get('updated') || get('published') || new Date().toISOString(),
           content: this.cleanText(rawContent),
-          description: this.cleanText(rawSummary || rawContent),
+          description: this.cleanText(rawContent),
           author: source,
           thumbnail: this.proxyImage(
             el.querySelector('media\\:content[url]')?.getAttribute('url') ||

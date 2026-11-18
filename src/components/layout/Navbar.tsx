@@ -1,5 +1,5 @@
 import React from 'react';
-import { Home, Users, Briefcase, Globe, MessageSquare, Bell, ChevronDown, Crown, User as UserIcon, Shield, LogOut, Moon, Sun, Phone, Building2, Wrench, LogIn, Settings, Palette } from 'lucide-react';
+import { Home, Users, Briefcase, Globe, MessageSquare, Bell, ChevronDown, Crown, User as UserIcon, Shield, LogOut, Moon, Sun, Phone, Building2, Wrench, LogIn, Settings } from 'lucide-react';
 import { NavbarItem, NavDropdownItem } from './';
 import { AppUser, AppNotification } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
@@ -20,7 +20,7 @@ interface NavbarProps {
   setShowAdmin: (show: boolean) => void;
   setIsSelectingRole: (selecting: boolean) => void;
   logout: () => void;
-  theme?: 'light' | 'dark' | 'khaki';
+  theme?: 'light' | 'dark';
   toggleTheme?: () => void;
 }
 
@@ -42,7 +42,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   theme,
   toggleTheme
 }) => {
-  const { unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount, isGuestMode, canUseMessaging, canUseNetwork, canUseKhakiTheme } = useAppContext();
+  const { unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount, isGuestMode } = useAppContext();
 
   return (
     <nav
@@ -101,7 +101,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           />
           
           {/* Network Tab with Red Unread Badge */}
-          {canUseNetwork && (
           <div className="relative h-full flex items-center">
             <NavbarItem
               icon={<Users size={22} />}
@@ -117,7 +116,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             )}
           </div>
-          )}
 
           <NavbarItem
             icon={<Briefcase size={22} />}
@@ -155,8 +153,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={(e) => { e?.preventDefault(); setActiveTab('news'); }}
           />
           
-          {/* Messages Tab with Red Unread Badge - admin-only until messaging is opened */}
-          {!isGuestMode && appUser && canUseMessaging && (
+          {/* Messages Tab with Red Unread Badge - only for logged in members */}
+          {!isGuestMode && appUser && (
             <div className="relative h-full flex items-center overflow-visible z-20">
               <NavbarItem
                 icon={<MessageSquare size={22} />}
@@ -243,8 +241,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   />
                   {toggleTheme && (
                     <NavDropdownItem
-                      icon={theme === 'light' ? <Moon size={14} className="text-indigo-500" /> : theme === 'dark' ? (canUseKhakiTheme ? <Palette size={14} className="text-lime-600" /> : <Sun size={14} className="text-amber-500" />) : <Sun size={14} className="text-amber-500" />}
-                      label={theme === 'light' ? 'الوضع الليلي 🌙' : theme === 'dark' ? (canUseKhakiTheme ? 'الثيم الكاكي 🎨' : 'الوضع الفاتح ☀️') : 'الوضع الفاتح ☀️'}
+                      icon={theme === 'dark' ? <Sun size={14} className="text-amber-500" /> : <Moon size={14} className="text-indigo-500" />}
+                      label={theme === 'dark' ? 'الوضع الفاتح ☀️' : 'الوضع الليلي 🌙'}
                       onClick={toggleTheme}
                     />
                   )}

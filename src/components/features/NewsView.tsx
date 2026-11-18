@@ -43,21 +43,18 @@ const parseRSS = (xml: string, source: string, baseRegion: NewsItem['region']): 
     const doc = new DOMParser().parseFromString(xml, 'text/xml');
     if (doc.querySelector('parsererror')) return [];
 
-    return Array.from(doc.querySelectorAll('item, entry')).slice(0, 80).map(el => {
-      const get = (tag: string) => el.querySelector(tag.replace(/:/g, '\\:'))?.textContent?.trim() || '';
+    return Array.from(doc.querySelectorAll('item')).slice(0, 80).map(el => {
+      const get = (tag: string) => el.querySelector(tag)?.textContent?.trim() || '';
       const title = newsService.cleanText(get('title'));
       const link  = get('link') || el.querySelector('guid')?.textContent?.trim() || '#';
-      const rawContent = el.getElementsByTagNameNS('http://purl.org/rss/1.0/modules/content/', 'encoded')[0]?.textContent?.trim()
-        || get('content') || get('description') || get('summary');
-      const content = newsService.cleanText(rawContent);
-      const desc = newsService.cleanText(get('description') || get('summary') || rawContent);
+      const desc  = newsService.cleanText(get('content:encoded') || get('description') || get('content') || '');
       const date  = get('pubDate') || get('dc:date') || get('published') || new Date().toISOString();
       const thumb = newsService.proxyImage(
         el.querySelector('media\\:content')?.getAttribute('url') ||
         el.querySelector('enclosure[type^="image"]')?.getAttribute('url') ||
         el.querySelector('enclosure')?.getAttribute('url') ||
         el.querySelector('media\\:thumbnail')?.getAttribute('url') ||
-        newsService.extractFirstImage(rawContent) || ''
+        newsService.extractFirstImage(desc) || ''
       );
       
       return {
@@ -65,7 +62,7 @@ const parseRSS = (xml: string, source: string, baseRegion: NewsItem['region']): 
         title,
         link,
         pubDate: date,
-        content,
+        content: desc,
         description: desc,
         author: source,
         thumbnail: thumb || APP_PLACEHOLDER,
@@ -121,16 +118,14 @@ const fetchFeed = async (feed: { url: string; region: NewsItem['region']; label:
         if (data?.status === 'ok' && Array.isArray(data?.items) && data.items.length > 0) {
           items = data.items.map((item: any) => {
             const title = newsService.cleanText(item.title || '');
-            const rawContent = item.content || item.description || '';
-            const content = newsService.cleanText(rawContent);
-            const desc = newsService.cleanText(item.description || rawContent);
-            const rawThumb = item.thumbnail || item.enclosure?.link || newsService.extractFirstImage(rawContent) || '';
+            const desc = newsService.cleanText(item.description || item.content || '');
+            const rawThumb = item.thumbnail || item.enclosure?.link || newsService.extractFirstImage(desc) || '';
             return {
               id: Math.random().toString(36).substr(2, 9),
               title,
               link: item.link || item.guid || '#',
               pubDate: item.pubDate || new Date().toISOString(),
-              content,
+              content: desc,
               description: desc,
               author: item.author || feed.label,
               thumbnail: rawThumb ? newsService.proxyImage(rawThumb) : APP_PLACEHOLDER,
@@ -147,15 +142,14 @@ const fetchFeed = async (feed: { url: string; region: NewsItem['region']; label:
   // 3. Fallback through resilient, active CORS proxies (No dead thingproxy)
   if (items.length === 0) {
     const proxies = [
-      (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
       (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-      (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`
+      (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`
     ];
 
     for (const proxy of proxies) {
       try {
         const pUrl = proxy(feed.url);
-        const res = await fetch(pUrl, { signal: AbortSignal.timeout(4500) });
+        const res = await fetch(pUrl, { signal: AbortSignal.timeout(3500) });
         if (!res.ok) continue;
         let text = '';
         if (pUrl.includes('/get?url=')) {
@@ -330,8 +324,24 @@ export function NewsCarousel({
             } catch {}
           }
 
+          // If no items yet, show instant rich fallback so carousel never blocks
+          if (items.length === 0) {
+            const fallbackJobs = newsService.getChannelFallback('thekhana', 'الخانة - وظائف العراق');
+            setItems(fallbackJobs.slice(0, 8));
+            setLoading(false);
+          }
+
           const sources = newsService.getDefaultSources();
-          const results = await Promise.all(sources.map(s => newsService.fetchRSS(s.url, s.name)));
+          const results: NewsItem[][] = [];
+          for (let i = 0; i < sources.length; i++) {
+            if (i > 0) await new Promise(r => setTimeout(r, 300));
+            try {
+              const res = await newsService.fetchRSS(sources[i].url, sources[i].name);
+              results.push(res);
+            } catch {
+              results.push([]);
+            }
+          }
           const flat = results.flat().sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
           const jobNews = flat.filter(n => n.topic === 'وظائف' || /فرصة|وظيفة|وظائف|تعيين|توظيف|شواغر|سيرة ذاتية|التقديم على/i.test(n.title + ' ' + (n.description || '')));
           
@@ -720,7 +730,7 @@ const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
                 title: newsService.cleanText(a.title || a.name || ''),
                 link: a.url || a.link || '#',
                 pubDate: a.publishedAt || a.pubDate || new Date().toISOString(),
-                content: newsService.cleanText(a.content || a.description || ''),
+                content: newsService.cleanText(a.description || a.content || ''),
                 description: newsService.cleanText(a.description || a.content || ''),
                 author: a.source?.name || a.author || src.name,
                 thumbnail: a.urlToImage || a.thumbnail || a.image || APP_PLACEHOLDER,

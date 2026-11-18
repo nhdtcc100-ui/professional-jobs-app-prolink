@@ -331,8 +331,6 @@ class MockDataService {
    * هل وضع البيانات الوهمية مفعل حالياً؟
    */
   isEnabled(): boolean {
-    // Mock data is a development tool only — never served in production builds.
-    if (!import.meta.env.DEV) return false;
     try {
       return localStorage.getItem(STORAGE_KEY_ENABLED) === 'true';
     } catch {
@@ -344,20 +342,41 @@ class MockDataService {
    * تفعيل أو تعطيل وضع البيانات الوهمية
    */
   setEnabled(enabled: boolean): void {
-    if (!import.meta.env.DEV) return;
     try {
-      // Local-only toggle: mock data must never propagate to other users.
       localStorage.setItem(STORAGE_KEY_ENABLED, enabled ? 'true' : 'false');
       window.dispatchEvent(new CustomEvent(MOCK_CHANGE_EVENT, { detail: { enabled } }));
+      // 🌐 Persist globally in platform_settings so mock data opens for everyone!
+      import('../supabase').then(({ supabase }) => {
+        (supabase.from('platform_settings') as any).upsert({
+          key: 'mock_data_enabled',
+          value: enabled ? 'true' : 'false',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' }).then(() => {});
+      }).catch(() => {});
     } catch (e) {
       console.error('[MockDataService] Failed to set enabled state:', e);
     }
   }
 
   /**
-   * حالة البيانات الوهمية محلية فقط ولا تُزامَن عبر المنصة
+   * مزامنة حالة البيانات الوهمية من جدول platform_settings في سوبابيس لتفتح للجميع
    */
   async syncFromPlatform(): Promise<boolean> {
+    try {
+      const { supabase } = await import('../supabase');
+      const { data } = await (supabase.from('platform_settings') as any)
+        .select('value')
+        .eq('key', 'mock_data_enabled')
+        .maybeSingle();
+      if (data && data.value !== undefined) {
+        const isGloballyEnabled = data.value === 'true';
+        localStorage.setItem(STORAGE_KEY_ENABLED, isGloballyEnabled ? 'true' : 'false');
+        window.dispatchEvent(new CustomEvent(MOCK_CHANGE_EVENT, { detail: { enabled: isGloballyEnabled } }));
+        return isGloballyEnabled;
+      }
+    } catch (err) {
+      console.warn('[MockDataService] Could not sync global mock status:', err);
+    }
     return this.isEnabled();
   }
 
