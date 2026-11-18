@@ -30,6 +30,13 @@ allprojects {
             }
         }
     }
+    afterEvaluate { project ->
+        if (project.plugins.hasPlugin('kotlin-android') || project.plugins.hasPlugin('org.jetbrains.kotlin.android')) {
+            project.kotlin {
+                jvmToolchain(25)
+            }
+        }
+    }
 }
 
 task clean(type: Delete) {
