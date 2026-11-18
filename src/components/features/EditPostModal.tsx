@@ -67,8 +67,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ post, onClose, onS
       post.videoUrl = videoUrl.trim() || undefined;
       updatePostInState(post.id, {
         content: sanitizedContent,
-        imageUrl: imageUrl.trim() || null,
-        videoUrl: videoUrl.trim() || null,
+        imageUrl: imageUrl.trim() || undefined,
+        videoUrl: videoUrl.trim() || undefined,
       });
 
       addToast('✨ تم تعديل وحفظ المنشور بنجاح', 'success');

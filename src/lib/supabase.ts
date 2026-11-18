@@ -40,6 +40,11 @@ const mobileSafeStorage = {
   }
 };
 
+export const SUPABASE_URL = supabaseUrl;
+export const SUPABASE_ANON_KEY = supabaseAnonKey;
+export const AUTH_STORAGE_KEY = 'prolink_v2_auth_session';
+export const LEGACY_AUTH_STORAGE_KEY = 'supabase.auth.token';
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,

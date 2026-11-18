@@ -24,7 +24,7 @@ interface Props {
 }
 
 export function CvProfileCard(props: Props) {
-  const { canUseCvUpload } = useAppContext();
+  const canUseCvUpload = true;
   const [record, setRecord] = useState<CvProfileRecord | null>(null);
   const [editing, setEditing] = useState(false);
   const [viewing, setViewing] = useState(false);

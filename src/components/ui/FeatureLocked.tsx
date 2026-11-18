@@ -4,7 +4,8 @@ import { useAppContext } from '../../contexts/AppContext';
 import { whatsappUrl } from '../../lib/utils/contact';
 
 export function FeatureLocked({ title, message, icon }: { title: string; message: string; icon?: React.ReactNode }) {
-  const { platformSettings } = useAppContext();
+  const context = useAppContext() as any;
+  const platformSettings = context?.platformSettings || {};
   const telegram = (platformSettings.supportTelegram || '').replace(/^@+/, '').replace(/^https?:\/\/t\.me\//, '');
 
   return (
