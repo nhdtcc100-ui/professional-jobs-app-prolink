@@ -247,7 +247,7 @@ export function ModernProfileView({
 
   // ─── Profile Tabs & Posts State ──────────────────────────────────────────────
   const [activeProfileTab, setActiveProfileTab] = useState<'info' | 'posts'>('info');
-  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast, appUser, handleDeletePost } = useAppContext();
+  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast, appUser } = useAppContext();
   const notify = useCallback((msg: string, type: any = 'success') => {
     if (typeof addToast === 'function') addToast(msg, type);
     else if (typeof contextAddToast === 'function') contextAddToast(msg, type);
@@ -1889,8 +1889,8 @@ export function ModernProfileView({
                   <PostNewsCard
                     post={post}
                     allUsers={contextUsers || []}
-                    onClick={() => {
-                      const postIdx = profilePosts.findIndex((pp: any) => pp.id === post.id);
+                    onClick={(p: any) => {
+                      const postIdx = profilePosts.findIndex((pp: any) => pp.id === p.id);
                       setProfilePostDetail({ items: profilePosts, index: Math.max(0, postIdx) });
                     }}
                     onDeletePost={isMe ? handleDeletePostInProfile : undefined}

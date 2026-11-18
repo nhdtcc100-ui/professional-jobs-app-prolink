@@ -4,7 +4,7 @@ import { motion, AnimatePresence, type Variants } from 'motion/react';
 import { 
   ArrowRight, Briefcase, MapPin, DollarSign, 
   Tag, Clock, Send, Calendar, ExternalLink, Sparkles,
-  FileText, Home, Newspaper, ChevronDown, ChevronLeft, ChevronRight, Edit2, Trash2, AlertTriangle, X
+  FileText, Home, Newspaper, ChevronDown, ChevronLeft, ChevronRight, Edit2, Trash2, AlertTriangle
 } from 'lucide-react';
 import { Job, AppUser } from '../../types';
 import { safeTimeAgo } from '../../lib/utils/formatDate';

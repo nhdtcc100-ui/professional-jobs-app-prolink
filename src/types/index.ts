@@ -32,12 +32,9 @@ export interface Job {
   jobType?: string;
   category?: string;
   working_hours?: string;
-  workingHours?: string;
   image_url?: string;
-  imageUrl?: string;
   is_active?: boolean;
   postedAt: any;
-  created_at?: string;
 }
 
 export interface Course {
