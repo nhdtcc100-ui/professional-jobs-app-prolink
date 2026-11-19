@@ -211,7 +211,9 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       label: 'سوق الخدمات والمهن 🔧',
       icon: Wrench,
       color: 'text-blue-500',
-      onClick: () => setActiveTab('services'),
+      onClick: () => {
+        window.dispatchEvent(new CustomEvent('openServicesMarket'));
+      },
       preload: () => preloadTab('services'),
     });
 

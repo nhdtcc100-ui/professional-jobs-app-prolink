@@ -109,13 +109,13 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       addToast('حسابك محظور ولا يمكنك نشر وظائف 🚫', 'error');
       return;
     }
-    if (!jobFormData.title.trim()) { addToast('يرجى إدخال المسمى الوظيفي', 'error'); return; }
-    
     setIsPosting(true);
     try {
+      const title = jobFormData.title.trim() || 'فرصة عمل جديدة';
+      const company = jobFormData.company || appUser.companyName || appUser.name || 'مؤسسة معتمدة';
       const postData = {
-        title: jobFormData.title,
-        company: jobFormData.company || appUser.companyName || 'مؤسسة غير معرفة',
+        title,
+        company,
         description: jobFormData.description,
         requirements: jobFormData.requirements,
         location: jobFormData.location || appUser.location || 'عن بُعد',

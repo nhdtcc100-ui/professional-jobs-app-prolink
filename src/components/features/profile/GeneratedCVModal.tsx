@@ -66,7 +66,7 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
   return (
     <AnimatePresence>
       <div
-        className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto"
+        className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto printable-cv-modal print:p-0 print:m-0 print:bg-white print:static print:overflow-visible"
         dir="rtl"
         onClick={onClose}
       >
@@ -75,7 +75,7 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ duration: 0.22, ease: 'easeOut' }}
-          className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh]"
+          className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh] print:border-none print:shadow-none print:w-full print:max-w-none print:max-h-none print:rounded-none"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Top Bar Header (Not printed) */}
@@ -134,10 +134,10 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
             id="prolink-generated-cv"
           >
             {/* CV Sheet Container */}
-            <div className="bg-white dark:bg-slate-800/90 rounded-3xl p-6 sm:p-10 shadow-sm border border-slate-200/80 dark:border-slate-700/80 space-y-8 print:border-none print:shadow-none print:p-0 print:bg-white">
+            <div className="printable-cv-area bg-white dark:bg-slate-800/90 rounded-3xl p-6 sm:p-10 shadow-sm border border-slate-200/80 dark:border-slate-700/80 space-y-6 print:border-none print:shadow-none print:p-0 print:bg-white">
               
               {/* Header: Name, Contact & Avatar */}
-              <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6 pb-6 border-b-2 border-slate-100 dark:border-slate-700/60 print:border-blue-600 print:border-b-4">
+              <div className="printable-section flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6 pb-6 border-b-2 border-slate-100 dark:border-slate-700/60 print:border-blue-600 print:border-b-4">
                 <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-right">
                   {avatar ? (
                     <img

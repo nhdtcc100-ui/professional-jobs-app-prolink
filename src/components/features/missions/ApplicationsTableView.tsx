@@ -15,6 +15,7 @@ import { openContactMenu, telUrl, whatsappUrl } from '../../../lib/utils/contact
 import { openCv, downloadCv } from '../../../lib/utils/cv';
 import { EmployeeOnboardingModal } from '../erp/EmployeeOnboardingModal';
 import { GeneratedCVModal } from '../profile/GeneratedCVModal';
+import { isUserAdmin } from '../../../lib/utils/roleUtils';
 interface ApplicantData {
   name?: string;
   email?: string;
@@ -223,6 +224,7 @@ function ApplicationsListViewContent({
   appUser,
 }: ApplicationsListViewProps) {
   const { setActiveTab, setSelectedChat, allUsers = [], activeTab, canUseMessaging } = useAppContext();
+  const isAdmin = isUserAdmin(appUser);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [selectedAppIndex, setSelectedAppIndex] = useState<number | null>(null);
@@ -279,6 +281,10 @@ function ApplicationsListViewContent({
   };
 
   const handleDownloadApplicantCV = async (cvUrl: string, name?: string) => {
+    if (!isAdmin) {
+      addToast('تحميل الملفات المرفقة متاح للإدارة فقط 🛡️', 'warning');
+      return;
+    }
     if (!cvUrl) return;
     try {
       await downloadCv(cvUrl, name || 'applicant');
@@ -1222,26 +1228,28 @@ function ApplicationsListViewContent({
                                 </div>
                               </button>
 
-                              {/* Option 2: Direct Download / Open Attached File */}
-                              <button
-                                type="button"
-                                onClick={() => handleDownloadApplicantCV(cvTargetUrl, resolved.name)}
-                                className="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 rounded-2xl text-white shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all group text-right cursor-pointer"
-                              >
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center border border-white/30 shrink-0">
-                                    <Download size={18} />
+                              {/* Option 2: Direct Download / Open Attached File (Admin Only) */}
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadApplicantCV(cvTargetUrl, resolved.name)}
+                                  className="flex items-center justify-between p-4 bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 rounded-2xl text-white shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all group text-right cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center border border-white/30 shrink-0">
+                                      <Download size={18} />
+                                    </div>
+                                    <div className="min-w-0">
+                                      <span className="text-xs font-black block truncate">تنزيل الملف المرفق</span>
+                                      <span className="text-[9px] text-emerald-100 font-bold block">تحميل مباشر للملف الأصلي (للأدمن) ⬇</span>
+                                    </div>
                                   </div>
-                                  <div className="min-w-0">
-                                    <span className="text-xs font-black block truncate">تنزيل الملف المرفق</span>
-                                    <span className="text-[9px] text-emerald-100 font-bold block">تحميل مباشر للملف الأصلي ⬇</span>
+                                  <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/20 text-white text-[11px] font-black group-hover:bg-white/30 transition-colors shrink-0">
+                                    <Download size={13} />
+                                    <span>تنزيل</span>
                                   </div>
-                                </div>
-                                <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/20 text-white text-[11px] font-black group-hover:bg-white/30 transition-colors shrink-0">
-                                  <Download size={13} />
-                                  <span>تنزيل</span>
-                                </div>
-                              </button>
+                                </button>
+                              )}
                             </div>
                           </div>
                         );

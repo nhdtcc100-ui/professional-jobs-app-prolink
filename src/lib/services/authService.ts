@@ -129,7 +129,7 @@ export const authService = {
       options: {
         data: {
           full_name: cleanName,
-          role: role || '',
+          role: role || 'seeker',
           phone: '',
           avatar_url: null,
         },
@@ -145,7 +145,7 @@ export const authService = {
         name: cleanName,
         email: cleanEmail,
         phone: '',
-        role: role
+        role: role || 'seeker'
       });
     }
 
@@ -165,11 +165,17 @@ export const authService = {
       // تحقق أولاً إذا كان موجوداً
       const { data: existing } = await supabase
         .from('profiles')
-        .select('id')
+        .select('id, role')
         .eq('id', userId)
         .maybeSingle();
 
-      if (existing) return; // موجود، لا داعي لإعادة الإنشاء
+      if (existing) {
+        // إذا كان الحساب موجوداً ولكن الدور فارغ أو تم تحديد دور جديد أثناء التسجيل
+        if (userData.role && existing.role !== userData.role) {
+          await supabase.from('profiles').update({ role: userData.role }).eq('id', userId);
+        }
+        return;
+      }
 
       // إنشاء profile مع الدور المختار
       await supabase.from('profiles').insert({
@@ -177,7 +183,7 @@ export const authService = {
         name: sanitizeInput(userData.name, 100),
         email: userData.email,
         phone: userData.phone || '',
-        role: userData.role || '',
+        role: userData.role || 'seeker',
         is_pro: false,
         bio: ''
       } as any);
@@ -288,7 +294,7 @@ export const authService = {
       options: {
         data: {
           full_name: sanitizeInput(name || 'مستخدم جديد', 100),
-          role: role || '',
+          role: role || 'seeker',
           phone: cleanPhone,
           avatar_url: null,
         },
@@ -312,7 +318,7 @@ export const authService = {
         name: sanitizeInput(name || 'مستخدم جديد', 100),
         email: primaryInternalEmail,
         phone: cleanPhone,
-        role: role,
+        role: role || 'seeker',
       });
     }
 
@@ -349,6 +355,11 @@ export const authService = {
     if (userData.location) extraUpdates.location = sanitizeInput(userData.location as string, 100);
     if (userData.phone) extraUpdates.phone = sanitizeInput(userData.phone as string, 30);
 
+    // مزامنة البيانات أيضاً في auth.users metadata
+    try {
+      await supabase.auth.updateUser({ data: { role } });
+    } catch (_) {}
+
     // 1. تحقق أولاً إذا كان الحساب والملف الشخصي موجوداً بالفعل
     const { data: existing } = await supabase
       .from('profiles')
@@ -357,7 +368,7 @@ export const authService = {
       .maybeSingle();
 
     if (existing) {
-      // ✅ الحساب موجود: نُحدِّث فقط الدور (role) مع أي بيانات إضافية
+      // ✅ الحساب موجود: نُحدِّث الدور (role) مع أي بيانات إضافية
       return supabase
         .from('profiles')
         .update({ role: role, ...extraUpdates })

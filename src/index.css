@@ -771,3 +771,48 @@ button, a, input, select, textarea {
   animation: none;
   mix-blend-mode: normal;
 }
+
+/* =============================================
+   Professional ATS CV & PDF Printing Rules
+   ============================================= */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 12mm;
+  }
+  
+  html, body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    font-size: 10.5pt !important;
+    line-height: 1.35 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide navigation, toolbars, buttons, overlays */
+  header, nav, aside, button, .print\:hidden,
+  .mobile-nav, [role="navigation"], .fixed:not(.printable-cv-modal) {
+    display: none !important;
+  }
+
+  .printable-cv-area {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    page-break-inside: auto;
+  }
+
+  .printable-section {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 10px !important;
+  }
+}

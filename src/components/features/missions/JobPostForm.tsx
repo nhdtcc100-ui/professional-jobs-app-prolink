@@ -56,19 +56,16 @@ export const JobPostForm: React.FC<JobPostFormProps> = ({
 
   const hasAnyError = Object.values(formErrors).some(Boolean);
 
-  const isValid = (formData.title || '').trim().length > 2 && 
-                  (formData.company || '').trim().length > 1 && 
-                  (formData.description || '').trim().length > 10 &&
-                  Boolean((formData.category || '').trim()) &&
-                  !hasAnyError;
+  // لا قيود إجبارية على نشر الوظيفة — فقط التحقق من الحدود وعدم وجود أخطاء صريحة
+  const isValid = !hasAnyError;
 
   const completionScore = [
-    (formData.title || '').trim().length > 2,
-    (formData.company || '').trim().length > 1,
+    Boolean((formData.title || '').trim()),
+    Boolean((formData.company || '').trim()),
     Boolean((formData.category || '').trim()),
-    (formData.description || '').trim().length > 10,
-    (formData.location || '').trim().length > 1,
-    (formData.salary || '').trim().length > 0,
+    Boolean((formData.description || '').trim()),
+    Boolean((formData.location || '').trim()),
+    Boolean((formData.salary || '').trim()),
     true, // Profile identity automatic
   ].filter(Boolean).length;
 
@@ -145,7 +142,7 @@ export const JobPostForm: React.FC<JobPostFormProps> = ({
           </h3>
           <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <label className={labelClass}>المسمى الوظيفي *</label>
+              <label className={labelClass}>المسمى الوظيفي</label>
               <input
                 id="job-title"
                 name="title"
@@ -165,7 +162,7 @@ export const JobPostForm: React.FC<JobPostFormProps> = ({
             </div>
 
             <div>
-              <label className={labelClass}>اسم الشركة / المنشأة *</label>
+              <label className={labelClass}>اسم الشركة / المنشأة</label>
               <input
                 id="job-company"
                 name="company"
@@ -186,12 +183,12 @@ export const JobPostForm: React.FC<JobPostFormProps> = ({
           </div>
         </div>
 
-        {/* Section: Job Category / قسم وتصنيف الوظيفة (إجباري) */}
+        {/* Section: Job Category / قسم وتصنيف الوظيفة */}
         <div className="space-y-3 p-4 md:p-5 bg-blue-50/40 dark:bg-blue-950/20 rounded-2xl md:rounded-3xl border border-blue-100/80 dark:border-blue-900/40">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <h3 className="text-sm font-black text-slate-800 dark:text-white flex items-center gap-2">
               <Tag size={16} className="text-blue-600" />
-              قسم وتصنيف الوظيفة <span className="text-red-500 font-bold">* (إجباري)</span>
+              قسم وتصنيف الوظيفة
             </h3>
             {formData.category ? (
               <span className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-3 py-1 rounded-full border border-emerald-200 dark:border-emerald-800 flex items-center gap-1 shadow-sm">
@@ -199,9 +196,8 @@ export const JobPostForm: React.FC<JobPostFormProps> = ({
                 تم تحديد: {formData.category}
               </span>
             ) : (
-              <span className="text-[11px] font-black text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-3 py-1 rounded-full border border-amber-200 dark:border-amber-800 flex items-center gap-1 animate-pulse">
-                <AlertCircle size={12} />
-                يرجى اختيار القسم للمتابعة
+              <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full border border-slate-200 dark:border-slate-700">
+                اختياري (تلقائي: وظائف عامة)
               </span>
             )}
           </div>
@@ -381,14 +377,10 @@ export const JobPostForm: React.FC<JobPostFormProps> = ({
         </div>
 
         {/* Validation Warning */}
-        {!isValid && (
-          <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-2xl flex items-center gap-2 text-amber-700 dark:text-amber-400 text-xs font-bold">
-            <AlertCircle size={15} className="shrink-0 text-amber-500" />
-            <span>
-              {!formData.category 
-                ? 'يرجى تحديد قسم الوظيفة (مهنية، تقنية، إدارية...) - حقل إجباري لنشر الوظيفة.'
-                : 'يرجى تعبئة المسمى الوظيفي، اسم المنشأة، والوصف لإتاحة النشر.'}
-            </span>
+        {hasAnyError && (
+          <div className="p-3.5 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/50 rounded-2xl flex items-center gap-2 text-red-700 dark:text-red-400 text-xs font-bold">
+            <AlertCircle size={15} className="shrink-0 text-red-500" />
+            <span>يرجى التحقق من الحقول التي بها ملاحظات قبل المتابعة.</span>
           </div>
         )}
       </div>
@@ -406,9 +398,9 @@ export const JobPostForm: React.FC<JobPostFormProps> = ({
         <button
           type="button"
           onClick={onSubmit}
-          disabled={isPosting || !isValid}
+          disabled={isPosting || hasAnyError}
           className={`flex-[2] py-3.5 md:py-4 rounded-2xl font-black text-xs md:text-sm flex items-center justify-center gap-2.5 transition-all shadow-lg active:scale-[0.98] cursor-pointer ${
-            isPosting || !isValid
+            isPosting || hasAnyError
               ? 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed shadow-none'
               : 'bg-gradient-to-r from-[#0a66c2] via-[#0052a3] to-[#003d7a] hover:brightness-110 text-white shadow-blue-500/25 hover:shadow-blue-500/40'
           }`}

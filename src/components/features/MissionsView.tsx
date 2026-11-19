@@ -273,13 +273,9 @@ export function MissionsView({
   // ── Post Job ─────────────────────────────────────────────────────────────────
   const handlePostJob = async () => {
     if (!appUser) { addToast('يجب تسجيل الدخول أولاً', 'error'); return; }
-    const company = formData.company.trim() || appUser.companyName || '';
-    if (!formData.title.trim()) { addToast('يرجى إدخال المسمى الوظيفي', 'error'); return; }
-    if (!company) { addToast('يرجى إدخال اسم الشركة', 'error'); return; }
-    if (!formData.category || !formData.category.trim()) {
-      addToast('يرجى تحديد قسم الوظيفة (مهنية، تقنية، إدارية...) - حقل إجباري ⚠️', 'error');
-      return;
-    }
+    const title = formData.title.trim() || 'فرصة عمل جديدة';
+    const company = formData.company.trim() || appUser.companyName || appUser.name || 'منشأة معتمدة';
+    const category = (formData.category && formData.category.trim()) || 'أخرى';
 
     setIsPosting(true);
 
@@ -292,14 +288,14 @@ export function MissionsView({
     try {
       // لا نحفظ الصورة مرتين — نستخدم employer_id لجلب صورة صاحب العمل من جدول profiles عند العرض
       const postData = {
-        title: formData.title,
+        title,
         company,
         description: formData.description,
         requirements: formData.requirements,
         location: formData.location || appUser.location || 'عن بُعد',
         salary: formData.salary,
         jobType: formData.jobType,
-        category: formData.category,
+        category,
         working_hours: formData.working_hours,
         employer_id: appUser.id,
         imageUrl: formData.imageUrl || appUser.coverUrl || (appUser as any)?.cover_url || null,

@@ -205,23 +205,21 @@ function App() {
       addToast('حسابك محظور ولا يمكنك نشر وظائف 🚫', 'error');
       return;
     }
-    if (!pageJobFormData.title.trim()) { addToast('يرجى إدخال المسمى الوظيفي', 'error'); return; }
-    if (!pageJobFormData.category?.trim()) {
-      addToast('يرجى تحديد قسم الوظيفة (حقل إجباري) ⚠️', 'error');
-      return;
-    }
-
     setIsPostingJobPage(true);
     try {
+      const finalTitle = pageJobFormData.title.trim() || 'فرصة عمل جديدة';
+      const finalCompany = pageJobFormData.company.trim() || appUser.companyName || appUser.name || 'مؤسسة معتمدة';
+      const finalCategory = pageJobFormData.category?.trim() || 'أخرى';
+
       const postData = {
-        title: pageJobFormData.title,
-        company: pageJobFormData.company || appUser.companyName || 'مؤسسة غير معرفة',
+        title: finalTitle,
+        company: finalCompany,
         description: pageJobFormData.description,
         requirements: pageJobFormData.requirements,
         location: pageJobFormData.location || appUser.location || 'عن بُعد',
         salary: pageJobFormData.salary,
         jobType: pageJobFormData.jobType,
-        category: pageJobFormData.category,
+        category: finalCategory,
         working_hours: pageJobFormData.working_hours,
         imageUrl: appUser.avatar || '',
         employer_id: appUser.id,
@@ -254,6 +252,8 @@ function App() {
     items: any[];
     initialIndex: number;
   } | null>(null);
+  // 🔙 يتذكر التبويب السابق قبل فتح الملف الشخصي من سوق الخدمات أو غيرها
+  const [profileReturnTab, setProfileReturnTab] = useState<string>('home');
   const [initialJobForMissions, setInitialJobForMissions] = useState<Job | null>(null);
   const webRTCServiceRef = useRef<WebRTCService | null>(null);
   
@@ -322,6 +322,17 @@ function App() {
     };
     window.addEventListener('setTab', handleSetTab);
     return () => window.removeEventListener('setTab', handleSetTab);
+  }, [setActiveTab]);
+
+  // Handle opening services market in Home feed from anywhere (e.g. sidebar/drawer)
+  useEffect(() => {
+    const handleOpenServices = () => {
+      setActiveTab('home');
+      setSelectedJobCategory('services');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+    window.addEventListener('openServicesMarket', handleOpenServices);
+    return () => window.removeEventListener('openServicesMarket', handleOpenServices);
   }, [setActiveTab]);
 
   // Handle guest mode exit from anywhere in the app (e.g. mobile drawer)
@@ -989,7 +1000,12 @@ function App() {
 
         {/* Left: Profile & Links */}
         {activeTab !== 'messages' && (
-          <HomeSidebar appUser={appUser} setSelectedProfile={setSelectedProfile} setActiveTab={setActiveTab} />
+          <HomeSidebar
+            appUser={appUser}
+            setSelectedProfile={setSelectedProfile}
+            setActiveTab={setActiveTab}
+            onOpenServices={() => { setActiveTab('home'); setSelectedJobCategory('services'); }}
+          />
         )}
 
         {/* Center: Feed Transmission */}
@@ -1030,6 +1046,7 @@ function App() {
                         <ServicesView
                           appUser={appUser}
                           onUserClick={(u) => {
+                            setProfileReturnTab('home-services'); // remember we came from services inside home
                             setSelectedProfile(u);
                             setActiveTab('profile');
                           }}
@@ -1438,6 +1455,7 @@ function App() {
                     <ServicesView
                       appUser={appUser}
                       onUserClick={(u) => {
+                        setProfileReturnTab('services'); // remember we came from services tab
                         setSelectedProfile(u);
                         setActiveTab('profile');
                       }}
@@ -1529,6 +1547,17 @@ function App() {
                           setActiveTab('jobs');
                           setInitialJobForMissions(returnToJob);
                           setReturnToJob(null);
+                        } else if (profileReturnTab === 'services') {
+                          // العودة لسوق الخدمات (تبويب مستقل)
+                          setSelectedProfile(null);
+                          setProfileReturnTab('home');
+                          setActiveTab('services');
+                        } else if (profileReturnTab === 'home-services') {
+                          // العودة للرئيسية مع تحديد قسم سوق الخدمات
+                          setSelectedProfile(null);
+                          setProfileReturnTab('home');
+                          setActiveTab('home');
+                          setSelectedJobCategory('services');
                         } else {
                           setSelectedProfile(null);
                           setActiveTab('home');

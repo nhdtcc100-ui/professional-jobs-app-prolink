@@ -964,7 +964,7 @@ const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
           )}
         </AnimatePresence>
 
-        {/* ── بطاقات تصنيفات الأخبار المربعة الأنيقة بنفس تصميم سوق المهن ── */}
+        {/* ── بطاقات تصنيفات الأخبار المربعة المتناسقة تماماً مع الثيمات ── */}
         <div className="overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none" dir="rtl" style={{ scrollbarWidth: 'none' }}>
           <div className="flex gap-2.5 w-max py-1">
             {NEWS_CATEGORIES.map((cat) => {
@@ -976,38 +976,40 @@ const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
                   key={cat.id}
                   type="button"
                   onClick={() => setSelectedCategory(isSelected ? null : cat.id)}
-                  className={`relative flex-shrink-0 w-[92px] h-[86px] sm:w-[102px] sm:h-[94px] rounded-2xl overflow-hidden transition-all duration-200 active:scale-95 group ${
+                  className={`relative flex-shrink-0 w-[96px] h-[90px] sm:w-[106px] sm:h-[96px] rounded-2xl overflow-hidden transition-all duration-200 active:scale-95 group border cursor-pointer ${
                     isSelected
-                      ? 'ring-2 ring-blue-500 dark:ring-white/90 shadow-xl shadow-blue-500/20 scale-105'
-                      : 'opacity-85 hover:opacity-100 hover:scale-[1.03] shadow-sm'
+                      ? 'bg-blue-600 dark:bg-blue-600 border-blue-600 text-white shadow-lg shadow-blue-500/25 scale-105'
+                      : 'bg-white dark:bg-slate-800/90 hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700/80 text-slate-800 dark:text-slate-100 shadow-xs hover:border-blue-400 dark:hover:border-blue-500'
                   }`}
-                  style={{
-                    background: `linear-gradient(135deg, ${cat.grad[0]}, ${cat.grad[1]})`,
-                  }}
                 >
                   {/* أيقونات زخرفية صغيرة بالزوايا */}
-                  <span className="absolute top-1.5 right-2 text-[9px] opacity-40 select-none pointer-events-none" aria-hidden="true">{cat.deco[0]}</span>
-                  <span className="absolute top-1.5 left-2 text-[9px] opacity-40 select-none pointer-events-none" aria-hidden="true">{cat.deco[1]}</span>
+                  <span className={`absolute top-1.5 right-2 text-[9px] select-none pointer-events-none transition-opacity ${isSelected ? 'opacity-70 text-white' : 'opacity-40 text-slate-400 dark:text-slate-500'}`} aria-hidden="true">{cat.deco[0]}</span>
+                  <span className={`absolute top-1.5 left-2 text-[9px] select-none pointer-events-none transition-opacity ${isSelected ? 'opacity-70 text-white' : 'opacity-40 text-slate-400 dark:text-slate-500'}`} aria-hidden="true">{cat.deco[1]}</span>
 
                   {/* المحتوى الرئيسي للكارد */}
-                  <div className="relative z-10 flex flex-col items-center justify-end h-full pb-2 px-1 gap-1">
-                    <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
-                      <IconComp size={18} className="text-white drop-shadow-sm" />
+                  <div className="relative z-10 flex flex-col items-center justify-end h-full pb-2.5 px-1.5 gap-1.5">
+                    <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center shadow-xs group-hover:scale-110 transition-transform ${
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : 'bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-100 dark:border-blue-900/40'
+                    }`}>
+                      <IconComp size={18} />
                     </div>
-                    <span className="text-white font-black text-[10px] sm:text-[11px] drop-shadow text-center leading-tight truncate w-full">
+                    <span className={`font-black text-[10.5px] sm:text-[11px] text-center leading-tight truncate w-full ${
+                      isSelected ? 'text-white' : 'text-slate-800 dark:text-white'
+                    }`}>
                       {cat.label}
                     </span>
                     {count > 0 && (
-                      <span className="text-[8.5px] font-black text-white/90 bg-black/30 px-1.5 py-0.5 rounded-full leading-none">
+                      <span className={`text-[8.5px] font-black px-1.5 py-0.5 rounded-full leading-none ${
+                        isSelected
+                          ? 'text-white/90 bg-black/25'
+                          : 'text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700/80'
+                      }`}>
                         {count} خبر
                       </span>
                     )}
                   </div>
-
-                  {/* طبقة توهج عند التحديد */}
-                  {isSelected && (
-                    <div className="absolute inset-0 bg-white/20 backdrop-blur-[0.5px] border-2 border-white/70 rounded-2xl pointer-events-none" />
-                  )}
                 </button>
               );
             })}

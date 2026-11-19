@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ShieldCheck,
@@ -630,7 +630,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                   {canUseSupportChat
                     ? 'اكتب رسالتك وسيردّ عليك فريق الدعم مباشرةً من لوحة التحكم. السبت–الخميس ٩ص–٩م.'
-                    : 'تواصل مع فريق الدعم عبر واتساب أو تلكرام. الدردشة داخل التطبيق متاحة للإدارة فقط حالياً.'}
+                    : 'يمكنك التواصل مع فريق الدعم الفني مباشرةً عبر واتساب أو تلكرام طيلة أيام الأسبوع.'}
                 </p>
                 <div className="grid grid-cols-2 gap-2.5 mt-4">
                   {(platformSettings.supportWhatsapp || SUPPORT_PHONE_2) && (
@@ -656,8 +656,8 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
                 </div>
               </div>
 
-              {/* Chat window — admin-only until opened */}
-              {canUseSupportChat ? (
+              {/* Chat window — admin-only until opened by admin */}
+              {canUseSupportChat && (
               <div className="bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col overflow-hidden" style={{ minHeight: '380px', maxHeight: '60vh' }}>
                 {/* Messages area */}
                 <div className="flex-1 overflow-y-auto p-5 space-y-3">
@@ -718,7 +718,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
                       <button
                         onClick={handleSend}
                         disabled={!chatMsg.trim() || sending}
-                        className="flex items-center justify-center w-11 h-11 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-2xl transition-all shadow-md shadow-blue-500/20 active:scale-95 shrink-0 self-end"
+                        className="flex items-center justify-center w-11 h-11 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white rounded-2xl transition-all shadow-md shadow-blue-500/20 active:scale-95 shrink-0 self-end cursor-pointer"
                       >
                         {sending
                           ? <span className="animate-spin border-2 border-white border-t-transparent rounded-full w-4 h-4" />
@@ -728,11 +728,6 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
                     </>
                   )}
                 </div>
-              </div>
-              ) : (
-              <div className="bg-amber-50 dark:bg-amber-950/20 rounded-[2rem] p-6 border border-amber-100 dark:border-amber-800/30 text-center">
-                <p className="text-xs font-black text-amber-700 dark:text-amber-300">🔒 الدردشة المباشرة مع الدعم مقفلة حالياً ومتاحة للإدارة فقط.</p>
-                <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80 font-bold mt-1.5">استخدم زرّي واتساب أو تلكرام أعلاه للتواصل مع فريق الدعم.</p>
               </div>
               )}
 

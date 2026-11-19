@@ -274,41 +274,38 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors" dir="rtl">
-      {/* ── Top Navigation Bar ── */}
-      <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 py-3.5 shadow-xs print:hidden">
-        <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+      {/* ── Top Navigation Bar: Responsive, Clean & Adaptive ── */}
+      <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-3 sm:px-6 py-2.5 sm:py-3 shadow-xs print:hidden">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
           {/* Back button */}
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black transition-all cursor-pointer active:scale-95"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black transition-all cursor-pointer active:scale-95 shrink-0 shadow-xs"
           >
-            <ArrowRight size={16} />
+            <ArrowRight size={15} />
             <span>الرجوع</span>
           </button>
 
           {/* Title & Badge */}
-          <div className="text-center flex-1 max-w-md">
-            <h1 className="text-sm md:text-base font-black tracking-tight text-slate-900 dark:text-white flex items-center justify-center gap-2">
-              <span>منشئ السيرة الذاتية الاحترافية</span>
-              <span className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[10px] font-black border border-blue-200 dark:border-blue-800">
-                ATS Friendly
+          <div className="text-center flex-1 min-w-0">
+            <h1 className="text-xs sm:text-sm md:text-base font-black tracking-tight text-slate-900 dark:text-white flex items-center justify-center gap-1.5 truncate">
+              <span className="truncate">السيرة الذاتية (ATS)</span>
+              <span className="px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 text-[9px] sm:text-[10px] font-black border border-blue-200 dark:border-blue-800 shrink-0">
+                معتمدة ✨
               </span>
             </h1>
-            <p className="text-[10px] text-slate-400 dark:text-slate-400 font-bold hidden sm:block">
-              تنسيق قياسي معتمد ومقروء لأنظمة التوظيف العالمية
-            </p>
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               type="button"
               onClick={handlePrint}
               title="طباعة أو تصدير PDF"
-              className="p-2.5 sm:px-3.5 sm:py-2 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
+              className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
             >
-              <Printer size={16} />
+              <Printer size={15} />
               <span className="hidden sm:inline">طباعة / PDF</span>
             </button>
 
@@ -316,20 +313,21 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
               type="button"
               onClick={handleExportToAllJobs}
               disabled={isSaving}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white text-xs font-black shadow-md shadow-blue-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white text-xs font-black shadow-md shadow-blue-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
             >
-              <CheckCircle2 size={16} />
-              <span>{isSaving ? 'جاري الحفظ...' : 'تصدير لجميع الوظائف'}</span>
+              <CheckCircle2 size={15} />
+              <span className="hidden sm:inline">{isSaving ? 'جاري الحفظ...' : 'تصدير لجميع الوظائف'}</span>
+              <span className="sm:hidden">{isSaving ? 'حفظ...' : 'تصدير'}</span>
             </button>
           </div>
         </div>
 
         {/* Mobile View Switcher (Editor vs ATS Preview) */}
-        <div className="flex sm:hidden mt-3 p-1 rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+        <div className="flex sm:hidden mt-2 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
           <button
             type="button"
             onClick={() => setActiveView('editor')}
-            className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
+            className={`flex-1 py-1.5 text-xs font-black rounded-lg transition-all ${
               activeView === 'editor'
                 ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
                 : 'text-slate-500 dark:text-slate-400'
@@ -340,7 +338,7 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
           <button
             type="button"
             onClick={() => setActiveView('preview')}
-            className={`flex-1 py-2 text-xs font-black rounded-xl transition-all ${
+            className={`flex-1 py-1.5 text-xs font-black rounded-lg transition-all ${
               activeView === 'preview'
                 ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-300 shadow-xs'
                 : 'text-slate-500 dark:text-slate-400'
@@ -764,40 +762,40 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
           {/* 📄 Paper ATS Document Card ── Pure Black & White ATS standard ── */}
           <div
             ref={printAreaRef}
-            className="w-full bg-white text-black p-8 sm:p-10 rounded-[2rem] shadow-xl border border-slate-300/80 dark:border-slate-700 space-y-6 print:shadow-none print:border-none print:p-0 print:m-0"
-            style={{ minHeight: '800px', color: '#000000', backgroundColor: '#ffffff' }}
+            className="printable-cv-area w-full bg-white text-black p-6 sm:p-9 rounded-[2rem] shadow-xl border border-slate-300/80 dark:border-slate-700 space-y-4 print:shadow-none print:border-none print:p-0 print:m-0"
+            style={{ color: '#000000', backgroundColor: '#ffffff' }}
           >
             {/* Header: Name & Contact Details */}
-            <div className="border-b-2 border-black pb-4 text-center">
-              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-black uppercase mb-1">
+            <div className="printable-section border-b-2 border-black pb-3 text-center">
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-black uppercase mb-0.5">
                 {fullName || 'الاسم الكامل للمرشح'}
               </h1>
-              <p className="text-sm font-bold text-slate-800 tracking-wide mb-3">
+              <p className="text-xs sm:text-sm font-bold text-slate-800 tracking-wide mb-2">
                 {title || 'المسمى الوظيفي والتخصص المهني'}
               </p>
 
               {/* Contact details line */}
-              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-slate-700 font-semibold">
+              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-slate-700 font-semibold">
                 {phone && (
                   <span className="inline-flex items-center gap-1" dir="ltr">
-                    <Phone size={12} className="text-black" />
+                    <Phone size={11} className="text-black" />
                     <span>{phone}</span>
                   </span>
                 )}
                 {email && (
                   <span className="inline-flex items-center gap-1" dir="ltr">
-                    <Mail size={12} className="text-black" />
+                    <Mail size={11} className="text-black" />
                     <span>{email}</span>
                   </span>
                 )}
                 {location && (
                   <span className="inline-flex items-center gap-1">
-                    <MapPin size={12} className="text-black" />
+                    <MapPin size={11} className="text-black" />
                     <span>{location}</span>
                   </span>
                 )}
                 <span className="inline-flex items-center gap-1 text-emerald-800 font-bold">
-                  <CheckCircle2 size={12} />
+                  <CheckCircle2 size={11} />
                   <span>عضو موثق في ProLink</span>
                 </span>
               </div>
@@ -805,8 +803,8 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
 
             {/* Professional Summary */}
             {bio && (
-              <div className="space-y-1.5">
-                <h3 className="text-xs font-black text-black tracking-wider uppercase border-b border-slate-300 pb-1">
+              <div className="printable-section space-y-1">
+                <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
                   النبذة المهنية (Professional Summary)
                 </h3>
                 <p className="text-xs text-slate-800 leading-relaxed font-medium">
@@ -816,29 +814,29 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
             )}
 
             {/* Work Experiences */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-black text-black tracking-wider uppercase border-b border-slate-300 pb-1">
+            <div className="printable-section space-y-2">
+              <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
                 الخبرات العملية وسجل الأعمال السابقة (Work Experience)
               </h3>
 
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {experiences.map((exp, idx) => (
-                  <div key={idx} className="space-y-1">
+                  <div key={idx} className="space-y-0.5">
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="text-xs font-black text-black">
                         {exp.role} — <span className="font-bold text-slate-700">{exp.company}</span>
                       </span>
-                      <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">
+                      <span className="text-[10px] font-bold text-slate-600 whitespace-nowrap">
                         {exp.duration}
                       </span>
                     </div>
 
-                    <p className="text-xs text-slate-800 leading-relaxed font-normal whitespace-pre-line pl-2">
+                    <p className="text-[11px] text-slate-800 leading-relaxed font-normal whitespace-pre-line pl-2">
                       {exp.tasks}
                     </p>
 
                     {exp.skills && (
-                      <p className="text-[11px] text-slate-600 font-semibold">
+                      <p className="text-[10px] text-slate-600 font-semibold">
                         المهارات المستخدمة: {exp.skills}
                       </p>
                     )}
@@ -853,8 +851,8 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
 
             {/* Education */}
             {education && (
-              <div className="space-y-1.5">
-                <h3 className="text-xs font-black text-black tracking-wider uppercase border-b border-slate-300 pb-1">
+              <div className="printable-section space-y-1">
+                <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
                   المؤهلات العلمية (Education & Credentials)
                 </h3>
                 <p className="text-xs text-slate-800 font-bold">
@@ -865,15 +863,15 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
 
             {/* Core Competencies & Skills */}
             {skills.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-xs font-black text-black tracking-wider uppercase border-b border-slate-300 pb-1">
+              <div className="printable-section space-y-1.5">
+                <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
                   المهارات والقدرات الأساسية (Core Competencies)
                 </h3>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1">
                   {skills.map((s, idx) => (
                     <span
                       key={idx}
-                      className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-900 text-[11px] font-bold border border-slate-300"
+                      className="px-2 py-0.5 rounded bg-slate-100 text-slate-900 text-[10px] font-bold border border-slate-300"
                     >
                       {s}
                     </span>
@@ -884,8 +882,8 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
 
             {/* Languages */}
             {languages.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-xs font-black text-black tracking-wider uppercase border-b border-slate-300 pb-1">
+              <div className="printable-section space-y-1.5">
+                <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
                   اللغات (Languages)
                 </h3>
                 <div className="flex flex-wrap gap-3 text-xs text-slate-800 font-medium">
@@ -899,7 +897,7 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
             )}
 
             {/* ATS Certification Footnote */}
-            <div className="pt-6 border-t border-slate-200 flex items-center justify-between text-[10px] text-slate-500 font-bold">
+            <div className="printable-section pt-4 border-t border-slate-200 flex items-center justify-between text-[9px] text-slate-500 font-bold">
               <span>تم إنشاء هذه السيرة وتوثيقها عبر منصة ProLink المهنية</span>
               <span>ATS Compliant Resume • Verified Professional</span>
             </div>

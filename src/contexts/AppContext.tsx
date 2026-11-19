@@ -97,7 +97,7 @@ interface AppContextType {
   logout: () => Promise<void>;
   refreshData: (silent?: boolean, userId?: string) => Promise<void>;
   handleApplyJob: (job: Job, text: string, file: File | null) => Promise<void>;
-  setAppUser: (user: AppUser | null) => void;
+  setAppUser: (user: AppUser | null | ((prev: AppUser | null) => AppUser | null)) => void;
   setNotifications: React.Dispatch<React.SetStateAction<AppNotification[]>>;
   setAllUsers: React.Dispatch<React.SetStateAction<AppUser[]>>;
   setPosts: React.Dispatch<React.SetStateAction<Post[]>>;
@@ -1896,9 +1896,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
-          setUser(session.user as any);
-          let { data: profile } = await authService.getProfile(session.user.id);
+          const u = session.user;
+          setUser(u as any);
+          let { data: profile } = await authService.getProfile(u.id);
           if (profile) {
+            // ✅ إذا اختار المستخدم دوراً محدداً أثناء التسجيل (مثلاً باحث عن عمل)، نضمن اعتماده وتحديث قاعدة البيانات
+            if (u.user_metadata?.role && profile.role !== u.user_metadata.role && !isUserAdmin(profile)) {
+              profile.role = u.user_metadata.role;
+              try {
+                await supabase.from('profiles').update({ role: u.user_metadata.role }).eq('id', u.id);
+              } catch (_) {}
+            }
+
             // ✅ مصدر واحد للحقيقة: role من DB فقط. لا نعتمد user_metadata كبديل
             // إذا كان الدور فارغاً → شاشة اختيار الدور (needsRole=true)
             const mapped = mapProfile(profile);
@@ -2013,6 +2022,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           }
 
           if (profile) {
+            // ✅ إذا اختار المستخدم دوراً محدداً أثناء التسجيل (مثلاً باحث عن عمل)، نضمن اعتماده وتحديث قاعدة البيانات
+            if (u.user_metadata?.role && profile.role !== u.user_metadata.role && !isUserAdmin(profile)) {
+              profile.role = u.user_metadata.role;
+              try {
+                await supabase.from('profiles').update({ role: u.user_metadata.role }).eq('id', u.id);
+              } catch (_) {}
+            }
+
             // ✅ مصدر واحد للحقيقة: role من DB فقط. لا نعتمد user_metadata كبديل
             // إذا كان الدور فارغاً → شاشة اختيار الدور (needsRole=true)
             const mapped = mapProfile(profile);

@@ -5,6 +5,7 @@ import { GlassCard } from "../ui";
 import { authService, unifiedAuth } from "../../lib/services/authService";
 import { detectIdentifierType, checkPasswordStrength, sanitizeInput, validateName } from "../../lib/security/inputValidator";
 import { supabase } from "../../lib/supabase";
+import { useAppContext } from "../../contexts/AppContext";
 
 interface AuthViewProps {
   onSuccess?: () => void;
@@ -14,6 +15,7 @@ interface AuthViewProps {
 }
 
 export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, handleGoogleLogin: propGoogleLogin, onGuestMode }) => {
+  const { setAppUser } = useAppContext();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [identifier, setIdentifier] = useState("");
   const [identifierError, setIdentifierError] = useState<string | null>(null);
@@ -162,6 +164,18 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, handleGoogleLogin
                 home_address: null,
                 service_request: null,
               });
+              // تحديث حالة المستخدم محلياً فوراً لمنع أي تضارب مع كاش الجلسة
+              if (setAppUser) {
+                setAppUser((prev: any) => ({
+                  ...(prev || {}),
+                  id: registeredUserId,
+                  name: finalName,
+                  role: selectedRole,
+                  location: sanitizeInput(location, 100) || '',
+                  companyName: selectedRole === 'employer' ? sanitizeInput(companyName, 100) : '',
+                  displayTitle: displayTitle || '',
+                }));
+              }
             } catch (updateErr) {
               console.warn('[AuthView] Role and profile fields save warning:', updateErr);
             }

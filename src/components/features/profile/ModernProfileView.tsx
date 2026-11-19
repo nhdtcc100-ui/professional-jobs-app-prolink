@@ -17,6 +17,7 @@ import { profileService } from '../../../lib/services/profileService';
 import { cvService } from '../../../lib/services/cvService';
 import { mobileUploadService } from '../../../lib/services/mobileUploadService';
 import { AppUser, Post, Job } from '../../../types';
+import { isUserAdmin } from '../../../lib/utils/roleUtils';
 import { useAppContext } from '../../../contexts/AppContext';
 import { PostNewsCard } from '../PostNewsCard';
 import { DetailFeedPage } from '../DetailFeedPage';
@@ -254,6 +255,7 @@ export function ModernProfileView({
   }, [addToast, contextAddToast]);
   const [profilePosts, setProfilePosts] = useState<Post[]>([]);
   const [loadingPosts, setLoadingPosts] = useState(false);
+  const isAdmin = Boolean(isUserAdmin(appUser) || appUser?.isAdmin || (appUser as any)?.is_admin);
 
   const targetUserId = profile?.id || effectiveUserId;
 
@@ -327,6 +329,10 @@ export function ModernProfileView({
 
   // ─── تحميل السيرة الذاتية بأمان وتنزيلها كملف بدون فضح روابط قواعد البيانات ────
   const handleDownloadCV = async () => {
+    if (!isAdmin) {
+      notify('ملفات السير الذاتية المرفوعة مخصصة للإدارة فقط 🛡️', 'warning');
+      return;
+    }
     if (!cvUrl && !pendingCVFile) return;
     try {
       setCvDownloading(true);
@@ -1108,14 +1114,24 @@ export function ModernProfileView({
             </div>
           )}
           {isMe && (
-            <label
-              htmlFor="cover-file-input"
-              className="absolute bottom-3.5 left-3.5 flex items-center gap-2 px-3.5 py-2 rounded-full bg-black/40 hover:bg-black/70 text-white text-xs sm:text-sm font-bold backdrop-blur-sm transition-all border border-white/20 active:scale-95 cursor-pointer shadow-lg"
-            >
-              <Camera size={15} />
-              <span>تغيير الغلاف</span>
-              <input id="cover-file-input" ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={handleCoverChange} />
-            </label>
+            <>
+              <input
+                id="cover-file-input"
+                ref={coverInputRef}
+                type="file"
+                accept="image/*,image/jpeg,image/png,image/webp,image/gif"
+                className="hidden"
+                onChange={handleCoverChange}
+              />
+              <button
+                type="button"
+                onClick={handleCoverButtonClick}
+                className="absolute bottom-3.5 left-3.5 flex items-center gap-2 px-3.5 py-2 rounded-full bg-black/50 hover:bg-black/75 text-white text-xs sm:text-sm font-bold backdrop-blur-sm transition-all border border-white/20 active:scale-95 cursor-pointer shadow-lg z-10"
+              >
+                <Camera size={15} />
+                <span>تغيير الغلاف</span>
+              </button>
+            </>
           )}
         </div>
 
@@ -1141,14 +1157,24 @@ export function ModernProfileView({
                 </div>
               )}
               {isMe && (
-                <label
-                  htmlFor="avatar-file-input"
-                  className="absolute -bottom-1.5 -right-1.5 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900 transition-all active:scale-90 cursor-pointer hover:scale-110"
-                  title="تغيير الصورة الشخصية"
-                >
-                  <Camera size={18} />
-                  <input id="avatar-file-input" ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
-                </label>
+                <>
+                  <input
+                    id="avatar-file-input"
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*,image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={handleAvatarChange}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAvatarButtonClick}
+                    className="absolute -bottom-1.5 -right-1.5 w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-gradient-to-br from-[#0a66c2] to-[#004182] text-white flex items-center justify-center shadow-lg border-2 border-white dark:border-slate-900 transition-all active:scale-90 cursor-pointer hover:scale-110 z-10"
+                    title="تغيير الصورة الشخصية"
+                  >
+                    <Camera size={18} />
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -1710,26 +1736,28 @@ export function ModernProfileView({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-2 border-t border-blue-100 dark:border-blue-900/40">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-2 border-t border-blue-100 dark:border-blue-900/40">
               <motion.button
                 type="button"
                 onClick={() => openCVModal()}
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.96 }}
                 className="py-2.5 px-3 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-[#0a66c2] dark:text-blue-300 rounded-xl text-xs font-black transition-all border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer">
-                <ExternalLink size={14} /><span>معاينة السيرة ↗</span>
+                <ExternalLink size={14} /><span>معاينة السيرة (ATS) ↗</span>
               </motion.button>
-              <motion.button
-                type="button"
-                onClick={handleDownloadCV}
-                disabled={cvDownloading}
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.96 }}
-                className="py-2.5 px-3 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50 cursor-pointer">
-                {cvDownloading ? <Loader2 size={14} className="animate-spin text-[#0a66c2]" /> : <Download size={14} />}
-                <span>{cvDownloading ? 'جاري التحميل...' : 'تحميل CV'}</span>
-              </motion.button>
-              {isMe && (
+              {isAdmin && (
+                <motion.button
+                  type="button"
+                  onClick={handleDownloadCV}
+                  disabled={cvDownloading}
+                  whileHover={{ scale: 1.03 }}
+                  whileTap={{ scale: 0.96 }}
+                  className="py-2.5 px-3 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-black transition-all border border-slate-200 dark:border-slate-700 flex items-center justify-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50 cursor-pointer">
+                  {cvDownloading ? <Loader2 size={14} className="animate-spin text-[#0a66c2]" /> : <Download size={14} />}
+                  <span>{cvDownloading ? 'جاري التحميل...' : 'تحميل الملف المرفق (للأدمن)'}</span>
+                </motion.button>
+              )}
+              {isMe && isAdmin && (
                 <label
                   htmlFor="cv-file-input"
                   className="col-span-2 sm:col-span-1 py-2.5 px-3 bg-gradient-to-l from-[#0a66c2] to-[#004182] hover:from-[#004182] hover:to-[#0a66c2] text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
@@ -1752,7 +1780,7 @@ export function ModernProfileView({
               </div>
             )}
           </div>
-        ) : (
+        ) : isAdmin ? (
           <label
             htmlFor={isMe ? "cv-file-input" : undefined}
             className={`p-6 sm:p-8 rounded-2xl border-2 border-dashed border-blue-200 dark:border-blue-800/60 bg-blue-50/30 dark:bg-blue-950/10 flex flex-col items-center justify-center text-center gap-3 transition-all ${isMe ? 'hover:bg-blue-50 dark:hover:bg-blue-950/20 cursor-pointer active:scale-[0.99]' : ''}`}
@@ -1762,7 +1790,7 @@ export function ModernProfileView({
             </div>
             <div>
               <p className="text-sm font-black text-slate-800 dark:text-white">
-                {isMe ? 'انقر لرفع ملف السيرة الذاتية (CV)' : 'لم يتم رفع ملف سيرة ذاتية بعد'}
+                {isMe ? 'انقر لرفع ملف السيرة الذاتية (CV) [خاص بالإدارة]' : 'لم يتم رفع ملف سيرة ذاتية بعد'}
               </p>
               <p className="text-[11px] font-bold text-slate-400 mt-1">PDF أو Word — الحد الأقصى 25 ميغابايت</p>
               <div className="pt-3 flex flex-wrap items-center justify-center gap-2">
@@ -1787,9 +1815,41 @@ export function ModernProfileView({
               </div>
             </div>
           </label>
+        ) : (
+          <div className="p-6 sm:p-8 rounded-2xl border-2 border-dashed border-blue-200 dark:border-blue-800/60 bg-blue-50/30 dark:bg-blue-950/10 flex flex-col items-center justify-center text-center gap-3">
+            <div className="w-14 h-14 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-[#0a66c2] dark:text-blue-300 flex items-center justify-center shadow-sm">
+              <FileText size={24} />
+            </div>
+            <div>
+              <p className="text-sm font-black text-slate-800 dark:text-white">
+                السيرة الذاتية الرقمية المعتمدة (ATS)
+              </p>
+              <p className="text-[11px] font-bold text-slate-400 mt-1">منشأة وموثقة تلقائياً ومطابقة لمعايير أنظمة التوظيف الدولية</p>
+              <div className="pt-3 flex flex-wrap items-center justify-center gap-2">
+                {isMe && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCVBuilder(true)}
+                    className="inline-flex items-center gap-1.5 py-2 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-black transition-all active:scale-95 cursor-pointer shadow-md shadow-blue-500/20"
+                  >
+                    <Sparkles size={13} />
+                    <span>إنشاء / تعديل السيرة الذاتية (ATS) 📄</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowGeneratedCV(true)}
+                  className="inline-flex items-center gap-1.5 py-2 px-4 rounded-xl bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 text-blue-600 dark:text-blue-300 text-xs font-black transition-all active:scale-95 border border-blue-200 dark:border-blue-800 cursor-pointer shadow-xs"
+                >
+                  <FileText size={13} />
+                  <span>معاينة السيرة الذاتية المنشأة بالمنصة ↗</span>
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
-        {isMe && (
+        {isMe && isAdmin && (
           <input
             id="cv-file-input"
             ref={cvInputRef}
@@ -1800,7 +1860,7 @@ export function ModernProfileView({
           />
         )}
 
-        {isMe && (pendingCVFile || cvUrl) && (
+        {isMe && isAdmin && (pendingCVFile || cvUrl) && (
           <button type="button" onClick={handleSaveCV} disabled={savingCV} className={saveBtn}>
             <div className="flex items-center gap-1 text-blue-200"><ChevronsLeft size={22} /></div>
             <div className="flex items-center gap-2">

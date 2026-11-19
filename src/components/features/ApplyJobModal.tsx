@@ -148,11 +148,23 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
         prevWorks
       };
 
-      if (atsCV) {
-        applicantDataPayload.isATSVerified = true;
-        applicantDataPayload.atsCV = atsCV;
-        applicantDataPayload.languages = atsCV.languages;
-      }
+      const finalAtsCV = atsCV || {
+        fullName: appUser.name || (appUser as any).fullName || '',
+        title: (appUser as any).title || (appUser as any).headline || '',
+        email: appUser.email || '',
+        phone: (appUser as any).phone || '',
+        location: (appUser as any).location || '',
+        summary: (appUser as any).bio || '',
+        experienceText: fullExperience || '',
+        educationText: cvEducation || '',
+        skills: appUser.skills || [],
+        languages: (appUser as any).languages || ['العربية'],
+        prevWorks: prevWorks || []
+      };
+
+      applicantDataPayload.isATSVerified = true;
+      applicantDataPayload.atsCV = finalAtsCV;
+      applicantDataPayload.languages = finalAtsCV.languages;
 
       console.log("💎 [UI_STEP_3] Calling service.applyToJob...");
       const applyResult = await jobService.applyToJob(appUser.id, applyingJob.employer_id!, {
@@ -480,63 +492,65 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
               </div>
             </div>
 
-            {/* CV Upload */}
-            <div>
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">السيرة الذاتية (PDF / Word)</label>
-              <label
-                htmlFor="cv-upload-main"
-                className={`w-full border-2 border-dashed rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all block ${
-                  cvFileObj || (appUser as any).cv_url || (appUser as any).cvUrl ? 'bg-blue-50 border-blue-300' : 'bg-slate-50 border-slate-200 hover:border-blue-200 hover:bg-blue-50/30'
-                }`}
-              >
-                {cvFileObj || (appUser as any).cv_url || (appUser as any).cvUrl ? (
-                  <div className="flex items-center gap-3 w-full">
-                    <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow"><FileText size={20} /></div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-black text-slate-800 truncate">{cvFileObj ? cvFileObj.name : 'السيرة الذاتية المرفوعة مسبقاً'}</p>
-                      <p className="text-[10px] text-slate-400 font-bold">{cvFileObj ? `${(cvFileObj.size / 1024 / 1024).toFixed(2)} MB` : 'جاهزة للإرسال'}</p>
+            {/* CV Upload (Admin Only - Regular seekers use platform certified ATS CV) */}
+            {(appUser?.isAdmin || (appUser as any)?.is_admin) && (
+              <div>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 block">السيرة الذاتية (PDF / Word) [للإدارة فقط]</label>
+                <label
+                  htmlFor="cv-upload-main"
+                  className={`w-full border-2 border-dashed rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all block ${
+                    cvFileObj || (appUser as any).cv_url || (appUser as any).cvUrl ? 'bg-blue-50 border-blue-300' : 'bg-slate-50 border-slate-200 hover:border-blue-200 hover:bg-blue-50/30'
+                  }`}
+                >
+                  {cvFileObj || (appUser as any).cv_url || (appUser as any).cvUrl ? (
+                    <div className="flex items-center gap-3 w-full">
+                      <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow"><FileText size={20} /></div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-black text-slate-800 truncate">{cvFileObj ? cvFileObj.name : 'السيرة الذاتية المرفوعة مسبقاً'}</p>
+                        <p className="text-[10px] text-slate-400 font-bold">{cvFileObj ? `${(cvFileObj.size / 1024 / 1024).toFixed(2)} MB` : 'جاهزة للإرسال'}</p>
+                      </div>
+                      {cvFileObj && (
+                        <button
+                          type="button"
+                          onClick={e => { e.preventDefault(); e.stopPropagation(); setCvFileObj(null); }}
+                          className="p-2 hover:bg-red-50 text-red-400 rounded-xl transition-colors"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      )}
                     </div>
-                    {cvFileObj && (
-                      <button
-                        type="button"
-                        onClick={e => { e.preventDefault(); e.stopPropagation(); setCvFileObj(null); }}
-                        className="p-2 hover:bg-red-50 text-red-400 rounded-xl transition-colors"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    <div className="p-3 bg-white rounded-2xl shadow-sm text-slate-300 mb-3"><Paperclip size={24} /></div>
-                    <p className="text-xs font-bold text-slate-600">اضغط لرفع السيرة الذاتية</p>
-                    <p className="text-[10px] text-slate-400 font-medium mt-1">PDF, DOC, DOCX — الحد الأقصى 20 ميجابايت</p>
-                  </>
-                )}
-                <input
-                  id="cv-upload-main" type="file" className="hidden"
-                  accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-                    if (file.size > 20 * 1024 * 1024) { addToast('حجم الملف يجب أن لا يتجاوز 20 ميجابايت', 'error'); return; }
-                    
-                    // تجميد فوري لمحتوى الملف في الذاكرة RAM لحمايته من إفراغ نظام الهاتف
-                    try {
-                      const ab = await file.arrayBuffer();
-                      const mime = file.type || 'application/pdf';
-                      const frozen = new File([new Blob([ab], { type: mime })], file.name, { type: mime });
-                      (frozen as any)._ab = ab;
-                      setCvFileObj(frozen);
-                    } catch (readErr) {
-                      console.warn('[ApplyJobModal] Could not pre-read arrayBuffer, using raw file:', readErr);
-                      setCvFileObj(file);
-                    }
-                    e.target.value = '';
-                  }}
-                />
-              </label>
-            </div>
+                  ) : (
+                    <>
+                      <div className="p-3 bg-white rounded-2xl shadow-sm text-slate-300 mb-3"><Paperclip size={24} /></div>
+                      <p className="text-xs font-bold text-slate-600">اضغط لرفع السيرة الذاتية</p>
+                      <p className="text-[10px] text-slate-400 font-medium mt-1">PDF, DOC, DOCX — الحد الأقصى 20 ميجابايت</p>
+                    </>
+                  )}
+                  <input
+                    id="cv-upload-main" type="file" className="hidden"
+                    accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > 20 * 1024 * 1024) { addToast('حجم الملف يجب أن لا يتجاوز 20 ميجابايت', 'error'); return; }
+                      
+                      // تجميد فوري لمحتوى الملف في الذاكرة RAM لحمايته من إفراغ نظام الهاتف
+                      try {
+                        const ab = await file.arrayBuffer();
+                        const mime = file.type || 'application/pdf';
+                        const frozen = new File([new Blob([ab], { type: mime })], file.name, { type: mime });
+                        (frozen as any)._ab = ab;
+                        setCvFileObj(frozen);
+                      } catch (readErr) {
+                        console.warn('[ApplyJobModal] Could not pre-read arrayBuffer, using raw file:', readErr);
+                        setCvFileObj(file);
+                      }
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+              </div>
+            )}
           </div>
         </div>
 

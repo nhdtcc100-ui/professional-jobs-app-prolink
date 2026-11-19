@@ -1,5 +1,5 @@
 import React from 'react';
-import { Info, ArrowLeft, Globe, Sparkles, Building2, ShieldCheck, X, Calendar } from 'lucide-react';
+import { Info, ArrowLeft, Globe, Sparkles, Building2, ShieldCheck, X, Calendar, Wrench } from 'lucide-react';
 import { GlassCard } from '../ui';
 import { AppUser } from '../../types';
 import { preloadTab } from '../../lib/lazyPreload';
@@ -40,9 +40,10 @@ interface HomeSidebarProps {
   appUser: AppUser | null;
   setSelectedProfile: (user: AppUser) => void;
   setActiveTab?: (tab: string) => void;
+  onOpenServices?: () => void;
 }
 
-export const HomeSidebar: React.FC<HomeSidebarProps> = ({ appUser, setSelectedProfile, setActiveTab }) => {
+export const HomeSidebar: React.FC<HomeSidebarProps> = ({ appUser, setSelectedProfile, setActiveTab, onOpenServices }) => {
   const handleOpenAboutPage = () => {
     if (setActiveTab) {
       setActiveTab('about');
@@ -51,8 +52,47 @@ export const HomeSidebar: React.FC<HomeSidebarProps> = ({ appUser, setSelectedPr
     }
   };
 
+  const handleOpenServices = () => {
+    if (onOpenServices) {
+      onOpenServices();
+    } else {
+      window.dispatchEvent(new CustomEvent('openServicesMarket'));
+    }
+  };
+
   return (
     <div className="lg:col-span-3 space-y-6 hidden md:block">
+      {/* ── Services Market Card (Opens inside Home feed) ── */}
+      <GlassCard className="rounded-[2.5rem] border-none shadow-[0_15px_40px_rgba(10,102,194,0.08)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] overflow-hidden bg-white/70 dark:bg-slate-900/40 backdrop-blur-xl border border-white/20 dark:border-slate-800/50 group">
+        <div className="p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 bg-gradient-to-br from-amber-500 to-orange-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-orange-500/25 group-hover:scale-105 transition-transform">
+              <Wrench size={22} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">سوق الخدمات والمهن</h3>
+              <p className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mt-0.5">المهنيون وأصحاب الحرف</p>
+            </div>
+          </div>
+          
+          <div className="space-y-3 py-1">
+            <div className="bg-slate-50/70 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+              <p className="text-[11px] font-black text-slate-700 dark:text-slate-300 leading-relaxed">
+                تصفح الكفاءات المهنية وأصحاب الحرف المستعدين للعمل فوراً في الصفحة الرئيسية.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleOpenServices}
+            className="w-full flex items-center justify-between p-3.5 bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white rounded-2xl shadow-lg shadow-orange-500/20 active:scale-95 transition-all text-xs font-black cursor-pointer"
+          >
+            <span className="uppercase tracking-wider">سوق الخدمات في الرئيسية</span>
+            <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+          </button>
+        </div>
+      </GlassCard>
+
       {/* ── About Platform Card (Opens as Full Page View) ── */}
       <GlassCard className="rounded-[2.5rem] border-none shadow-[0_15px_40px_rgba(10,102,194,0.08)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] overflow-hidden bg-white/70 dark:bg-slate-900/40 backdrop-blur-xl border border-white/20 dark:border-slate-800/50 group">
         <div className="p-6 space-y-4">
