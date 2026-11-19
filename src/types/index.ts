@@ -105,6 +105,7 @@ export interface AppUser {
   industry?: string;
   website?: string;
   skills?: string[];
+  languages?: string[];
   location?: string;
   phone?: string;
   coverUrl?: string;

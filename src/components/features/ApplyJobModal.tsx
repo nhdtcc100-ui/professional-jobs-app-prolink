@@ -48,6 +48,15 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
   const [prevWorks, setPrevWorks] = useState<PrevWork[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const atsCV = React.useMemo(() => {
+    try {
+      const raw = localStorage.getItem(`prolink_ats_cv_${appUser.id}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }, [appUser.id]);
+
   if (!applyingJob || !appUser) return null;
 
   const publisher = (allUsers || []).find((u: any) => u.id === (applyingJob?.employer_id || (applyingJob as any)?.employerId));
@@ -129,6 +138,22 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
 
       const fullExperience = cvExperience + (formattedPrevWorks ? `\n\n--- خبرات سابقة ---\n${formattedPrevWorks}` : '');
 
+      const applicantDataPayload: any = {
+        name: appUser.name,
+        avatar: appUser.avatar,
+        industry: (appUser as any).industry,
+        location: (appUser as any).location,
+        phone: (appUser as any).phone,
+        bio: (appUser as any).bio,
+        prevWorks
+      };
+
+      if (atsCV) {
+        applicantDataPayload.isATSVerified = true;
+        applicantDataPayload.atsCV = atsCV;
+        applicantDataPayload.languages = atsCV.languages;
+      }
+
       console.log("💎 [UI_STEP_3] Calling service.applyToJob...");
       const applyResult = await jobService.applyToJob(appUser.id, applyingJob.employer_id!, {
         jobId: applyingJob.id,
@@ -137,15 +162,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
         experience: fullExperience,
         education: cvEducation,
         skills: appUser.skills || [],
-        applicantData: {
-          name: appUser.name,
-          avatar: appUser.avatar,
-          industry: (appUser as any).industry,
-          location: (appUser as any).location,
-          phone: (appUser as any).phone,
-          bio: (appUser as any).bio,
-          prevWorks
-        }
+        applicantData: applicantDataPayload
       });
       
       if (applyResult.error) throw applyResult.error;
@@ -154,34 +171,6 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
       succeeded = true;
       setApplySuccess(true);
       setSubmitError(null);
-
-      // 🔖 Optimistically cache sent application in localStorage so it persists on reload
-      try {
-        const appliedKey = `prolink_applied_jobs_${appUser.id}`;
-        const existing = JSON.parse(localStorage.getItem(appliedKey) || '[]') as string[];
-        if (!existing.includes(applyingJob.id)) {
-          existing.push(applyingJob.id);
-          localStorage.setItem(appliedKey, JSON.stringify(existing.slice(-500)));
-        }
-
-        const sentCacheKey = `prolink_cached_sent_apps_${appUser.id}`;
-        const existingSent = JSON.parse(localStorage.getItem(sentCacheKey) || '[]') as any[];
-        const newSentApp = {
-          id: `opt-app-${Date.now()}`,
-          job_id: applyingJob.id,
-          applicant_id: appUser.id,
-          employer_id: applyingJob.employer_id,
-          status: 'pending',
-          created_at: new Date().toISOString(),
-          jobTitle: applyingJob.title,
-          company: applyingJob.company,
-          cover_letter: cvCoverLetter,
-          cv_url: cvUrl,
-          jobs: { title: applyingJob.title, company: applyingJob.company, description: applyingJob.description, requirements: applyingJob.requirements }
-        };
-        const updatedSent = [newSentApp, ...existingSent.filter((a: any) => a.job_id !== applyingJob.id)];
-        localStorage.setItem(sentCacheKey, JSON.stringify(updatedSent.slice(0, 100)));
-      } catch (_) {}
 
       if ((applyResult as any).isUpdated) {
         addToast('تم تحديث طلب التقديم الخاص بك بنجاح! 🚀');
@@ -310,6 +299,24 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
               </p>
             </div>
           </div>
+
+          {/* ATS CV Linked Notice */}
+          {atsCV && (
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 flex items-center justify-between gap-3 shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Sparkles size={16} />
+                </div>
+                <div>
+                  <h5 className="text-xs font-black text-blue-900">سيرتك الذاتية المعتمدة (ATS) مرتبطة بالطلب</h5>
+                  <p className="text-[10px] text-blue-600 font-bold">تم تضمين خبراتك ومهاراتك ولغاتك الموثقة تلقائياً مع هذا الطلب 🛡️</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-blue-600 text-white shrink-0">
+                معتمد ATS
+              </span>
+            </div>
+          )}
 
           {/* Auto-filled info summary */}
           <div className="bg-blue-50/50 rounded-2xl p-4 space-y-3 border border-blue-100/60">

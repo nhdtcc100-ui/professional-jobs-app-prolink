@@ -139,24 +139,8 @@ export const authService = {
 
     if (error) throw error;
 
-    // ── تحقق من حالة البريد ──────────────────────────────────────────────────
-    // إذا كانت data.session = null وdata.user موجود → بريد التأكيد أُرسِل ✅
-    // إذا كانت data.session موجودة → التسجيل مباشر (email confirmation معطّل)
-    if (data.user && !data.session) {
-      // حالة طبيعية مع تأكيد البريد:
-      // DB Trigger قد عمل بالفعل وأنشأ profile
-      // المستخدم الآن ينتظر تأكيد البريد
-      return {
-        data,
-        error: null,
-        requiresEmailConfirmation: true,
-        message: '📧 تم إنشاء حسابك! يرجى فحص بريدك الإلكتروني والنقر على رابط التأكيد لإكمال التسجيل.'
-      };
-    }
-
-    // حالة استثنائية: التسجيل المباشر (email confirmation معطّل في Supabase)
-    // هنا نضمن وجود الـ profile كإجراء احترازي
-    if (data.user && data.session) {
+    // ── تحقق من حالة البريد وضمان إنشاء البروفايل فوراً ──────────────────────
+    if (data.user) {
       await authService.ensureProfile(data.user.id, {
         name: cleanName,
         email: cleanEmail,
@@ -203,102 +187,136 @@ export const authService = {
     }
   },
 
-  // ── Phone Auth (normalized, no master password) ──────────────────────────────
+  // ── Phone Auth (normalized, no duplicates, legacy domain support) ─────────────
   /**
-   * تسجيل الدخول/التسجيل عبر رقم الهاتف:
-   * - إذا كان الحساب موجوداً: تسجيل دخول
-   * - إذا كان الحساب غير موجود + اسم مُدخَل: إنشاء حساب جديد
-   *
-   * تحويل الهاتف: 07701234567 → 07701234567@prolink.internal (email داخلي)
+   * تسجيل الدخول/التسجيل عبر رقم الهاتف مع التنسيق الموحد ومنع التكرار نهائياً:
+   * - توحيد أرقام الهواتف العراقية والدولية (مثل 0770... / +964770... / 770...)
+   * - دعم الحسابات السابقة التي أنشئت تحت نطاقات مختلفة (@prolink.internal, @prolink.phone, إلخ)
+   * - منع إنشاء حسابات مكررة لنفس الرقم
    */
-  async phoneAuth(phone: string, pass: string, name?: string, role: string = '') {
-    const cleanPhone = phone.replace(/\D/g, '');
+  async phoneAuth(
+    phone: string,
+    pass: string,
+    name?: string,
+    role: string = '',
+    mode: 'login' | 'signup' = 'login'
+  ) {
+    let cleanPhone = phone.replace(/\D/g, '');
+    if (cleanPhone.startsWith('00964')) {
+      cleanPhone = cleanPhone.slice(5);
+    } else if (cleanPhone.startsWith('964')) {
+      cleanPhone = cleanPhone.slice(3);
+    }
+    if (cleanPhone.startsWith('7') && cleanPhone.length === 10) {
+      cleanPhone = '0' + cleanPhone;
+    }
     if (!cleanPhone || cleanPhone.length < 10) throw new Error('رقم الهاتف غير صحيح');
 
-    const internalEmail = `${cleanPhone}@prolink.internal`;
-
-    // Rate limit by phone number
+    // Rate limit by phone number (client + server, fail-closed)
     const rlCheck = rateLimiter.check(cleanPhone);
     if (!rlCheck.allowed) {
       throw new Error(`⛔ الرقم مقفل مؤقتاً. حاول مجدداً بعد ${rlCheck.remainingMinutes} دقيقة`);
     }
-
-    // ── محاولة تسجيل الدخول أولاً ────────────────────────────────────────────
-    const { data, error: signInError } = await supabase.auth.signInWithPassword({
-      email: internalEmail,
-      password: pass,
-    });
-
-    if (!signInError) {
-      // ✅ تسجيل دخول ناجح
-      rateLimiter.reset(cleanPhone);
-      return { data, error: null, isNewUser: false };
+    const serverCheck = await serverRateLimiter.check(cleanPhone);
+    if (!serverCheck.allowed) {
+      throw new Error(`⛔ الرقم مقفل مؤقتاً. حاول مجدداً بعد ${serverCheck.remainingMinutes ?? 15} دقيقة`);
     }
 
-    // ── تحليل نوع الخطأ ──────────────────────────────────────────────────────
-    const isEmailNotConfirmed = 
-      signInError?.message?.toLowerCase().includes('email not confirmed') ||
-      signInError?.message?.toLowerCase().includes('email_not_confirmed');
+    // النطاقات التاريخية والحالية التي قد يكون الحساب مسجلاً بها
+    const candidateEmails = [
+      `${cleanPhone}@prolink.internal`,
+      `${cleanPhone}@prolink.phone`,
+      `phone_${cleanPhone}@prolink.app`,
+      `${cleanPhone}@prolink.com`,
+      `phone_${cleanPhone}@prolink.demo`,
+    ];
 
-    if (isEmailNotConfirmed) {
+    // ── 1. في وضع تسجيل الدخول (login): جرب النطاقات السابقة ───────────────────
+    for (const emailAttempt of candidateEmails) {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailAttempt,
+        password: pass,
+      });
+
+      if (!error && data?.session) {
+        // ✅ تسجيل دخول ناجح
+        rateLimiter.reset(cleanPhone);
+        await serverRateLimiter.record(cleanPhone, true);
+        return { data, error: null, isNewUser: false };
+      }
+    }
+
+    // إذا كنا في وضع تسجيل الدخول فقط وفشلت المحاولات → لا تنشئ مستخدماً جديداً مطلقاً
+    if (mode === 'login') {
+      await serverRateLimiter.record(cleanPhone, false);
+      const { locked, remainingAttempts } = rateLimiter.recordFailure(cleanPhone);
+      if (locked) throw new Error('🔒 تم قفل الحساب مؤقتاً لمدة 15 دقيقة');
       throw new Error(
-        'التسجيل برقم الهاتف معطل حالياً بسبب تفعيل ميزة (Confirm email) في إعدادات Supabase. يرجى الذهاب إلى Authentication -> Providers -> Email وإيقاف تفعيل خيار Confirm email.'
+        remainingAttempts > 0
+          ? `بيانات الدخول غير صحيحة. تبقّى ${remainingAttempts} محاولات`
+          : 'بيانات الدخول غير صحيحة'
       );
     }
 
-    const isUserNotFound =
-      signInError.message?.includes('Invalid login credentials') ||
-      signInError.message?.includes('invalid_credentials') ||
-      signInError.message?.toLowerCase().includes('not found');
+    // ── 2. في وضع إنشاء الحساب (signup) ────────────────────────────────────────
+    // تحقق أولاً هل يوجد حساب مسجل مسبقاً بنفس رقم الهاتف لمنع تكرار المستخدمين
+    try {
+      const { data: existingProfiles } = await supabase
+        .from('profiles')
+        .select('id, phone')
+        .eq('phone', cleanPhone)
+        .limit(1);
 
-    if (isUserNotFound && name && name.trim().length >= 2) {
-      // ── المستخدم جديد + الاسم مُدخَل → إنشاء حساب ───────────────────────
-
-      const { locked } = rateLimiter.recordFailure(cleanPhone);
-      if (locked) throw new Error('🔒 تم قفل الرقم مؤقتاً لمدة 15 دقيقة');
-
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: internalEmail,
-        password: pass,
-        options: {
-          data: {
-            full_name: sanitizeInput(name, 100),
-            role: role || '',
-            phone: cleanPhone,
-            avatar_url: null,
-          },
-        }
-      });
-
-      if (signUpError) {
-        throw new Error(signUpError.message || 'فشل إنشاء حساب الهاتف');
+      if (existingProfiles && existingProfiles.length > 0) {
+        throw new Error('⚠️ رقم الهاتف هذا مسجل مسبقاً بالفعل في المنصة. يرجى التبديل إلى "تسجيل الدخول" وإدخال كلمة المرور.');
       }
-
-      // ✅ تسجيل ناجح - DB Trigger سيُنشئ الـ profile تلقائياً
-      rateLimiter.reset(cleanPhone);
-
-      // حسابات الهاتف: لا تأكيد بريد → جلسة مباشرة عادةً
-      if (signUpData.user && signUpData.session) {
-        // ضمان وجود الـ profile (fallback للـ Trigger)
-        await authService.ensureProfile(signUpData.user.id, {
-          name: sanitizeInput(name, 100),
-          email: internalEmail,
-          phone: cleanPhone,
-          role: role,
-        });
+    } catch (checkErr: any) {
+      if (checkErr.message?.includes('مسجل مسبقاً')) {
+        throw checkErr;
       }
-
-      return { data: signUpData, error: null, isNewUser: true };
+      console.warn('[authService.phoneAuth] Existing phone check error:', checkErr);
     }
 
-    // ── فشل تسجيل الدخول (كلمة مرور خاطئة) ─────────────────────────────────
-    const { locked, remainingAttempts } = rateLimiter.recordFailure(cleanPhone);
-    if (locked) throw new Error('🔒 تم قفل الحساب مؤقتاً لمدة 15 دقيقة');
-    throw new Error(
-      remainingAttempts > 0
-        ? `بيانات الدخول غير صحيحة. تبقّى ${remainingAttempts} محاولات`
-        : 'بيانات الدخول غير صحيحة'
-    );
+    const { locked } = rateLimiter.recordFailure(cleanPhone);
+    if (locked) throw new Error('🔒 تم قفل الرقم مؤقتاً لمدة 15 دقيقة');
+
+    const primaryInternalEmail = `${cleanPhone}@prolink.internal`;
+
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: primaryInternalEmail,
+      password: pass,
+      options: {
+        data: {
+          full_name: sanitizeInput(name || 'مستخدم جديد', 100),
+          role: role || '',
+          phone: cleanPhone,
+          avatar_url: null,
+        },
+      }
+    });
+
+    if (signUpError) {
+      // إذا كان البريد الداخلي موجوداً مسبقاً في auth.users
+      if (signUpError.message?.toLowerCase().includes('already registered')) {
+        throw new Error('⚠️ هذا الحساب مسجل مسبقاً بالفعل. يرجى التبديل إلى "تسجيل الدخول".');
+      }
+      throw new Error(signUpError.message || 'فشل إنشاء حساب الهاتف');
+    }
+
+    // ✅ تسجيل ناجح
+    rateLimiter.reset(cleanPhone);
+    await serverRateLimiter.record(cleanPhone, true);
+
+    if (signUpData.user) {
+      await authService.ensureProfile(signUpData.user.id, {
+        name: sanitizeInput(name || 'مستخدم جديد', 100),
+        email: primaryInternalEmail,
+        phone: cleanPhone,
+        role: role,
+      });
+    }
+
+    return { data: signUpData, error: null, isNewUser: true };
   },
 
   // ── Logout ───────────────────────────────────────────────────────────────────
@@ -418,7 +436,7 @@ export const unifiedAuth = async (
       return authService.emailSignUp(cleanId, pass, name, role);
     }
   } else {
-    return authService.phoneAuth(cleanId, pass, name, role);
+    return authService.phoneAuth(cleanId, pass, name, role, mode);
   }
 };
 

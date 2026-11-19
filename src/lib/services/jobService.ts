@@ -10,6 +10,7 @@ import { generateUUID } from '../security/distributedId';
 import { getJobCategory, encodeCategoryInDescription } from '../utils/jobCategoryUtils';
 import { cvService } from './cvService';
 import { withTimeout } from '../utils/withTimeout';
+import { withSessionRecovery, resetStuckLocksAndQueues } from './sessionRecovery';
 
 // ✅ Whitelist of allowed job types to prevent injection
 const ALLOWED_JOB_TYPES = ['دوام كامل', 'دوام جزئي', 'عن بُعد', 'عقد', 'تدريب', 'مؤقت'];
@@ -34,105 +35,111 @@ export const jobService = {
   },
 
   async postJob(data: any) {
-    const employerId = data.employer_id || 'anonymous';
-    const mutexKey = `job_post_${employerId}`;
-    const idempotencyKey = idempotencyEngine.generateKey('jobs', employerId, {
-      title: data.title,
-      company: data.company,
-      employer_id: employerId,
-    });
+    return withSessionRecovery(async () => {
+      const employerId = data.employer_id || 'anonymous';
+      const mutexKey = `job_post_${employerId}`;
+      const idempotencyKey = idempotencyEngine.generateKey('jobs', employerId, {
+        title: data.title,
+        company: data.company,
+        description: data.description,
+        employer_id: employerId,
+      });
 
-    try {
-      const result: any = await withMutex(mutexKey, () =>
-        withIdempotency(
-          idempotencyKey,
-          async () => {
-            // ✅ Comprehensive Input Defense: Validate all fields before inserting
-            const title = sanitizeInput(data.title || '', 200);
-            const company = sanitizeInput(data.company || '', 200);
-            const description = sanitizeInput(data.description || '', 5000);
-            const location = sanitizeInput(data.location || '', 200);
-            const salary = sanitizeInput(data.salary || '', 100);
-            const requirements = sanitizeInput(data.requirements || '', 3000);
+      try {
+        const result: any = await withMutex(mutexKey, () =>
+          withIdempotency(
+            idempotencyKey,
+            async () => {
+              // ✅ Comprehensive Input Defense: Validate all fields before inserting
+              const title = sanitizeInput(data.title || '', 200);
+              const company = sanitizeInput(data.company || '', 200);
+              const description = sanitizeInput(data.description || '', 5000);
+              const location = sanitizeInput(data.location || '', 200);
+              const salary = sanitizeInput(data.salary || '', 100);
+              const requirements = sanitizeInput(data.requirements || '', 3000);
 
-            // ✅ Whitelist validation for job_type (prevents injection via enum-like values)
-            const jobType = ALLOWED_JOB_TYPES.includes(data.jobType)
-              ? data.jobType
-              : 'دوام كامل';
+              // ✅ Whitelist validation for job_type (prevents injection via enum-like values)
+              const jobType = ALLOWED_JOB_TYPES.includes(data.jobType)
+                ? data.jobType
+                : 'دوام كامل';
 
-            // ✅ Validate required fields
-            if (!title || title.length < 2) {
-              return { data: null, error: { message: 'عنوان الوظيفة مطلوب ويجب أن يكون حرفين على الأقل' } };
-            }
-            if (!company || company.length < 2) {
-              return { data: null, error: { message: 'اسم الشركة مطلوب' } };
-            }
-            if (!description || description.length < 10) {
-              return { data: null, error: { message: 'وصف الوظيفة مطلوب (10 أحرف على الأقل)' } };
-            }
-
-            // 🚫 Strict Server/Service Guard: Only Employers and Admins can post jobs
-            if (data.employer_id) {
-              let profile: any = null;
-              try {
-                const r: any = await withTimeout(supabase.from('profiles').select('id, role, is_admin').eq('id', data.employer_id).maybeSingle(), 10000, 'postJob.roleCheck');
-                profile = r?.data ?? null;
-              } catch (e) {
-                logger.warn('[postJob] role check timed out; continuing (server RLS enforces role)', e);
+              // ✅ Validate required fields
+              if (!title || title.length < 2) {
+                return { data: null, error: { message: 'عنوان الوظيفة مطلوب ويجب أن يكون حرفين على الأقل' } };
               }
-              if (profile && !profile.is_admin && (profile.role === 'seeker' || profile.role === 'باحث' || profile.role !== 'employer')) {
-                return { data: null, error: { message: 'نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 🚫' } };
+              if (!company || company.length < 2) {
+                return { data: null, error: { message: 'اسم الشركة مطلوب' } };
               }
-            }
-
-            return withCollisionRetry(async (_attempt, freshId) => {
-              const workingHours = sanitizeInput(data.working_hours || '', 100);
-              const finalDescription = data.category
-                ? encodeCategoryInDescription(description, data.category)
-                : description;
-
-              let insertRes: any;
-              try {
-                insertRes = await withTimeout((supabase.from('jobs') as any).insert([{
-                id:            data.id || freshId,
-                title,
-                company,
-                description:   finalDescription,
-                location:      location || 'عن بُعد',
-                salary,
-                requirements:  requirements || null,
-                job_type:      jobType,
-                working_hours: workingHours || null,
-                image_url:     (data.imageUrl || '').trim() || null,
-                employer_id:   data.employer_id,
-                is_active:     data.is_active !== undefined ? Boolean(data.is_active) : true,
-              }]).select(), 20000, 'postJob.insert');
-              } catch (e: any) {
-                return { data: null, error: { message: 'انتهت مهلة الاتصال أثناء نشر الوظيفة. تحقق من الإنترنت وأعد المحاولة.' } };
+              if (!description || description.length < 10) {
+                return { data: null, error: { message: 'وصف الوظيفة مطلوب (10 أحرف على الأقل)' } };
               }
-              const { data: res, error } = insertRes;
 
-              if (error) {
-                console.error("[postJob] Supabase Insert Error:", error);
-                return { data: null, error };
+              // Non-blocking quick role check (RLS also strictly protects this on the server)
+              if (data.employer_id) {
+                try {
+                  const r: any = await withTimeout(
+                    supabase.from('profiles').select('id, role, is_admin').eq('id', data.employer_id).maybeSingle(),
+                    1500,
+                    'postJob.roleCheck'
+                  );
+                  const profile = r?.data ?? null;
+                  if (profile && !profile.is_admin && (profile.role === 'seeker' || profile.role === 'باحث')) {
+                    return { data: null, error: { message: 'نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 🚫' } };
+                  }
+                } catch (e) {
+                  // Fallthrough gracefully
+                }
               }
-              return { data: res, error: null };
-            }, { scope: 'postJob' });
-          },
-          { ttlMs: 15000, scope: 'jobs' }
-        )
-      );
 
-      if (result?.error) {
+              return withCollisionRetry(async (_attempt, freshId) => {
+                const workingHours = sanitizeInput(data.working_hours || '', 100);
+                const finalDescription = data.category
+                  ? encodeCategoryInDescription(description, data.category)
+                  : description;
+
+                let insertRes: any;
+                try {
+                  insertRes = await withTimeout((supabase.from('jobs') as any).insert([{
+                    id:            data.id || freshId,
+                    title,
+                    company,
+                    description:   finalDescription,
+                    location:      location || 'عن بُعد',
+                    salary,
+                    requirements:  requirements || null,
+                    job_type:      jobType,
+                    working_hours: workingHours || null,
+                    image_url:     (data.imageUrl || '').trim() || null,
+                    employer_id:   data.employer_id,
+                    is_active:     data.is_active !== undefined ? Boolean(data.is_active) : true,
+                  }]).select(), 15000, 'postJob.insert');
+                } catch (e: any) {
+                  return { data: null, error: { message: 'انتهت مهلة الاتصال أثناء نشر الوظيفة. تحقق من الإنترنت وأعد المحاولة.' } };
+                }
+                const { data: res, error } = insertRes;
+
+                if (error) {
+                  console.error("[postJob] Supabase Insert Error:", error);
+                  return { data: null, error };
+                }
+                return { data: res, error: null };
+              }, { scope: 'postJob' });
+            },
+            { ttlMs: 3000, scope: 'jobs' }
+          )
+        );
+
+        if (result?.error) {
+          idempotencyEngine.invalidate(idempotencyKey);
+          concurrencyMutex.clearKey(mutexKey);
+        }
+        return result;
+      } catch (err: any) {
         idempotencyEngine.invalidate(idempotencyKey);
         concurrencyMutex.clearKey(mutexKey);
+        return { data: null, error: err };
       }
-      return result;
-    } catch (err: any) {
-      idempotencyEngine.invalidate(idempotencyKey);
-      concurrencyMutex.clearKey(mutexKey);
-      return { data: null, error: err };
-    }
+    });
   },
 
   async deleteJob(jobId: string, employerId: string) {
@@ -144,33 +151,36 @@ export const jobService = {
   },
 
   async updateJob(jobId: string, employerId: string, data: any) {
-    // ✅ Sanitize all inputs before update
-    const jobType = ALLOWED_JOB_TYPES.includes(data.jobType) ? data.jobType : 'دوام كامل';
-    const rawDesc = sanitizeInput(data.description || '', 5000);
-    const finalDescription = data.category
-      ? encodeCategoryInDescription(rawDesc, data.category)
-      : rawDesc;
+    return withSessionRecovery(async () => {
+      // ✅ Sanitize all inputs before update
+      const jobType = ALLOWED_JOB_TYPES.includes(data.jobType) ? data.jobType : 'دوام كامل';
+      const rawDesc = sanitizeInput(data.description || '', 5000);
+      const finalDescription = data.category
+        ? encodeCategoryInDescription(rawDesc, data.category)
+        : rawDesc;
 
-    // 🔒 Ownership guard: only the poster can update — enforced via employer_id filter
-    const mainResult = await (supabase.from('jobs') as any).update({
-      title:        sanitizeInput(data.title || '', 200),
-      company:      sanitizeInput(data.company || '', 200),
-      description:  finalDescription,
-      location:     sanitizeInput(data.location || '', 200) || 'عن بُعد',
-      salary:       sanitizeInput(data.salary || '', 100),
-      requirements: sanitizeInput(data.requirements || '', 3000) || null,
-      job_type:     jobType,  // ✅ Whitelisted value only
-      image_url:    (data.imageUrl || '').trim() || null,
-      is_active:    data.is_active !== undefined ? Boolean(data.is_active) : true,
-    })
-    .eq('id', jobId)
-    .eq('employer_id', employerId); // 🔒 Ownership guard
+      // 🔒 Ownership guard: only the poster can update — enforced via employer_id filter
+      const mainResult = await (supabase.from('jobs') as any).update({
+        title:        sanitizeInput(data.title || '', 200),
+        company:      sanitizeInput(data.company || '', 200),
+        description:  finalDescription,
+        location:     sanitizeInput(data.location || '', 200) || 'عن بُعد',
+        salary:       sanitizeInput(data.salary || '', 100),
+        requirements: sanitizeInput(data.requirements || '', 3000) || null,
+        job_type:     jobType,  // ✅ Whitelisted value only
+        image_url:    (data.imageUrl || '').trim() || null,
+        is_active:    data.is_active !== undefined ? Boolean(data.is_active) : true,
+      })
+      .eq('id', jobId)
+      .eq('employer_id', employerId); // 🔒 Ownership guard
 
-    return mainResult;
+      return mainResult;
+    });
   },
 
 
   async applyToJob(applicantId: string, employerId: string, data: any) {
+    return withSessionRecovery(async () => {
     console.log("💎 [SERVICE_STEP_4] Starting applyToJob...", { applicantId, employerId, jobId: data.jobId });
     
     if (!employerId || employerId === 'null' || employerId === 'undefined') {
@@ -311,14 +321,14 @@ export const jobService = {
               }
             }, { scope: 'applyToJob' });
           },
-          { ttlMs: 30000, scope: 'job_applications' }
+          { ttlMs: 5000, scope: 'job_applications' }
         )
       );
 
-      if (result?.error) {
-        idempotencyEngine.invalidate(idempotencyKey);
-        concurrencyMutex.clearKey(mutexKey);
-      }
+      // 🔁 الحماية من التكرار يتولاها فحص الطلب الموجود + قيد UNIQUE في القاعدة،
+      // لذا نُبطِل الكاش فوراً بعد الاكتمال (نجاحاً أو فشلاً) كي يُعاد الإرسال بدون رفرش.
+      idempotencyEngine.invalidate(idempotencyKey);
+      concurrencyMutex.clearKey(mutexKey);
       return result;
     } catch (e: any) {
       // Invalidate lock and idempotency on failure so user can retry immediately without refreshing
@@ -327,6 +337,7 @@ export const jobService = {
       console.error("❌ [applyToJob] Outer catch error:", e);
       return { data: null, error: e };
     }
+    });
   },
 
   async uploadJobImage(userId: string, file: File) {

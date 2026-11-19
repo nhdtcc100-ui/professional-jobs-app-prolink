@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Mail, Phone, Lock, User, ArrowRight, ShieldCheck, Sparkles, CheckCircle, AlertCircle, Wrench, Building2, MapPin, FileQuestion } from "lucide-react";
 import { GlassCard } from "../ui";
@@ -168,12 +168,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, handleGoogleLogin
           }
         }
 
-        if (mode === "signup" && identifier.includes("@")) {
-          setSuccessMsg("تم إنشاء الحساب بنجاح! يرجى تفقد بريدك الإلكتروني لتأكيد الحساب.");
-        } else {
-          setSuccessMsg("تم تسجيل الدخول بنجاح!");
-          if (onSuccess) onSuccess();
-        }
+        setSuccessMsg(mode === "signup" ? "تم إنشاء الحساب وتفعيله بنجاح! أهلاً بك 🎉" : "تم تسجيل الدخول بنجاح! 🚀");
+        if (onSuccess) onSuccess();
       }
     } catch (err: any) {
       setError(err.message || "فشلت عملية المصادقة، يرجى التأكد من البيانات");

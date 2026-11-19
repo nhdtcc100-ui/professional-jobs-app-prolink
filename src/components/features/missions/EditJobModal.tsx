@@ -6,6 +6,7 @@ import { JobPostForm } from "./JobPostForm";
 import { supabase } from "../../../lib/supabase";
 import { useAppContext } from "../../../contexts/AppContext";
 import { getJobCategory, encodeCategoryInDescription } from "../../../lib/utils/jobCategoryUtils";
+import { withSessionRecovery } from "../../../lib/services/sessionRecovery";
 
 interface EditJobModalProps {
   job: Job | null;
@@ -14,7 +15,7 @@ interface EditJobModalProps {
 }
 
 export const EditJobModal = ({ job, onClose, onSuccess }: EditJobModalProps) => {
-  const { addToast, refreshData, appUser, updateJobInState } = useAppContext();
+  const { addToast, refreshData, appUser } = useAppContext();
   const [isPosting, setIsPosting] = useState(false);
   const [formData, setFormData] = useState({
     title: job?.title || "",
@@ -57,28 +58,14 @@ export const EditJobModal = ({ job, onClose, onSuccess }: EditJobModalProps) => 
         is_active: formData.is_active,
         updated_at: new Date().toISOString(),
       };
-      // Optimistic state & cache update immediately
-      updateJobInState(job.id, {
-        title: formData.title.trim(),
-        company: formData.company.trim(),
-        description: descriptionWithCat,
-        requirements: formData.requirements.trim(),
-        location: formData.location.trim(),
-        salary: formData.salary.trim(),
-        jobType: formData.jobType,
-        workingHours: formData.working_hours.trim(),
-        working_hours: formData.working_hours.trim(),
-        image_url: formData.imageUrl.trim() || undefined,
-        is_active: formData.is_active,
-        category: formData.category.trim(),
+      const { data, error } = await withSessionRecovery(async () => {
+        return (supabase as any)
+          .from("jobs")
+          .update(payload)
+          .eq("id", job.id)
+          .select()
+          .single();
       });
-
-      const { data, error } = await (supabase as any)
-        .from("jobs")
-        .update(payload)
-        .eq("id", job.id)
-        .select()
-        .single();
       if (error) throw error;
       addToast("تم تحديث الوظيفة بنجاح ✅");
       if (onSuccess && data) onSuccess(data as Job);

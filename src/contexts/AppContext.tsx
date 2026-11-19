@@ -6,8 +6,10 @@ import { authService, postService, jobService, networkService, profileService } 
 import { callService } from '../lib/services/callService';
 import { sanitizeInput } from '../lib/utils/sanitize';
 import { isUserAdmin, canUserPostAndInteract } from '../lib/utils/roleUtils';
+import { platformSettingsService, PlatformPublicSettings } from '../lib/services/platformSettingsService';
 import { getJobCategory } from '../lib/utils/jobCategoryUtils';
 import { mockDataService } from '../lib/services/mockDataService';
+import { resetStuckLocksAndQueues, ensureFreshSession } from '../lib/services/sessionRecovery';
 
 interface AppContextType {
   // Auth State
@@ -56,6 +58,13 @@ interface AppContextType {
   // UI State
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  platformSettings: PlatformPublicSettings;
+  canUseMessaging: boolean;
+  canUseSupportChat: boolean;
+  canUseGroups: boolean;
+  canUseNetwork: boolean;
+  canUseAccountSwitch: boolean;
+  canUseKhakiTheme: boolean;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   selectedProfile: AppUser | null;
@@ -74,8 +83,8 @@ interface AppContextType {
   isPublishingArticle: boolean;
   setIsPublishingArticle: (is: boolean) => void;
   // Theme State
-  theme: 'light' | 'dark';
-  setTheme: (t: 'light' | 'dark') => void;
+  theme: 'light' | 'dark' | 'khaki';
+  setTheme: (t: 'light' | 'dark' | 'khaki') => void;
   toggleTheme: () => void;
   isMockEnabled?: boolean;
   
@@ -107,11 +116,6 @@ interface AppContextType {
   handleDeletePost: (postId: string) => Promise<boolean>;
   handleDeleteJob: (jobId: string) => Promise<boolean>;
   setJobs: React.Dispatch<React.SetStateAction<Job[]>>;
-  addJobToState: (job: Job) => void;
-  updateJobInState: (jobId: string, updates: Partial<Job>) => void;
-  addPostToState: (post: Post) => void;
-  updatePostInState: (postId: string, updates: Partial<Post>) => void;
-  removePostFromState: (postId: string) => void;
   handleRelocateToUser: (targetUser: AppUser, post: Post) => Promise<void>;
   toggleProRank: () => Promise<void>;
   fetchMyGroups: () => Promise<void>;
@@ -134,16 +138,12 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 // Maps raw Supabase profile row → AppUser shape used by the UI
 export const mapProfile = (p: any): any => {
-  // ✅ Admin status: checks is_admin column, admin role, or verified admin emails
+  // ✅ Admin status comes only from DB-backed fields (is_admin / role), never email matching
   const isTargetAdmin = Boolean(
     p.is_admin === true ||
     p.isAdmin === true ||
     p.role === 'admin' ||
-    (p.email && (
-      p.email.toLowerCase().includes('admin@prolink.com') ||
-      p.email.toLowerCase().includes('nhdtcc100@gmail.com') ||
-      p.email.toLowerCase().includes('nhd0770@gmail.com')
-    ))
+    p.role === 'superadmin'
   );
   // ✅ is_active: treat NULL/undefined as active (default), only false = banned
   const isActive = p.is_active !== false;
@@ -164,6 +164,8 @@ export const mapProfile = (p: any): any => {
     companyName: p.company_name || p.companyName || '',
     phone: p.phone || '',
     skills: p.skills || [],
+    languages: p.languages || [],
+    workExperiences: p.work_experiences || p.workExperiences || [],
     experience: p.experience || '',
     education: p.education || '',
     isPro: p.is_pro || false,
@@ -296,14 +298,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [posts, setPosts] = useState<Post[]>(() => {
     try {
       const c = localStorage.getItem('prolink_cached_posts');
-      return c ? JSON.parse(c) : [];
+      const arr: Post[] = c ? JSON.parse(c) : [];
+      const del: string[] = JSON.parse(localStorage.getItem('prolink_deleted_posts') || '[]');
+      return del.length ? arr.filter(p => !del.includes(p.id)) : arr;
     } catch { return []; }
   });
 
   const [jobs, setJobs] = useState<Job[]>(() => {
     try {
       const c = localStorage.getItem('prolink_cached_jobs');
-      return c ? JSON.parse(c) : [];
+      const arr: Job[] = c ? JSON.parse(c) : [];
+      const del: string[] = JSON.parse(localStorage.getItem('prolink_deleted_jobs') || '[]');
+      return del.length ? arr.filter(j => !del.includes(j.id)) : arr;
     } catch { return []; }
   });
 
@@ -510,6 +516,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   }, []);
 
+  // ── Public platform settings: support contacts + global messaging gate ──
+  const [platformSettings, setPlatformSettings] = useState<PlatformPublicSettings>(() => platformSettingsService.getCached());
+
+  useEffect(() => {
+    let cancelled = false;
+    const apply = (s: PlatformPublicSettings) => { if (!cancelled) setPlatformSettings(s); };
+    platformSettingsService.fetch().then(apply);
+    const onChanged = (e: Event) => {
+      const d = (e as CustomEvent<PlatformPublicSettings>).detail;
+      if (d) apply(d);
+    };
+    window.addEventListener('prolink_platform_settings_changed', onChanged);
+    const channel = supabase
+      .channel('platform-public-settings')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'platform_settings' }, () => {
+        platformSettingsService.fetch().then(apply);
+      })
+      .subscribe();
+    return () => {
+      cancelled = true;
+      window.removeEventListener('prolink_platform_settings_changed', onChanged);
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // 🔒 Admin-only features until an admin opens them for everyone
+  const isAdminUser = isUserAdmin(appUser);
+  const canUseMessaging = Boolean(isAdminUser || platformSettings.messagingEnabled);
+  const canUseSupportChat = Boolean(isAdminUser || platformSettings.supportChatEnabled);
+  const canUseGroups = Boolean(isAdminUser || platformSettings.groupsEnabled);
+  const canUseNetwork = Boolean(isAdminUser || platformSettings.networkEnabled);
+  const canUseAccountSwitch = Boolean(isAdminUser || platformSettings.accountSwitchEnabled);
+  const canUseKhakiTheme = Boolean(isAdminUser || platformSettings.khakiThemeEnabled);
+
   const mockBundle = React.useMemo(() => {
     if (!isMockEnabled) return null;
     return mockDataService.getBundle(appUser?.id || user?.id || 'me');
@@ -532,10 +572,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [jobs, isMockEnabled, mockBundle]);
 
   const effectiveAllUsers = React.useMemo(() => {
-    if (!isMockEnabled || !mockBundle) return allUsers;
-    const realIds = new Set(allUsers.map(u => u.id));
-    return [...allUsers, ...mockBundle.users.filter(u => !realIds.has(u.id))];
-  }, [allUsers, isMockEnabled, mockBundle]);
+    // 🛡️ تصفية ومنع تكرار المستخدمين (deduplication) بحسب الهاتف والمعرّف لمنع ظهور نسخ مكررة لنفس الشخص
+    const dedupedUsers: AppUser[] = [];
+    const seenPhones = new Set<string>();
+    const seenIds = new Set<string>();
+
+    for (const u of allUsers) {
+      if (seenIds.has(u.id)) continue;
+      seenIds.add(u.id);
+
+      const normPhone = (u.phone || '').replace(/\D/g, '');
+      if (normPhone && normPhone.length >= 10) {
+        if (seenPhones.has(normPhone)) {
+          // إذا كان المستخدم الحالي يطابق هذا الحساب، احتفظ بنسخته
+          if (appUser?.id === u.id) {
+            const idx = dedupedUsers.findIndex(x => (x.phone || '').replace(/\D/g, '') === normPhone);
+            if (idx !== -1) dedupedUsers[idx] = u;
+          }
+          continue;
+        }
+        seenPhones.add(normPhone);
+      }
+      dedupedUsers.push(u);
+    }
+
+    if (!isMockEnabled || !mockBundle) return dedupedUsers;
+    const realIds = new Set(dedupedUsers.map(u => u.id));
+    return [...dedupedUsers, ...mockBundle.users.filter(u => !realIds.has(u.id))];
+  }, [allUsers, isMockEnabled, mockBundle, appUser?.id]);
 
   const effectiveMessages = React.useMemo(() => {
     if (!isMockEnabled || !mockBundle) return messages;
@@ -613,7 +677,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         .update({ read: true })
         .eq('user_id', user.id)
         .eq('type', 'message')
-        .eq('from_user_id', senderId);
+        .eq('from_id', senderId);
     } catch (err) {
       console.warn('markChatMessagesAsRead DB error:', err);
     }
@@ -690,7 +754,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // ── Accurate Live Unread Counters ───────────────────────────────
   const unreadMessagesCount = React.useMemo(() => {
-    if (!user?.id) return 0;
+    if (!user?.id || !canUseMessaging) return 0;
     const myId = String(user.id).toLowerCase().trim();
     return messages.filter(m => {
       const receiver = String(m.receiverId || m.receiver_id || '').toLowerCase().trim();
@@ -706,7 +770,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       return true;
     }).length;
-  }, [messages, user?.id, readMessageIds, readChatSenders]);
+  }, [messages, user?.id, readMessageIds, readChatSenders, canUseMessaging]);
 
   const pendingRequestsCount = React.useMemo(() => {
     if (!user?.id) return 0;
@@ -734,7 +798,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTabRaw] = useState<string>(() => {
     try { return localStorage.getItem('prolink_active_tab') || 'news'; } catch { return 'news'; }
   });
+  const featureGateRef = useRef<{ gates: Record<string, boolean>; notify: (m: string) => void }>({ gates: {}, notify: (_m: string) => {} });
   const setActiveTab = useCallback((tab: string) => {
+    const gateMessages: Record<string, string> = {
+      messages: '🔒 الرسائل مقفلة حالياً ومتاحة للإدارة فقط. للتواصل مع الدعم استخدم واتساب أو تلكرام من صفحة "حول المنصة".',
+      network: '🔒 شبكتي المهنية مقفلة حالياً ومتاحة للإدارة فقط، وسيتم فتحها للجميع قريباً.',
+      groups: '🔒 المجموعات المهنية مقفلة حالياً ومتاحة للإدارة فقط، وسيتم فتحها للجميع قريباً.',
+    };
+    if (gateMessages[tab] && featureGateRef.current.gates[tab] === false) {
+      featureGateRef.current.notify(gateMessages[tab]);
+      return;
+    }
     try { localStorage.setItem('prolink_active_tab', tab); } catch {}
     setActiveTabRaw(tab);
   }, []);
@@ -781,25 +855,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
   const [isPublishingArticle, setIsPublishingArticle] = useState(false);
 
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+  const [theme, setTheme] = useState<'light' | 'dark' | 'khaki'>(() => {
     const saved = localStorage.getItem('prolink_theme');
-    if (saved === 'dark' || saved === 'light') return saved as any;
+    if (saved === 'dark' || saved === 'light' || saved === 'khaki') return saved;
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
 
   useEffect(() => {
     localStorage.setItem('prolink_theme', theme);
     // Remove all theme classes first
-    document.documentElement.classList.remove('light', 'dark', 'milky', 'pink');
+    document.documentElement.classList.remove('light', 'dark', 'khaki', 'milky', 'pink');
     // Add the current one
     document.documentElement.classList.add(theme);
   }, [theme]);
+
+  // 🔒 الثيم الكاكي حصري للأدمن (أو عند فتحه من الإعدادات) — يُعاد للفاتح إذا أُقفل
+  useEffect(() => {
+    if (theme === 'khaki' && !canUseKhakiTheme) setTheme('light');
+  }, [theme, canUseKhakiTheme]);
 
   const toggleTheme = (e?: any) => {
     const x = e && typeof e.clientX === 'number' && e.clientX > 0 ? e.clientX : (typeof window !== 'undefined' ? window.innerWidth / 2 : 200);
     const y = e && typeof e.clientY === 'number' && e.clientY > 0 ? e.clientY : 40;
     revealTheme(x, y, () => {
-      setTheme(prev => prev === 'light' ? 'dark' : 'light');
+      setTheme(prev => {
+        if (prev === 'light') return 'dark';
+        if (prev === 'dark') return canUseKhakiTheme ? 'khaki' : 'light';
+        return 'light';
+      });
     });
   };
 
@@ -816,6 +899,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const id = Date.now() + Math.random();
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+  };
+
+  featureGateRef.current = {
+    gates: { messages: canUseMessaging, network: canUseNetwork, groups: canUseGroups },
+    notify: (m: string) => addToast(m, 'info'),
   };
 
   const handleGoogleLogin = async () => {
@@ -958,10 +1046,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const fetchAllData = async (silent = false, explicitUserId?: string) => {
-    if (isFetchingAllData.current) return;
+  // 🔄 Immediate role refresh without a page reload (fallback when realtime is disconnected)
+  useEffect(() => {
+    const onRoleUpdated = async () => {
+      const uid = user?.id;
+      if (!uid) return;
+      try {
+        const { data: profile } = await profileService.getProfileById(uid);
+        if (profile) {
+          setAppUser(mapProfile(profile));
+          fetchAllData(true, uid, true);
+        }
+      } catch {}
+    };
+    window.addEventListener('prolink_role_updated', onRoleUpdated);
+    return () => window.removeEventListener('prolink_role_updated', onRoleUpdated);
+  }, [user?.id]);
+
+  const fetchAllData = async (silent = false, explicitUserId?: string, force = false) => {
+    if (isFetchingAllData.current) {
+      if (!force) return;
+      const waitStart = Date.now();
+      while (isFetchingAllData.current && Date.now() - waitStart < 5000) {
+        await new Promise(r => setTimeout(r, 150));
+      }
+      if (isFetchingAllData.current) return;
+    }
     const effectiveUserId = explicitUserId || user?.id;
     isFetchingAllData.current = true;
+
+    // 🔁 التحديث القسري (بعد أي حفظ/حذف) يجب أن يتجاوز كاش القراءة حتى تظهر التغييرات فوراً بدون رفرش
+    if (force) postService.invalidateCache();
 
     // Temporarily expose effectiveUserId as local for queries that need it
     const uid = effectiveUserId;
@@ -1004,7 +1119,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const filteredPosts = (sorted as any[]).filter(p => !delPostIds.has(p.id));
         setPosts(filteredPosts as any);
         // ✅ Cache posts in localStorage for instant load next time
-        try { localStorage.setItem('prolink_cached_posts', JSON.stringify(sorted.slice(0, 60))); } catch {}
+        try { localStorage.setItem('prolink_cached_posts', JSON.stringify(filteredPosts.slice(0, 60))); } catch {}
       }
 
       // 📊 جلب دقيق ومباشر لعدد منشورات المستخدم الحالي من قاعدة البيانات
@@ -1040,7 +1155,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const filteredJobs = (mappedJobs as any[]).filter(j => !delJobIds.has(j.id));
         setJobs(filteredJobs as any);
         // ✅ Cache jobs in localStorage for instant load next time
-        try { localStorage.setItem('prolink_cached_jobs', JSON.stringify(mappedJobs.slice(0, 60))); } catch {}
+        try { localStorage.setItem('prolink_cached_jobs', JSON.stringify(filteredJobs.slice(0, 60))); } catch {}
       }
 
       if (uid) {
@@ -1622,14 +1737,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const isAdmin = !!(appUser?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
       
-      // 1. Delete from Supabase DB
+      // 1. Delete from Supabase DB (return deleted rows to detect silent RLS 0-row failures)
       let query = (supabase.from('jobs') as any).delete().eq('id', jobId);
       if (!isAdmin && appUser?.id) {
         query = query.eq('employer_id', appUser.id);
       }
-      const { error } = await query;
+      const { data: deletedRows, error } = await query.select('id');
       if (error) {
         console.error('[handleDeleteJob] Supabase DB Error:', error);
+        addToast('تعذر حذف الوظيفة: ' + (error.message || 'خطأ في الصلاحيات'), 'error');
+        return false;
+      }
+      if (!deletedRows || deletedRows.length === 0) {
+        addToast('تعذر حذف الوظيفة: لا تملك صلاحية حذفها أو لم تعد موجودة', 'error');
+        return false;
       }
 
       // 2. Persist deleted job ID in localStorage so it never returns on refresh
@@ -1661,10 +1782,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const handleDeletePost = async (postId: string): Promise<boolean> => {
     try {
       const isAdmin = !!(appUser?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
-      const { error } = await postService.deletePost(postId, appUser?.id, isAdmin);
+      const { data: deletedRows, error } = await postService.deletePost(postId, appUser?.id, isAdmin);
       if (error) {
         console.error('[handleDeletePost] DB Error:', error);
         addToast('تعذر حذف المنشور من قاعدة البيانات: ' + (error.message || 'خطأ في الصلاحيات'), 'error');
+        return false;
+      }
+      if (!deletedRows || (deletedRows as any[]).length === 0) {
+        addToast('تعذر حذف المنشور: لا تملك صلاحية حذفه أو لم يعد موجوداً', 'error');
         return false;
       }
 
@@ -1714,58 +1839,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  // ─── Optimistic helpers: add/update a job in state + cache immediately ───────
-  const addJobToState = (job: Job) => {
-    setJobs(prev => {
-      // Avoid duplicates (idempotent)
-      if (prev.some(j => j.id === job.id)) return prev;
-      const next = [job, ...prev];
-      try { localStorage.setItem('prolink_cached_jobs', JSON.stringify(next.slice(0, 60))); } catch {}
-      return next;
-    });
-  };
-
-  const updateJobInState = (jobId: string, updates: Partial<Job>) => {
-    setJobs(prev => {
-      const next = prev.map(j => j.id === jobId ? { ...j, ...updates } : j);
-      try { localStorage.setItem('prolink_cached_jobs', JSON.stringify(next.slice(0, 60))); } catch {}
-      return next;
-    });
-  };
-
-  // ─── Optimistic helpers: add/update/remove a post in state + cache immediately ───────
-  const addPostToState = (post: Post) => {
-    setPosts(prev => {
-      if (prev.some(p => p.id === post.id)) return prev;
-      const next = [post, ...prev];
-      try { localStorage.setItem('prolink_cached_posts', JSON.stringify(next.slice(0, 60))); } catch {}
-      return next;
-    });
-    if (appUser?.id && post.authorId === appUser.id) {
-      setUserTotalPostsCount(prev => {
-        const next = prev + 1;
-        try { localStorage.setItem(`prolink_user_post_count_${appUser.id}`, String(next)); } catch {}
-        return next;
-      });
-    }
-  };
-
-  const updatePostInState = (postId: string, updates: Partial<Post>) => {
-    setPosts(prev => {
-      const next = prev.map(p => p.id === postId ? { ...p, ...updates } : p);
-      try { localStorage.setItem('prolink_cached_posts', JSON.stringify(next.slice(0, 60))); } catch {}
-      return next;
-    });
-  };
-
-  const removePostFromState = (postId: string) => {
-    setPosts(prev => {
-      const next = prev.filter(p => p.id !== postId);
-      try { localStorage.setItem('prolink_cached_posts', JSON.stringify(next.slice(0, 60))); } catch {}
-      return next;
-    });
-  };
-
   const handleApplyJob = async (job: Job, text: string, file: File | null) => {
     if (!appUser || isGuestMode) {
       addToast('يجب تسجيل الدخول أو إنشاء حساب للتقديم على هذه الوظيفة 💼', 'info' as any);
@@ -1788,36 +1861,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (uploadError) throw uploadError;
         if (url) cvUrl = url;
       }
-
-      // 🔖 Optimistically track this application locally so it persists on refresh
-      try {
-        const appliedKey = `prolink_applied_jobs_${appUser.id}`;
-        const existing = JSON.parse(localStorage.getItem(appliedKey) || '[]') as string[];
-        if (!existing.includes(job.id)) {
-          existing.push(job.id);
-          localStorage.setItem(appliedKey, JSON.stringify(existing.slice(-500)));
-        }
-
-        const sentCacheKey = `prolink_cached_sent_apps_${appUser.id}`;
-        const existingSent = JSON.parse(localStorage.getItem(sentCacheKey) || '[]') as any[];
-        const newSentApp = {
-          id: `opt-app-${Date.now()}`,
-          job_id: job.id,
-          applicant_id: appUser.id,
-          employer_id: job.employer_id,
-          status: 'pending',
-          created_at: new Date().toISOString(),
-          jobTitle: job.title,
-          company: job.company,
-          cover_letter: text,
-          cv_url: cvUrl,
-          jobs: { title: job.title, company: job.company, description: job.description, requirements: job.requirements }
-        };
-        const updatedSent = [newSentApp, ...existingSent.filter((a: any) => a.job_id !== job.id)];
-        localStorage.setItem(sentCacheKey, JSON.stringify(updatedSent.slice(0, 100)));
-        try { if ((window as any).refreshApplications) (window as any).refreshApplications(); } catch {}
-      } catch {}
-
+      
       const { error } = await jobService.applyToJob(appUser.id, job.employer_id || '', {
         jobId: job.id,
         coverLetter: text,
@@ -1840,12 +1884,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (error) throw error;
       addToast("تم إرسال طلب التقديم بنجاح! 🚀");
     } catch (e: any) {
-      // On failure, remove from local tracking
-      try {
-        const appliedKey = `prolink_applied_jobs_${appUser.id}`;
-        const existing = JSON.parse(localStorage.getItem(appliedKey) || '[]') as string[];
-        localStorage.setItem(appliedKey, JSON.stringify(existing.filter(id => id !== job.id)));
-      } catch {}
       addToast("فشل التقديم: " + e.message, "error");
     }
   };
@@ -1936,17 +1974,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           if (cachedRaw) {
             const cachedId = JSON.parse(cachedRaw)?.id;
             if (cachedId && cachedId !== u.id) {
-              // مستخدم مختلف — امسح كل كاش المستخدم القديم فوراً
-              const savedTheme = localStorage.getItem('prolink_theme');
-              localStorage.clear();
-              if (savedTheme) localStorage.setItem('prolink_theme', savedTheme);
+              // مستخدم مختلف — امسح فقط بيانات الجلسة والمحادثات للمستخدم السابق
+              localStorage.removeItem('prolink_cached_user');
+              localStorage.removeItem('prolink_cached_messages');
+              localStorage.removeItem('prolink_cached_notifications');
+              localStorage.removeItem('prolink_read_notif_ids');
+              localStorage.removeItem('prolink_read_messages');
+              localStorage.removeItem('prolink_read_chat_senders');
+              localStorage.removeItem('prolink_seen_connections');
               sessionStorage.clear();
-              // إعادة تهيئة الحالة
-              setAllUsers([]);
               setMessages([]);
               setNotifications([]);
-              setPosts([]);
-              setJobs([]);
             }
           }
         } catch (_) {}
@@ -1990,9 +2028,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const hasRole = isAdm || hasValidRole;
             setNeedsRole(!hasRole);
 
-            // ✅ Trigger full data load immediately after successful login (pass u.id explicitly to avoid stale closure)
+            // ✅ تحميل فوري وشامل لجميع البيانات (منشورات، وظائف، مستخدمين) لأي مستخدم (إيميل أو هاتف)
+            fetchAllData(true, u.id, true);
             if (hasRole) {
-              fetchAllData(true, u.id);
               fetchMyGroups();
             }
           } else {
@@ -2435,9 +2473,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, 3000);
 
     const handleVisibilityChange = async () => {
+      resetStuckLocksAndQueues();
       if (document.visibilityState !== 'visible' || !user || needsRole) return;
       try {
-        await supabase.auth.refreshSession();
+        await ensureFreshSession();
       } catch (_) {}
       const elapsed = Date.now() - lastFetchedAt.current;
       const isStale = elapsed > MIN_REFRESH_INTERVAL;
@@ -2450,9 +2489,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
 
     const handleOnline = async () => {
+      resetStuckLocksAndQueues();
       if (!user || needsRole) return;
       try {
-        await supabase.auth.refreshSession();
+        await ensureFreshSession();
       } catch (_) {}
       fetchAllData(true);
       catchUpMissedMessages(user.id);
@@ -2482,6 +2522,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     messages: effectiveMessages, isMockEnabled, readMessageIds, readChatSenders, reports, myGroups,
     unreadMessagesCount, pendingRequestsCount, unreadNotificationsCount,
     activeTab, setActiveTab, searchQuery, setSearchQuery,
+    platformSettings, canUseMessaging, canUseSupportChat, canUseGroups, canUseNetwork, canUseAccountSwitch, canUseKhakiTheme,
     selectedProfile, setSelectedProfile, isEditingProfile, setIsEditingProfile,
     toasts, showNotifications, setShowNotifications, showAdmin, setShowAdmin,
     selectedChat, setSelectedChat,
@@ -2489,12 +2530,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     isPublishingArticle, setIsPublishingArticle,
     theme, setTheme, toggleTheme,
     addToast, handleGoogleLogin, handleEmailLogin, handleEmailSignUp, handlePhoneAuth, logout,
-    refreshData: fetchAllData, handleApplyJob, 
+    refreshData: (silent?: boolean, userId?: string) => fetchAllData(silent, userId, true), handleApplyJob, 
     setAppUser: (u: any) => {
       setAppUser(u);
     },
     setNotifications, setAllUsers, setPosts, setMessages, setMyGroups,
-    selectRole, handleSyncSignal, handleAcceptSync, handleAcceptConnection, handleRejectConnection, handleLike, likedPosts, handleDislike, dislikedPosts, handleAddComment, handleEchoPost, handleDeletePost, handleDeleteJob, setJobs, addJobToState, updateJobInState, addPostToState, updatePostInState, removePostFromState, handleRelocateToUser, toggleProRank,
+    selectRole, handleSyncSignal, handleAcceptSync, handleAcceptConnection, handleRejectConnection, handleLike, likedPosts, handleDislike, dislikedPosts, handleAddComment, handleEchoPost, handleDeletePost, handleDeleteJob, setJobs, handleRelocateToUser, toggleProRank,
     authEmail, setAuthEmail, authPhone, setAuthPhone, authName, setAuthName, authPassword, setAuthPassword,
     fetchMyGroups,
     allGroups,

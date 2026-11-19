@@ -1,4 +1,6 @@
 import { safeVibrate } from '../../../lib/utils/haptics';
+import { openContactMenu } from '../../../lib/utils/contact';
+import { openCv } from '../../../lib/utils/cv';
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
@@ -10,7 +12,7 @@ import {
   Shield, Wrench, ArrowRight, Sparkles, ArrowLeftRight, Clock
 } from 'lucide-react';
 import { DEFAULT_NEWS_PLACEHOLDER, handleImageError } from '../../../lib/utils/placeholders';
-import { supabase } from '../../../lib/supabase';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, AUTH_STORAGE_KEY, LEGACY_AUTH_STORAGE_KEY } from '../../../lib/supabase';
 import { profileService } from '../../../lib/services/profileService';
 import { cvService } from '../../../lib/services/cvService';
 import { mobileUploadService } from '../../../lib/services/mobileUploadService';
@@ -18,9 +20,8 @@ import { AppUser, Post, Job } from '../../../types';
 import { useAppContext } from '../../../contexts/AppContext';
 import { PostNewsCard } from '../PostNewsCard';
 import { DetailFeedPage } from '../DetailFeedPage';
-import { CvViewerModal } from '../cv/CvViewerModal';
-import { cvProfileService } from '../../../lib/services/cvProfileService';
-import { cvFromProfile, CvData, cvHasContent } from '../../../lib/cv/cvData';
+import { GeneratedCVModal } from './GeneratedCVModal';
+import { CVBuilderPage } from './CVBuilderPage';
 
 interface ModernProfileViewProps {
   profile: AppUser;
@@ -168,6 +169,8 @@ export function ModernProfileView({
     Boolean((profile as any)?.is_available || (profile as any)?.isAvailable || (profile as any)?.open_to === 'work')
   );
   const [isUpdatingAvailability, setIsUpdatingAvailability] = useState(false);
+  const [showGeneratedCV, setShowGeneratedCV] = useState(false);
+  const [showCVBuilder, setShowCVBuilder] = useState(false);
 
   React.useEffect(() => {
     const avail = Boolean((profile as any)?.is_available || (profile as any)?.isAvailable || (profile as any)?.open_to === 'work');
@@ -227,9 +230,6 @@ export function ModernProfileView({
   const [savingInfo, setSavingInfo] = useState(false);
   const [savingPhone, setSavingPhone] = useState(false);
   const [savingCV, setSavingCV] = useState(false);
-  const [viewingPlatformCv, setViewingPlatformCv] = useState(false);
-  const [platformCvData, setPlatformCvData] = useState<CvData | null>(null);
-  const [cvModalLoading, setCvModalLoading] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
@@ -247,7 +247,7 @@ export function ModernProfileView({
 
   // ─── Profile Tabs & Posts State ──────────────────────────────────────────────
   const [activeProfileTab, setActiveProfileTab] = useState<'info' | 'posts'>('info');
-  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast, appUser } = useAppContext();
+  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast, appUser, handleDeletePost, canUseMessaging, canUseAccountSwitch } = useAppContext();
   const notify = useCallback((msg: string, type: any = 'success') => {
     if (typeof addToast === 'function') addToast(msg, type);
     else if (typeof contextAddToast === 'function') contextAddToast(msg, type);
@@ -320,33 +320,9 @@ export function ModernProfileView({
     }
   };
 
-  // ─── فتح ومعاينة السيرة الذاتية المنشأة بواسطة المنصة / التطبيق ────────
+  // ─── فتح ومعاينة السيرة الذاتية (معاينة السيرة المنشأة عبر المنصة) ────────
   const openCVModal = async () => {
-    setCvModalLoading(true);
-    try {
-      let finalData: CvData | null = null;
-      try {
-        const record = isMe
-          ? await cvProfileService.loadOwn(profile.id)
-          : await cvProfileService.loadPublic(profile.id);
-        if (record && cvHasContent(record.data)) {
-          finalData = record.data;
-        }
-      } catch (err) {
-        console.warn('Could not load stored cv profile, synthesizing from profile data:', err);
-      }
-
-      if (!finalData) {
-        finalData = cvFromProfile(profile);
-      }
-
-      setPlatformCvData(finalData);
-      setViewingPlatformCv(true);
-    } catch (err) {
-      addToast('تعذر تجهيز السيرة الذاتية للمعاينة', 'error');
-    } finally {
-      setCvModalLoading(false);
-    }
+    setShowGeneratedCV(true);
   };
 
   // ─── تحميل السيرة الذاتية بأمان وتنزيلها كملف بدون فضح روابط قواعد البيانات ────
@@ -433,8 +409,7 @@ export function ModernProfileView({
     fileCategory: 'avatar' | 'cover' | 'cv',
     userId: string
   ): Promise<string> => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+    const supabaseUrl = SUPABASE_URL;
 
     // فحص أن حجم الملف أكبر من صفر
     if (!file || file.size === 0) {
@@ -457,99 +432,31 @@ export function ModernProfileView({
       throw new Error('تعذر قراءة بايتات الملف في ذاكرة الهاتف (0 بايت).');
     }
 
-    // 2. التحقق من توكن الجلسة مع مهلة 3 ثوانٍ فقط لمنع أي تعليق
-    let token = supabaseAnonKey;
-    try {
-      const sessRes = await withTimeout(supabase.auth.getSession(), 3000, 'فحص الجلسة');
-      if (sessRes?.data?.session?.access_token) {
-        token = sessRes.data.session.access_token;
-      }
-    } catch (authErr) {
-      console.warn('[DirectUpload] Session check timed out, falling back to anon key:', authErr);
-      token = supabaseAnonKey;
-    }
+    // 2. Ensure an authenticated session (Storage RLS requires the owner's JWT)
+    try { await withTimeout(supabase.auth.getSession(), 3000, 'فحص الجلسة'); } catch {}
 
-    // 3. تحديد الامتداد الآمن واسم الحاوية
+    // 3. Safe extension + bucket + owner-scoped path (foldername[1] = auth.uid())
     const rawExt = (file.name || '').split('.').pop()?.toLowerCase() || (fileCategory === 'cv' ? 'pdf' : 'jpg');
     const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'pdf', 'doc', 'docx'].includes(rawExt)
       ? rawExt
       : (fileCategory === 'cv' ? 'pdf' : 'jpg');
 
     const bucketName = fileCategory === 'cv' ? 'resumes' : 'profiles';
-    const fileName = `${userId}_${fileCategory}_${Date.now()}.${safeExt}`;
+    const fileName = `${userId}/${fileCategory}_${Date.now()}.${safeExt}`;
     const contentType = file.type || (fileCategory === 'cv' ? 'application/pdf' : 'image/jpeg');
 
-    // 4. الرفع المباشر عبر fetch مع تكرار المحاولة على المسار المجلد والمسار المسطح
-    const candidatePaths = [
-      `${userId}/${fileName}`,
-      fileName,
-    ];
-
-    let uploadSuccess = false;
-    let finalPath = candidatePaths[0];
-    let lastErrorMsg = '';
-
-    for (const testPath of candidatePaths) {
-      const uploadUrl = `${supabaseUrl}/storage/v1/object/${bucketName}/${testPath}`;
-      try {
-        const res = await withTimeout(
-          fetch(uploadUrl, {
-            method: 'POST',
-            headers: {
-              'apikey': supabaseAnonKey,
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': contentType,
-              'x-upsert': 'true',
-            },
-            body: buffer,
-          }),
-          15000,
-          `طلب الرفع عبر الشبكة (${testPath})`
-        );
-
-        if (res.ok) {
-          uploadSuccess = true;
-          finalPath = testPath;
-          break;
-        }
-
-        // إذا فشل التوكن المخصص، تجربة الرفع بـ Anon Key مباشرة مثل صفحة التشخيص الناجحة
-        if (token !== supabaseAnonKey) {
-          const resAnon = await withTimeout(
-            fetch(uploadUrl, {
-              method: 'POST',
-              headers: {
-                'apikey': supabaseAnonKey,
-                'Authorization': `Bearer ${supabaseAnonKey}`,
-                'Content-Type': contentType,
-                'x-upsert': 'true',
-              },
-              body: buffer,
-            }),
-            15000,
-            `طلب الرفع عبر Anon Key (${testPath})`
-          );
-
-          if (resAnon.ok) {
-            uploadSuccess = true;
-            finalPath = testPath;
-            break;
-          }
-          lastErrorMsg = await resAnon.text();
-        } else {
-          lastErrorMsg = await res.text();
-        }
-      } catch (netErr: any) {
-        lastErrorMsg = netErr?.message || String(netErr);
-      }
+    // 4. Authenticated SDK upload (no anon-key fallback — it would violate RLS)
+    const { error: upErr } = await withTimeout(
+      supabase.storage.from(bucketName).upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' }),
+      20000,
+      'رفع الملف إلى التخزين'
+    );
+    if (upErr) {
+      throw new Error(`تعذر الرفع إلى Supabase: ${upErr.message}`);
     }
 
-    if (!uploadSuccess) {
-      throw new Error(`تعذر الرفع إلى Supabase: ${lastErrorMsg}`);
-    }
-
-    const publicUrl = `${supabaseUrl}/storage/v1/object/public/${bucketName}/${finalPath}?v=${Date.now()}`;
-    return publicUrl;
+    // Stable storage reference; cv.ts re-signs it for private buckets on open.
+    return `${supabaseUrl}/storage/v1/object/public/${bucketName}/${fileName}?v=${Date.now()}`;
   };
 
   // ─── Direct REST Database Update (تجاوز أقفال supabase-js وحفظ التعديل في 100ms) ───
@@ -558,14 +465,14 @@ export function ModernProfileView({
     field: 'avatar' | 'cover' | 'cv' | 'role',
     value: string
   ): Promise<{ status: number; duration: number }> => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
-    const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+    const supabaseUrl = SUPABASE_URL;
+    const supabaseAnonKey = SUPABASE_ANON_KEY;
 
     // 1. أخذ التوكن فورياً وبشكل متزامن من localStorage دون انتظار أي قفل
     let token = supabaseAnonKey;
     try {
-      const raw = localStorage.getItem('prolink_v2_auth_session') ||
-                  localStorage.getItem('sb-ubeqmsyyyojojmswmidq-auth-token');
+      const raw = localStorage.getItem(AUTH_STORAGE_KEY) ||
+                  localStorage.getItem(LEGACY_AUTH_STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         token = parsed?.access_token || parsed?.currentSession?.access_token || supabaseAnonKey;
@@ -1002,18 +909,22 @@ export function ModernProfileView({
     }
     try {
       setSavingPassword(true);
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
-      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+      const supabaseUrl = SUPABASE_URL;
+      const supabaseAnonKey = SUPABASE_ANON_KEY;
 
-      // 1. استخراج الجلسة والتوكن الحاليين
-      const { data: sessionData } = await supabase.auth.getSession();
+      // 1. استخراج الجلسة والتوكن الحاليين (بمهلة حتى لا يعلّق الحفظ إذا كان قفل المصادقة عالقاً)
+      let sessionData: any = null;
+      try {
+        const r = await withTimeout(supabase.auth.getSession(), 3000, 'فحص الجلسة');
+        sessionData = (r as any)?.data ?? null;
+      } catch { /* fallback to localStorage below */ }
       let accessToken = sessionData?.session?.access_token || '';
       let targetEmail = sessionData?.session?.user?.email || user?.email || profile?.email || '';
 
       // استخراج احتياطي للتوكن من التخزين المحلي في حال تأخر SDK
       if (!accessToken) {
         try {
-          const raw = localStorage.getItem('prolink_v2_auth_session') || localStorage.getItem('supabase.auth.token');
+          const raw = localStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem('supabase.auth.token');
           if (raw) {
             const parsed = JSON.parse(raw);
             accessToken = parsed?.access_token || parsed?.currentSession?.access_token || '';
@@ -1120,6 +1031,17 @@ export function ModernProfileView({
   const floatLabel = 'absolute -top-2.5 right-4 bg-white dark:bg-slate-900 px-2.5 text-xs sm:text-[13px] font-bold text-slate-400';
   const saveBtn = 'w-full py-5 sm:py-5.5 rounded-2xl sm:rounded-full bg-gradient-to-l from-[#0a66c2] to-[#004182] hover:from-[#004182] hover:to-[#0a66c2] text-white font-black text-base sm:text-lg transition-all shadow-xl shadow-[#0a66c2]/30 dark:shadow-[#0a66c2]/20 active:scale-[0.98] flex items-center justify-between px-7 sm:px-9 cursor-pointer disabled:opacity-60';
   const iconBadge = 'w-14 h-14 rounded-2xl bg-gradient-to-br from-[#0a66c2] to-[#004182] flex items-center justify-center text-white shadow-lg shadow-[#0a66c2]/30 shrink-0';
+
+  if (showCVBuilder) {
+    return (
+      <CVBuilderPage
+        appUser={isMe ? (appUser || profile) : profile}
+        onBack={() => setShowCVBuilder(false)}
+        addToast={addToast}
+        setAppUser={setAppUser}
+      />
+    );
+  }
 
   return (
     <div className="w-full max-w-4xl lg:max-w-5xl mx-auto space-y-7 pb-28 pt-2 md:pt-6 px-3 sm:px-6" dir="rtl">
@@ -1232,6 +1154,8 @@ export function ModernProfileView({
           </div>
 
           {/* ── نوع الحساب (Account Type Segmented Control) ── */}
+          {/* يظهر فقط للأدمن أو عند تفعيل خاصية تبديل الحساب من الإدارة */}
+          {canUseAccountSwitch && (
           <div className="pt-1 pb-5 mb-6 border-b border-slate-100 dark:border-slate-800/80 space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -1293,60 +1217,99 @@ export function ModernProfileView({
               })}
             </div>
           </div>
+          )}
 
           {/* ── Seeker Availability Toggle Card ── */}
           {role === 'seeker' && (
-            <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/20 dark:border-emerald-500/30 mb-6 flex items-center justify-between gap-3 shadow-xs">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${
-                  isAvailable 
-                    ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30' 
-                    : 'bg-slate-200 dark:bg-slate-800 text-slate-400'
-                }`}>
-                  <Sparkles size={18} />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-black text-slate-900 dark:text-white">
-                      حالة التوفر للعمل
-                    </h4>
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+            <div className={`p-5 rounded-3xl border mb-6 shadow-sm transition-colors ${
+              isAvailable
+                ? 'bg-gradient-to-br from-emerald-500/15 via-teal-500/10 to-transparent border-emerald-500/40'
+                : 'bg-slate-50 dark:bg-slate-900/50 border-slate-200 dark:border-slate-700'
+            }`}>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all ${
+                    isAvailable
+                      ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30'
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-400'
+                  }`}>
+                    <Sparkles size={20} />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 dark:text-white">حالة التوفر للعمل</h4>
+                    <span className={`inline-flex items-center gap-1.5 mt-1 px-2.5 py-0.5 rounded-full text-[11px] font-black ${
                       isAvailable
                         ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40'
                         : 'bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300 dark:border-slate-700'
                     }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${isAvailable ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-                      {isAvailable ? 'متاح للعمل الآن 🟢' : 'غير متاح حالياً ⚪'}
+                      <span className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                      {isAvailable ? 'متاح للعمل الآن' : 'غير متاح حالياً'}
                     </span>
                   </div>
-                  <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mt-0.5">
-                    {isMe
-                      ? (isAvailable 
-                          ? 'ملفك يظهر لأصحاب العمل كباحث نشط ومستعد لتلقي عروض الوظائف' 
-                          : 'ملفك لا يظهر في قائمة المتاحين للعمل حتى تعيد تفعيلها')
-                      : (isAvailable ? 'هذا الباحث متاح حالياً للتوظيف وتلقي عروض العمل' : 'هذا الباحث غير متاح حالياً للعمل')}
-                  </p>
                 </div>
               </div>
+
+              <p className="text-[11px] font-bold text-slate-500 dark:text-slate-400 mt-3 leading-relaxed">
+                {isMe
+                  ? (isAvailable
+                      ? 'ملفك يظهر لأصحاب العمل كباحث نشط ومستعد لتلقي عروض الوظائف.'
+                      : 'ملفك لا يظهر في قائمة المتاحين للعمل حتى تعيد تفعيلها.')
+                  : (isAvailable ? 'هذا الباحث متاح حالياً للتوظيف وتلقي عروض العمل.' : 'هذا الباحث غير متاح حالياً للعمل.')}
+              </p>
 
               {isMe && (
                 <button
                   type="button"
                   disabled={isUpdatingAvailability}
                   onClick={handleToggleAvailability}
-                  className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-hidden active:scale-95 ${
-                    isAvailable ? 'bg-emerald-600' : 'bg-slate-300 dark:bg-slate-700'
+                  className={`mt-4 w-full flex items-center justify-center gap-2 py-3.5 rounded-2xl font-black text-sm transition-all active:scale-[0.98] disabled:opacity-60 shadow-md ${
+                    isAvailable
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/30'
+                      : 'bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white shadow-slate-800/20'
                   }`}
-                  title={isAvailable ? 'تعطيل التوفر' : 'تفعيل التوفر للعمل'}
                 >
-                  <span
-                    className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                      isAvailable ? '-translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
+                  {isUpdatingAvailability ? (
+                    <><Loader2 size={18} className="animate-spin" /> جاري التحديث...</>
+                  ) : isAvailable ? (
+                    <>إيقاف التوفر عن العمل</>
+                  ) : (
+                    <>تفعيل التوفر للعمل 🟢</>
+                  )}
                 </button>
               )}
             </div>
+          )}
+
+          {/* 📄 بطاقة منشئ السيرة الذاتية الاحترافية المعتمدة ATS */}
+          {isMe && (
+            <motion.div
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.99 }}
+              className="p-5 rounded-3xl bg-gradient-to-r from-blue-600 via-indigo-600 to-[#0a66c2] text-white shadow-xl shadow-blue-500/25 flex flex-col sm:flex-row items-center justify-between gap-4 border border-white/20"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shrink-0 shadow-inner">
+                  <Sparkles size={24} className="text-white" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm sm:text-base font-black text-white">منشئ السيرة الذاتية الاحترافية (ATS)</h4>
+                    <span className="px-2 py-0.5 rounded-full bg-white/25 text-white text-[10px] font-black">جديد ✨</span>
+                  </div>
+                  <p className="text-xs text-blue-100 font-medium mt-0.5">
+                    أنشئ سيرتك الذاتية بتنسيق ATS عالمي، أضف مهاراتك وأعمالك السابقة ولغاتك، وصدّرها لجميع الوظائف بضغطة واحدة.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCVBuilder(true)}
+                className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-white text-blue-700 hover:bg-blue-50 text-xs font-black shadow-lg transition-all active:scale-95 cursor-pointer shrink-0 flex items-center justify-center gap-2"
+              >
+                <FileText size={16} />
+                <span>إنشاء سيرة ذاتية 📄</span>
+              </button>
+            </motion.div>
           )}
 
           {/* عنوان "المعلومات الشخصية" — منفصل بمسافة واضحة وبطاقة أنيقة */}
@@ -1507,7 +1470,15 @@ export function ModernProfileView({
                 placeholder="07XXXXXXXXX" dir="ltr"
                 className="w-full bg-transparent outline-none text-base sm:text-lg font-bold text-slate-800 dark:text-white text-right" />
             ) : (
-              <p className="w-full text-base sm:text-lg font-bold text-slate-800 dark:text-white text-right" dir="ltr">{phone || '—'}</p>
+              <button
+                type="button"
+                onClick={() => openContactMenu({ phone, name: profile?.name, website: (profile as any)?.website, cvUrl: (profile as any)?.cv_url || profile?.cvUrl })}
+                className="w-full text-base sm:text-lg font-bold text-slate-800 dark:text-white text-right cursor-pointer hover:text-[#0a66c2] transition-colors"
+                dir="ltr"
+                title="اضغط لخيارات التواصل: واتساب / اتصال"
+              >
+                {phone || '—'}
+              </button>
             )}
             <Phone size={19} className="text-slate-400 shrink-0" />
           </div>
@@ -1522,10 +1493,10 @@ export function ModernProfileView({
             </div>
           </button>
         ) : (
-          showCallButton && phone && (
-            <button type="button" onClick={onCallClick}
+          phone && (
+            <button type="button" onClick={() => openContactMenu({ phone, name: profile?.name, website: (profile as any)?.website, cvUrl: (profile as any)?.cv_url || profile?.cvUrl })}
               className="w-full py-4.5 sm:py-5 rounded-2xl sm:rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base sm:text-lg transition-all shadow-xl shadow-emerald-500/25 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer">
-              <Phone size={20} /><span>اتصال برقم الهاتف</span>
+              <Phone size={20} /><span>تواصل: واتساب / اتصال</span>
             </button>
           )
         )}
@@ -1767,8 +1738,21 @@ export function ModernProfileView({
                 </label>
               )}
             </div>
+
+            {isMe && (
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowCVBuilder(true)}
+                  className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-[#0a66c2] hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black shadow-md shadow-blue-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
+                >
+                  <Sparkles size={15} />
+                  <span>تعديل السيرة الذاتية الاحترافية (ATS) 📄</span>
+                </button>
+              </div>
+            )}
           </div>
-        ) : (<>
+        ) : (
           <label
             htmlFor={isMe ? "cv-file-input" : undefined}
             className={`p-6 sm:p-8 rounded-2xl border-2 border-dashed border-blue-200 dark:border-blue-800/60 bg-blue-50/30 dark:bg-blue-950/10 flex flex-col items-center justify-center text-center gap-3 transition-all ${isMe ? 'hover:bg-blue-50 dark:hover:bg-blue-950/20 cursor-pointer active:scale-[0.99]' : ''}`}
@@ -1781,24 +1765,29 @@ export function ModernProfileView({
                 {isMe ? 'انقر لرفع ملف السيرة الذاتية (CV)' : 'لم يتم رفع ملف سيرة ذاتية بعد'}
               </p>
               <p className="text-[11px] font-bold text-slate-400 mt-1">PDF أو Word — الحد الأقصى 25 ميغابايت</p>
+              <div className="pt-3 flex flex-wrap items-center justify-center gap-2">
+                {isMe && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowCVBuilder(true); }}
+                    className="inline-flex items-center gap-1.5 py-2 px-4 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-black transition-all active:scale-95 cursor-pointer shadow-md shadow-blue-500/20"
+                  >
+                    <Sparkles size={13} />
+                    <span>إنشاء سيرة ذاتية احترافية (ATS) 📄</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShowGeneratedCV(true); }}
+                  className="inline-flex items-center gap-1.5 py-2 px-4 rounded-xl bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 text-blue-600 dark:text-blue-300 text-xs font-black transition-all active:scale-95 border border-blue-200 dark:border-blue-800 cursor-pointer shadow-xs"
+                >
+                  <FileText size={13} />
+                  <span>معاينة السيرة الذاتية المنشأة بالمنصة ↗</span>
+                </button>
+              </div>
             </div>
           </label>
-
-          {/* زر معاينة السيرة المنشأة بالتطبيق */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
-            <motion.button
-              type="button"
-              onClick={() => openCVModal()}
-              disabled={cvModalLoading}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="w-full sm:w-auto py-2.5 px-4 bg-white dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 text-[#0a66c2] dark:text-blue-300 rounded-xl text-xs font-black transition-all border border-blue-200 dark:border-blue-800 flex items-center justify-center gap-2 shadow-sm active:scale-95 cursor-pointer disabled:opacity-50"
-            >
-              {cvModalLoading ? <Loader2 size={15} className="animate-spin text-[#0a66c2]" /> : <Eye size={15} />}
-              <span>معاينة السيرة الذاتية المنشأة بالتطبيق 📄</span>
-            </motion.button>
-          </div>
-        </>)}
+        )}
 
         {isMe && (
           <input
@@ -1909,8 +1898,8 @@ export function ModernProfileView({
         </motion.div>
       )}
 
-      {/* ─── Visitor: Message Button ─────────────────────────────────────────────── */}
-      {!isMe && (
+      {/* ─── Visitor: Message Button (only when messaging is open) ─────────────── */}
+      {!isMe && canUseMessaging && (
         <div className="pt-2">
           <button type="button" onClick={onMessageClick}
             className="w-full py-4 rounded-full bg-gradient-to-l from-[#0a66c2] to-[#004182] hover:from-[#004182] hover:to-[#0a66c2] text-white font-black text-base transition-all shadow-lg shadow-[#0a66c2]/30 active:scale-[0.98] flex items-center justify-center gap-2">
@@ -1919,36 +1908,39 @@ export function ModernProfileView({
         </div>
       )}
 
-      {/* ── Modal تأكيد تغيير كلمة المرور ── */}
-      <AnimatePresence>
-        {passwordSuccessModal && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" dir="rtl">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white dark:bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl text-center space-y-4"
-            >
-              <div className="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
-                <CheckCircle2 size={36} />
-              </div>
-              <div>
-                <h3 className="text-lg font-black text-slate-800 dark:text-white">تم تغيير كلمة المرور بنجاح!</h3>
-                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
-                  تم تحديث وحفظ الرمز السري الجديد لحسابك بنجاح. يمكنك استخدامه لتسجيل الدخول في المرات القادمة.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setPasswordSuccessModal(false)}
-                className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-2xl shadow-lg shadow-emerald-600/30 active:scale-95 transition-all cursor-pointer"
+      {/* ── Modal تأكيد تغيير كلمة المرور (Portal حتى يظهر فوراً أمام المستخدم بغض النظر عن السكرول) ── */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {passwordSuccessModal && (
+            <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" dir="rtl">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="bg-white dark:bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl text-center space-y-4"
               >
-                حسناً، فهمت
-              </button>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+                <div className="w-16 h-16 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 border border-emerald-500/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/20">
+                  <CheckCircle2 size={36} />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 dark:text-white">تم تغيير كلمة المرور بنجاح!</h3>
+                  <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+                    تم تحديث وحفظ الرمز السري الجديد لحسابك بنجاح. يمكنك استخدامه لتسجيل الدخول في المرات القادمة.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPasswordSuccessModal(false)}
+                  className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm rounded-2xl shadow-lg shadow-emerald-600/30 active:scale-95 transition-all cursor-pointer"
+                >
+                  حسناً، فهمت
+                </button>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* ── Professional Role Change Request Modal (Rendered via Portal to avoid scrolling) ── */}
       {typeof document !== 'undefined' && createPortal(
@@ -2081,14 +2073,12 @@ export function ModernProfileView({
         document.body
       )}
 
-      {/* ── Platform CV Viewer Modal (معاينة السيرة الذاتية المنشأة بالتطبيق) ── */}
-      {viewingPlatformCv && platformCvData && (
-        <CvViewerModal
-          data={platformCvData}
-          avatarUrl={profile.avatar}
-          onClose={() => setViewingPlatformCv(false)}
-        />
-      )}
+      {/* ── Platform Generated CV Modal ── */}
+      <GeneratedCVModal
+        isOpen={showGeneratedCV}
+        onClose={() => setShowGeneratedCV(false)}
+        user={profile}
+      />
 
     </div>
   );

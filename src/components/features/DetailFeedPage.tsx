@@ -4,8 +4,9 @@ import { motion, AnimatePresence, type Variants } from 'motion/react';
 import { 
   ArrowRight, Briefcase, MapPin, DollarSign, 
   Tag, Clock, Send, Calendar, ExternalLink, Sparkles,
-  FileText, Home, Newspaper, ChevronDown, ChevronLeft, ChevronRight, Edit2, Trash2, AlertTriangle
+  FileText, Home, Newspaper, ChevronDown, ChevronLeft, ChevronRight, Edit2, Trash2, AlertTriangle, Phone
 } from 'lucide-react';
+import { openContactMenu } from '../../lib/utils/contact';
 import { Job, AppUser } from '../../types';
 import { safeTimeAgo } from '../../lib/utils/formatDate';
 import { BilingualSmartText } from '../../lib/utils/bilingualText';
@@ -254,12 +255,12 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
       className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[220] bg-slate-100/95 dark:bg-slate-950 text-slate-800 dark:text-white flex flex-col overflow-hidden will-change-transform transform-gpu"
       dir="rtl"
     >
-      {/* ── Top Bar: زر الرجوع + عدد الوظائف فقط (مطابق لطلب المستخدم) ── */}
+      {/* ── Top Bar: زر الرجوع فقط ── */}
       <div
-        className="relative z-30 flex items-center justify-between px-4 py-2.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 shrink-0 shadow-xs gap-3"
+        className="relative z-30 flex items-center px-4 py-2.5 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200 dark:border-slate-800 shrink-0 shadow-xs"
         style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 12px)' }}
       >
-        {/* زر الرجوع */}
+        {/* زر الرجوع فقط */}
         <button
           onClick={onClose}
           className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 border border-blue-200 dark:border-blue-800/50 text-blue-700 dark:text-blue-300 rounded-xl text-xs font-black transition-all active:scale-95 shadow-xs cursor-pointer"
@@ -267,23 +268,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
         >
           <ArrowRight size={16} />
           <span>رجوع</span>
-        </button>
-
-        {/* عنوان الصفحة الحالي */}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-black text-slate-700 dark:text-slate-300">
-            {isCurJob ? 'تفاصيل الفرصة والوظيفة' : isCurNews ? 'تفاصيل الخبر' : 'تفاصيل المنشور'}
-          </span>
-        </div>
-
-        {/* زر إغلاق / رجوع إضافي */}
-        <button
-          onClick={onClose}
-          className="p-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-400 transition-all active:scale-90 cursor-pointer"
-          title="رجوع"
-          aria-label="رجوع"
-        >
-          <X size={18} />
         </button>
       </div>
 
@@ -300,19 +284,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
             initial="enter"
             animate="center"
             exit="exit"
-            drag="x"
-            dragConstraints={{ left: 0, right: 0 }}
-            dragElastic={0.65}
-            onDragEnd={(e, { offset, velocity }) => {
-              const swipe = offset.x;
-              if (swipe < -25 || velocity.x < -120) {
-                // In RTL: swipe left goes to next item
-                goToNext();
-              } else if (swipe > 25 || velocity.x > 120) {
-                // In RTL: swipe right goes to previous item
-                goToPrev();
-              }
-            }}
             className="w-full sm:w-[92vw] md:w-[780px] max-w-[780px] h-full flex flex-col rounded-3xl border border-slate-200/90 dark:border-slate-800/90 bg-white dark:bg-slate-900 shadow-xl relative overflow-hidden z-10 diwani-neon-card will-change-transform transform-gpu"
           >
             {isCurJob ? (
@@ -392,6 +363,19 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                             )}
                             <p className="text-xs sm:text-sm text-white/95 font-black">{currentItem.company}</p>
                             <span className="text-[10px] font-bold text-white/60">• {timeAgo(currentItem.postedAt)}</span>
+                            {(pubUser?.phone || (pubUser as any)?.website) && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openContactMenu({ phone: pubUser?.phone, name: pubUser?.name || currentItem.company, website: (pubUser as any)?.website, cvUrl: (pubUser as any)?.cv_url });
+                                }}
+                                className="mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/90 hover:bg-emerald-500 text-white text-[10px] font-black border border-emerald-300/30 shadow-md active:scale-95 transition-all"
+                                title="تواصل مع صاحب الوظيفة: واتساب / اتصال / روابطه"
+                              >
+                                <Phone size={12} /> تواصل معه
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -492,24 +476,13 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     );
                   })()}
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={onClose}
-                      className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
-                      title="رجوع"
-                    >
-                      <ArrowRight size={14} className="text-blue-500" />
-                      <span>رجوع</span>
-                    </button>
-                    <button
-                      onClick={handleGoSection}
-                      className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
-                      title="العودة للوظائف"
-                    >
-                      <Briefcase size={14} className="text-indigo-500" />
-                      <span>العودة للوظائف</span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={onClose}
+                    className="w-full py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                  >
+                    <ArrowRight size={14} className="text-slate-500" />
+                    <span>الرجوع</span>
+                  </button>
                 </div>
 
                 {/* ── Floating scroll hint indicator (مؤشر وجود سكرول للأسفل) ── */}
@@ -676,9 +649,9 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     </div>
                   )}
 
-                  <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs text-black dark:text-white font-medium">
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
                     {currentItem.content ? (
-                      <BilingualSmartText text={currentItem.content} className="space-y-3" paragraphClassName="text-black dark:text-white font-medium" />
+                      <BilingualSmartText text={currentItem.content} className="space-y-3" paragraphClassName="!text-black dark:!text-slate-100 font-medium" />
                     ) : (
                       <p className="text-slate-400 italic">لا يوجد نص إضافي.</p>
                     )}
@@ -687,24 +660,13 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
 
                 {/* ── Fixed Post Bottom Bar: ثابت أسفل كارد المنشور ── */}
                 <div className="shrink-0 p-3 sm:px-5 sm:py-3.5 border-t border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-b-3xl z-20">
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={onClose}
-                      className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
-                      title="رجوع"
-                    >
-                      <ArrowRight size={14} className="text-blue-500" />
-                      <span>رجوع</span>
-                    </button>
-                    <button
-                      onClick={handleGoSection}
-                      className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
-                      title="الوظائف"
-                    >
-                      <Briefcase size={14} className="text-indigo-500" />
-                      <span>الوظائف</span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={onClose}
+                    className="w-full py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                  >
+                    <ArrowRight size={14} className="text-slate-500" />
+                    <span>الرجوع</span>
+                  </button>
                 </div>
 
                 {/* ── Floating scroll hint indicator (مؤشر وجود سكرول للأسفل) ── */}
@@ -784,13 +746,13 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     touchAction: 'pan-y',
                   }}
                 >
-                  <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs text-black dark:text-white font-medium">
-                    <BilingualSmartText text={currentItem.content || currentItem.description || ''} className="space-y-3" paragraphClassName="text-black dark:text-white font-medium" />
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
+                    <BilingualSmartText text={currentItem.content || currentItem.description || ''} className="space-y-3" paragraphClassName="!text-black dark:!text-slate-100 font-medium" />
                   </div>
                   <div className="h-2" />
                 </div>
 
-                {/* ── Fixed News Bottom Bar: مطابق لشريط الوظائف تماماً مع زر المصدر الأصلي والعودة للرئيسية ── */}
+                {/* ── Fixed News Bottom Bar ── */}
                 <div className="shrink-0 p-3 sm:px-5 sm:py-3.5 border-t border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md space-y-2 z-20 rounded-b-3xl">
                   {currentItem.link && currentItem.link !== '#' && (
                     <a
@@ -804,24 +766,13 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     </a>
                   )}
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={onClose}
-                      className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
-                      title="رجوع"
-                    >
-                      <ArrowRight size={14} className="text-blue-500" />
-                      <span>رجوع</span>
-                    </button>
-                    <button
-                      onClick={handleGoSection}
-                      className="py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
-                      title="العودة للأخبار"
-                    >
-                      <Newspaper size={14} className="text-emerald-500" />
-                      <span>العودة للأخبار</span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={onClose}
+                    className="w-full py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                  >
+                    <ArrowRight size={14} className="text-slate-500" />
+                    <span>الرجوع</span>
+                  </button>
                 </div>
 
                 {/* ── Floating scroll hint indicator (مؤشر وجود سكرول للأسفل) ── */}

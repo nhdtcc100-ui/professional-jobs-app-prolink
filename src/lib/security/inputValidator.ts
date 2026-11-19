@@ -87,22 +87,15 @@ export const sanitizeInput = (
     });
   }
 
-  const sqliRes = threatEngine.scanForSQLi(input);
-  if (sqliRes.detected) {
-    threatEngine.logThreat({
-      user_id: user?.id,
-      user_name: user?.name || 'مستخدم النظام',
-      user_email: user?.email,
-      attack_type: 'SQL_INJECTION',
-      severity: 'CRITICAL',
-      endpoint: typeof window !== 'undefined' ? window.location.pathname : '/app/input',
-      payload_sample: input.slice(0, 150),
-    });
-  }
+  // SQLi scanning removed: parameterized Supabase queries cannot be injected,
+  // and the regex WAF flagged ordinary text as CRITICAL attacks.
 
   return input
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<\/?(iframe|object|embed|svg|math|link|meta|base|form|style)[^>]*>/gi, '')
     .replace(/javascript\s*:/gi, '')
+    .replace(/vbscript\s*:/gi, '')
+    .replace(/data\s*:\s*text\/html/gi, '')
     .replace(/on\w+\s*=/gi, '')
     .slice(0, maxLength);
 };

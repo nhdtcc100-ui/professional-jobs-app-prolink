@@ -375,112 +375,127 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200 dark:border-slate-800 shadow-sm"
+        className="bg-white dark:bg-slate-850 rounded-3xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm relative overflow-hidden diwani-neon-card"
       >
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-blue-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center border border-blue-100 dark:border-slate-700 text-[#0a66c2] dark:text-blue-400 shrink-0">
-            <Wrench size={20} />
-          </div>
-          <div>
-            <h2 className="font-black text-slate-900 dark:text-white text-lg leading-tight">سوق الخدمات والمهن الحرة</h2>
-            <p className="text-slate-500 dark:text-slate-400 text-xs font-bold mt-0.5">
-              {totalCount > 0 ? `${totalCount} كفاءة متاحة (عمل حر وباحثين عن عمل)` : 'ابحث عن أصحاب المهن والباحثين عن عمل حسب التخصص والمكان'}
-            </p>
-          </div>
-        </div>
-
-        {/* شريط البحث */}
-        <div className="space-y-2.5">
-          <div className="relative">
-            <Wrench size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none" />
-            <input
-              type="text"
-              value={searchTitle}
-              onChange={e => setSearchTitle(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              placeholder="المسمى الوظيفي (كهربائي، حلاق، سباك...)"
-              className="w-full pr-10 pl-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm font-bold focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800 transition-all"
-            />
-          </div>
-          <div className="relative">
-            <MapPin size={14} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 pointer-events-none" />
-            <input
-              type="text"
-              value={searchLocation}
-              onChange={e => setSearchLocation(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              placeholder="المنطقة (بغداد الكمالية، الحرية...)"
-              className="w-full pr-10 pl-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-800 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm font-bold focus:outline-none focus:border-blue-500 focus:bg-white dark:focus:bg-slate-800 transition-all"
-            />
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-2xl flex items-center justify-center border border-slate-200 dark:border-slate-700 shadow-sm shrink-0">
+              <Wrench size={20} />
+            </div>
+            <div>
+              <h2 className="font-black text-slate-900 dark:text-white text-lg leading-tight">سوق الخدمات والمهن الحرة</h2>
+              <p className="text-slate-500 dark:text-slate-400 text-xs font-bold mt-0.5">
+                {totalCount > 0 ? `${totalCount} كفاءة متاحة (عمل حر وباحثين عن عمل)` : 'ابحث عن أصحاب المهن والباحثين عن عمل حسب التخصص والمكان'}
+              </p>
+            </div>
           </div>
 
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={handleSearch}
-              disabled={loading}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#0a66c2] text-white font-black text-xs rounded-2xl hover:bg-[#004182] transition-all active:scale-95 disabled:opacity-70 cursor-pointer"
-            >
-              {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-              بحث
-            </button>
-            <button
-              type="button"
-              onClick={() => setAvailableOnly(prev => !prev)}
-              className={`px-3 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-1.5 border cursor-pointer ${
-                availableOnly
-                  ? 'bg-emerald-600 text-white border-emerald-500'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
-              }`}
-              title="تصفية حسب المتوفرين للعمل فقط"
-            >
-              <span className={`w-2 h-2 rounded-full ${availableOnly ? 'bg-white animate-pulse' : 'bg-emerald-500'}`} />
-              <span>المتاحون فقط 🟢</span>
-            </button>
-            {hasActiveSearch && (
+          {/* شريط البحث */}
+          <div className="space-y-2.5">
+            <div className="relative">
+              <Wrench size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                value={searchTitle}
+                onChange={e => setSearchTitle(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                placeholder="المسمى الوظيفي (كهربائي، حلاق، سباك...)"
+                className="w-full pr-10 pl-4 py-2.5 bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm font-bold focus:outline-none focus:border-slate-400 dark:focus:border-slate-600 transition-all"
+              />
+            </div>
+            <div className="relative">
+              <MapPin size={15} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                value={searchLocation}
+                onChange={e => setSearchLocation(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                placeholder="المنطقة (بغداد الكمالية، المنصور...)"
+                className="w-full pr-10 pl-4 py-2.5 bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700 rounded-2xl text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 text-sm font-bold focus:outline-none focus:border-slate-400 dark:focus:border-slate-600 transition-all"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-1">
               <button
-                onClick={handleClearSearch}
-                className="px-3 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-bold text-xs rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-200 transition-all active:scale-95 cursor-pointer"
+                onClick={handleSearch}
+                disabled={loading}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-xs rounded-2xl shadow-sm hover:opacity-90 transition-all active:scale-95 disabled:opacity-70"
               >
-                <X size={14} />
+                {loading ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                بحث
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => setAvailableOnly(prev => !prev)}
+                className={`px-3.5 py-2.5 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-1.5 border ${
+                  availableOnly
+                    ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-750'
+                }`}
+                title="تصفية حسب المتوفرين للعمل فقط"
+              >
+                <span className={`w-2 h-2 rounded-full ${availableOnly ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+                <span>المتاحون فقط 🟢</span>
+              </button>
+              {hasActiveSearch && (
+                <button
+                  onClick={handleClearSearch}
+                  className="px-3.5 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-bold text-xs rounded-2xl border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all active:scale-95"
+                  title="مسح البحث"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </motion.div>
 
-      {/* ── بطاقات تصنيفات الخدمات ── */}
-      <div className="overflow-x-auto pb-1 -mx-0.5 px-0.5 scrollbar-none" dir="rtl">
-        <div className="flex gap-2.5 w-max py-0.5">
-          {SERVICE_CATEGORIES.map((cat) => {
-            const isSelected = searchTitle === cat.search;
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => {
-                  const nextVal = isSelected ? '' : cat.search;
-                  if (debounceRef.current) clearTimeout(debounceRef.current);
-                  setSearchTitle(nextVal);
-                  startTransition(() => {
-                    setDebouncedTitle(nextVal);
-                    setPage(0);
-                  });
-                }}
-                className={`relative flex-shrink-0 w-[88px] h-[82px] rounded-2xl transition-all duration-200 active:scale-95 border cursor-pointer flex flex-col items-center justify-center p-2 ${
-                  isSelected
-                    ? 'bg-blue-50 dark:bg-blue-950/40 border-[#0a66c2] shadow-md ring-2 ring-[#0a66c2]/30 scale-105'
-                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-slate-50 dark:hover:bg-slate-800/80 shadow-sm'
-                }`}
-              >
-                <span className="text-[1.6rem] leading-none mb-1 select-none pointer-events-none">{cat.icon}</span>
-                <span className={`font-black text-[10px] text-center leading-tight px-1 select-none pointer-events-none ${
-                  isSelected ? 'text-[#0a66c2] dark:text-blue-300' : 'text-slate-800 dark:text-slate-200'
-                }`}>
-                  {cat.label}
-                </span>
-              </button>
-            );
-          })}
+      {/* ── بار وتصنيفات الخدمات (ثيم متوافق مع الكاردات بالكامل) ── */}
+      <div className="bg-white dark:bg-slate-850 rounded-3xl p-3 sm:p-4 border border-slate-200/80 dark:border-slate-800 shadow-sm diwani-neon-card">
+        <div className="text-xs font-black text-slate-700 dark:text-slate-300 mb-2.5 px-1 flex items-center justify-between">
+          <span>التصنيفات والمهن الحرة</span>
+          {searchTitle && (
+            <button
+              onClick={() => {
+                setSearchTitle('');
+                setDebouncedTitle('');
+              }}
+              className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              عرض الكل
+            </button>
+          )}
+        </div>
+        <div className="overflow-x-auto pb-1 scrollbar-none" dir="rtl">
+          <div className="flex gap-2 w-max py-0.5">
+            {SERVICE_CATEGORIES.map((cat) => {
+              const isSelected = searchTitle === cat.search;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => {
+                    const nextVal = isSelected ? '' : cat.search;
+                    if (debounceRef.current) clearTimeout(debounceRef.current);
+                    setSearchTitle(nextVal);
+                    startTransition(() => {
+                      setDebouncedTitle(nextVal);
+                      setPage(0);
+                    });
+                  }}
+                  className={`relative flex-shrink-0 flex items-center gap-2 px-3.5 py-2 rounded-2xl border transition-all duration-200 active:scale-95 ${
+                    isSelected
+                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-slate-900 dark:border-white shadow-md'
+                      : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-200 border-slate-200/80 dark:border-slate-700/80 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <span className="text-sm leading-none">{cat.icon}</span>
+                  <span className="font-black text-xs whitespace-nowrap">{cat.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 

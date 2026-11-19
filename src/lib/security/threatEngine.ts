@@ -423,6 +423,8 @@ export const threatEngine = {
   },
 
   async _syncToSupabase(log: ThreatLog): Promise<void> {
+    // Only attributable events are persisted (RLS requires user_id = auth.uid()).
+    if (!log.user_id) return;
     try {
       const { supabase } = await import('../supabase');
       const db = supabase as any;
@@ -553,7 +555,7 @@ if (typeof window !== 'undefined') {
 
   // Supabase Real-Time Listener for Multi-User & Multi-Device Threats
   import('../supabase').then(({ supabase }) => {
-    supabase
+    const channel = supabase
       .channel('public:security_logs')
       .on(
         'postgres_changes',
@@ -582,6 +584,7 @@ if (typeof window !== 'undefined') {
         }
       )
       .subscribe();
+    window.addEventListener('pagehide', () => { supabase.removeChannel(channel); }, { once: true });
   }).catch(() => {});
 }
 

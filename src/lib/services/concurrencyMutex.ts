@@ -21,7 +21,7 @@ class KeyedAsyncMutex {
    * Resolves to a release function that MUST be called when finished.
    */
   async acquire(key: string, timeoutMs = 15000): Promise<() => void> {
-    let releaseCurrent: () => void = () => {};
+    let releaseCurrent: () => void = () => { };
     const nextLock = new Promise<void>((resolve) => {
       releaseCurrent = resolve;
     });
@@ -72,6 +72,14 @@ class KeyedAsyncMutex {
   }
 
   /**
+   * Forcibly clears all active locks and queues (e.g. on window focus, resume, or app restart).
+   */
+  clearAll(): void {
+    this.activeLocks.clear();
+    this.queue.clear();
+  }
+
+  /**
    * Forcibly clears any active lock or queue for a key (used for recovering from stuck/failed operations).
    */
   clearKey(key: string): void {
@@ -83,12 +91,19 @@ class KeyedAsyncMutex {
    * Executes an asynchronous task inside a critical section locked by key.
    * Guarantees the lock is released even if the task throws.
    */
-  async runExclusive<T>(key: string, task: MutexTask<T>, timeoutMs = 15000): Promise<T> {
-    const release = await this.acquire(key, timeoutMs);
+  async runExclusive<T>(key: string, task: MutexTask<T>, timeoutMs = 4000): Promise<T> {
     try {
+      const release = await this.acquire(key, timeoutMs);
+      try {
+        return await task();
+      } finally {
+        release();
+      }
+    } catch (err: any) {
+      // Self-healing: if acquisition timed out or rejected, forcibly clear key and run task directly
+      console.warn(`[Mutex] Key ${key} lock bypass after error:`, err?.message || err);
+      this.clearKey(key);
       return await task();
-    } finally {
-      release();
     }
   }
 }
@@ -98,6 +113,6 @@ export const concurrencyMutex = new KeyedAsyncMutex();
 /**
  * Convenient wrapper function to run a task within a mutex lock.
  */
-export async function withMutex<T>(key: string, task: () => Promise<T>, timeoutMs = 15000): Promise<T> {
+export async function withMutex<T>(key: string, task: () => Promise<T>, timeoutMs = 4000): Promise<T> {
   return concurrencyMutex.runExclusive(key, task, timeoutMs);
 }

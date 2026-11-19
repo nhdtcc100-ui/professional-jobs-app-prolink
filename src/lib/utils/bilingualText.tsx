@@ -1,6 +1,7 @@
 import React from 'react';
 import { ExternalLink, Phone, Send, MessageCircle, MapPin, Clock } from 'lucide-react';
 import { RECOGNIZED_LOCATIONS, WORKING_HOURS_KEYWORDS } from './formatNews';
+import { openContactMenu } from './contact';
 
 const ARABIC_CHAR_REGEX = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
 const ENGLISH_CHAR_REGEX = /[a-zA-Z]/;
@@ -169,7 +170,7 @@ export const SmartLineRenderer: React.FC<{ text: string; isArabic: boolean }> = 
           return (
             <span
               key={i}
-              onClick={() => window.open(`tel:${clean}`)}
+              onClick={() => openContactMenu({ phone: clean })}
               dir="ltr"
               className="inline-flex items-center gap-1.5 bg-emerald-50 dark:bg-emerald-900/25 text-emerald-600 dark:text-emerald-400 px-2.5 py-1 rounded-xl border border-emerald-200 dark:border-emerald-800/40 font-black text-[11px] mx-1 shadow-sm hover:scale-105 transition-all cursor-pointer my-0.5"
             >
@@ -249,24 +250,19 @@ export const BilingualSmartText: React.FC<{
 
   return (
     <div className={className}>
-      {segments.map((segment) => {
-        const hasCustomColor = paragraphClassName && paragraphClassName.includes('text-');
-        const defaultColor = segment.isArabic
-          ? 'font-medium text-slate-900 dark:text-slate-100 font-arabic'
-          : 'font-normal text-slate-900 dark:text-slate-100 font-sans tracking-wide';
-
-        return (
-          <p
-            key={segment.id}
-            dir={segment.dir}
-            className={`leading-relaxed text-sm md:text-base ${segment.align} ${
-              hasCustomColor ? paragraphClassName : `${defaultColor} ${paragraphClassName}`
-            }`}
-          >
-            <SmartLineRenderer text={segment.text} isArabic={segment.isArabic} />
-          </p>
-        );
-      })}
+      {segments.map((segment) => (
+        <p
+          key={segment.id}
+          dir={segment.dir}
+          className={`leading-relaxed text-sm md:text-base ${segment.align} ${
+            segment.isArabic
+              ? 'font-medium text-slate-700 dark:text-slate-200 font-arabic'
+              : 'font-normal text-slate-800 dark:text-slate-100 font-sans tracking-wide'
+          } ${paragraphClassName}`}
+        >
+          <SmartLineRenderer text={segment.text} isArabic={segment.isArabic} />
+        </p>
+      ))}
     </div>
   );
 };

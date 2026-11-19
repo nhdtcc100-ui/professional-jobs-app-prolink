@@ -1,18 +1,11 @@
 /**
  * sanitize.ts
  * ─────────────────────────────────────────────────────────────
- * Central XSS / code‑injection sanitisation utilities.
- *
- * Rules enforced:
- *   • Strip all HTML tags   <…>
- *   • Block JS protocol     javascript:
- *   • Block inline events   onload= onerror= etc.
- *   • Block <script> blocks (including multi-line)
- *   • Block template literals  ${…}
- *   • Block common SQL keywords (SELECT, DROP, …)
- *   • Block remaining shell-injection chars: < > { } [ ] \
- *   • Block Python / PHP / shell shebangs and common patterns
- *   • Trim whitespace after sanitisation
+ * Central XSS sanitisation utilities (defense-in-depth).
+ * React already escapes rendered text; these helpers strip dangerous
+ * tags/protocols from user input before storage and log XSS attempts.
+ * SQL injection is not possible through parameterized Supabase queries,
+ * so no SQL keyword blocking is performed here.
  * ─────────────────────────────────────────────────────────────
  */
 
@@ -43,24 +36,17 @@ export function sanitizeInput(
     });
   }
 
-  const sqliRes = threatEngine.scanForSQLi(raw);
-  if (sqliRes.detected) {
-    threatEngine.logThreat({
-      user_id: user?.id,
-      user_name: user?.name || 'مستخدم النظام',
-      user_email: user?.email,
-      attack_type: 'SQL_INJECTION',
-      severity: 'CRITICAL',
-      endpoint: typeof window !== 'undefined' ? window.location.pathname : '/app/input',
-      payload_sample: raw.slice(0, 150),
-    });
-  }
+  // SQLi scanning removed: Supabase REST queries are parameterized, and the
+  // regex WAF produced false CRITICAL alerts on ordinary text.
 
-  // Preserve technical programming language terms & code snippets safely
-  // Preserve user spacing during active typing (no trailing trim)
+  // Preserve user spacing during active typing (no trailing trim).
+  // React escapes rendered text; this strip is defense-in-depth for dangerous tags/protocols.
   return raw
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<\/?(iframe|object|embed|svg|math|link|meta|base|form|style)[^>]*>/gi, '')
     .replace(/javascript\s*:/gi, '')
+    .replace(/vbscript\s*:/gi, '')
+    .replace(/data\s*:\s*text\/html/gi, '')
     .replace(/on\w+\s*=/gi, '')
     .slice(0, maxLength);
 }

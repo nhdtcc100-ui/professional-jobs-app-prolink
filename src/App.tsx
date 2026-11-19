@@ -14,7 +14,7 @@ import {
   loadSettingsPage,
   preloadTab
 } from './lib/lazyPreload';
-import { Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare, Shield, ArrowRight } from 'lucide-react';
+import { Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare, Shield } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { Post, Job, AppUser } from './types';
 import { SkeletonPostCard } from './components/ui';
@@ -38,7 +38,6 @@ import { CallsView } from './components/features';
 import { jobService } from './lib/services/jobService';
 import { AlertBanner } from './components/features/security/AlertBanner';
 import { SecurityAlertToast } from './components/features/security/SecurityAlertToast';
-import { initAntiInspect, setAntiInspectUser } from './lib/security/antiInspect';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { RecedeCard } from './components/common/RecedeCard';
 import { GuestBanner } from './components/common/GuestBanner';
@@ -59,6 +58,8 @@ declare global {
 }
 
 import { MessagingView } from './components/features/MessagingView';
+import { ContactMenuHost } from './components/ui/ContactMenu';
+import { FeatureLocked } from './components/ui/FeatureLocked';
 
 // 🚀 Lazy-loaded heavy feature views (integrated with preloadTab)
 const MissionsView    = lazy(() => loadMissionsView().then(m => ({ default: m.MissionsView })));
@@ -85,6 +86,7 @@ function App() {
     pendingEmailVerification, setPendingEmailVerification,
     posts, setPosts, jobs, allUsers, connections, notifications, messages, reports,
     activeTab, setActiveTab, searchQuery, setSearchQuery,
+    canUseMessaging, canUseGroups, canUseNetwork,
     selectedProfile, setSelectedProfile, isEditingProfile, setIsEditingProfile,
     toasts, showNotifications, setShowNotifications, showAdmin, setShowAdmin,
     selectedChat, setSelectedChat,
@@ -112,12 +114,7 @@ function App() {
 
   useEffect(() => {
     fetchGroups();
-    initAntiInspect(appUser);
   }, []);
-
-  useEffect(() => {
-    setAntiInspectUser(appUser);
-  }, [appUser]);
 
   // ── خروج وضع الزائر تلقائياً عند تسجيل الدخول ──
   useEffect(() => {
@@ -638,6 +635,10 @@ function App() {
 
   const handleShareJobToUser = async (targetUser: AppUser, job: Job) => {
     if (!appUser) return;
+    if (!canUseMessaging) {
+      addToast('🔒 الرسائل مقفلة حالياً ومتاحة للإدارة فقط', 'info');
+      return;
+    }
     try {
       const jobMsg = `[JOB_CARD:${job.id}|${job.title}|${job.company}|${job.location || 'عن بُعد'}|${job.salary || 'غير محدد'}|${job.image_url || ''}]`;
       const { error } = await (supabase as any).from('messages').insert([{ 
@@ -761,19 +762,6 @@ function App() {
     </div>
   );
 
-  // ── Email Verification Screen (shown right after sign-up) ────────────────────
-  if (pendingEmailVerification) {
-    return (
-      <EmailVerificationScreen
-        email={pendingEmailVerification}
-        onBack={() => {
-          setPendingEmailVerification(null);
-          setAuthMode('login');
-        }}
-      />
-    );
-  }
-
   // requireAuth تم نقله إلى الأعلى (قبل early returns) لإصلاح React Error #300
 
   // ── Guard: show auth screen if not logged in AND not in guest mode ──
@@ -824,10 +812,7 @@ function App() {
     // إغلاق المودال فوراً
     setJobToDeleteFromFeed(null);
     try {
-      const { error } = await (supabase as any).from('jobs').delete().eq('id', idToDelete);
-      if (error) throw error;
-      // الـ realtime subscription في AppContext سيحذف الوظيفة من القائمة تلقائياً
-      addToast('تم حذف الوظيفة بنجاح ✅');
+      await handleDeleteJob(idToDelete);
     } catch (err: any) {
       console.error('Delete job error:', err);
       addToast('فشل حذف الوظيفة: ' + (err?.message || 'خطأ غير معروف'), 'error');
@@ -1246,7 +1231,7 @@ function App() {
                       </div>
                       <h3 className="text-base font-black text-slate-800 dark:text-white">نشر الوظائف مخصص لأصحاب العمل والمؤسسات فقط 💼</h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">حسابك مسجل كـ (باحث عن عمل). يمكن للحسابات الفردية التصفح والتقديم على الفرص بدلاً من نشرها.</p>
-                      <button onClick={() => typeof window !== 'undefined' && window.history.length > 1 ? window.history.back() : setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 mx-auto cursor-pointer"><ArrowRight size={15} /><span>رجوع</span></button>
+                      <button onClick={() => setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all">الرجوع للرئيسية</button>
                     </div>
                   ) : (
                     <div className="pb-safe-bottom px-1 md:px-0">
@@ -1266,7 +1251,7 @@ function App() {
               )}
 
               {/* ⚡ Keep-Alive: Network View */}
-              {visitedTabs.network && (
+              {visitedTabs.network && canUseNetwork && (
                 <div
                   key="keepalive-tab-network"
                   className={activeTab === 'network' ? 'pb-safe-bottom px-1 md:px-0 animate-in fade-in duration-150' : 'hidden'}
@@ -1301,6 +1286,13 @@ function App() {
                     />
                   </Suspense>
                 </div>
+              )}
+
+              {activeTab === 'network' && !canUseNetwork && (
+                <FeatureLocked
+                  title="شبكتي المهنية مقفلة حالياً 🔒"
+                  message="خاصية الشبكة المهنية متاحة للإدارة فقط في الوقت الحالي، وسيتم فتحها للجميع قريباً. للتواصل مع الدعم استخدم واتساب أو تلكرام:"
+                />
               )}
 
               {activeTab === 'calls' && appUser?.isAdmin && (
@@ -1348,6 +1340,14 @@ function App() {
                       </button>
                     </motion.div>
                   )
+                ) : !canUseMessaging ? (
+                  activeTab === 'messages' && (
+                    <FeatureLocked
+                      title="الرسائل مقفلة حالياً 🔒"
+                      message="خاصية الرسائل متاحة للإدارة فقط في الوقت الحالي، وسيتم فتحها للجميع قريباً. للتواصل مع صاحب وظيفة أو مرشح استخدم أزرار واتساب / الاتصال على الأرقام المنشورة، أو تواصل مع الدعم:"
+                      icon={<MessageSquare size={30} />}
+                    />
+                  )
                 ) : (
                   <div
                     key="keepalive-tab-messages"
@@ -1375,7 +1375,7 @@ function App() {
                 )
               )}
 
-              {activeTab === 'groups' && (
+              {activeTab === 'groups' && (canUseGroups ? (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -1395,7 +1395,12 @@ function App() {
                     />
                   </Suspense>
                 </motion.div>
-              )}
+              ) : (
+                <FeatureLocked
+                  title="المجموعات المهنية مقفلة حالياً 🔒"
+                  message="خاصية المجموعات المهنية متاحة للإدارة فقط في الوقت الحالي، وسيتم فتحها للجميع قريباً. للتواصل مع الدعم استخدم واتساب أو تلكرام:"
+                />
+              ))}
 
               {/* ⚡ Keep-Alive: News View */}
               {visitedTabs.news && (
@@ -1462,7 +1467,7 @@ function App() {
                       </div>
                       <h3 className="text-base font-black text-slate-800 dark:text-white">نظام الموارد البشرية (ERP) — مخصص للإدارة فقط 🔒</h3>
                       <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">حسابك الحالي ليس لديه صلاحية الوصول لهذا النظام. هذا النظام مخصص فقط للإدارة العليا.</p>
-                      <button onClick={() => typeof window !== 'undefined' && window.history.length > 1 ? window.history.back() : setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 mx-auto cursor-pointer"><ArrowRight size={15} /><span>رجوع</span></button>
+                      <button onClick={() => setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all">الرجوع للرئيسية</button>
                     </div>
                   )}
                 </motion.div>
@@ -1705,6 +1710,7 @@ function App() {
       <SecurityAlertToast onOpenAdmin={() => setShowAdmin(true)} />
 
       <ToastContainer toasts={toasts} />
+      <ContactMenuHost />
 
       {/* Onboarding Modal for new users */}
       <AnimatePresence mode="wait">

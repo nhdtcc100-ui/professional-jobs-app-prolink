@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import {
-  Briefcase, MapPin, DollarSign, FileText, Tag, Building2,
+  Briefcase, MapPin, DollarSign, Tag, Building2,
   Send, Loader2, ChevronDown, AlignLeft, Edit3, CheckCircle, XCircle, Clock, AlertCircle, ArrowRight, Sparkles, X
 } from 'lucide-react';
 import { validateField } from '../../../lib/security/inputValidator';
@@ -67,7 +67,6 @@ export const JobPostForm: React.FC<JobPostFormProps> = ({
     (formData.company || '').trim().length > 1,
     Boolean((formData.category || '').trim()),
     (formData.description || '').trim().length > 10,
-    (formData.requirements || '').trim().length > 5,
     (formData.location || '').trim().length > 1,
     (formData.salary || '').trim().length > 0,
     true, // Profile identity automatic
@@ -308,39 +307,21 @@ export const JobPostForm: React.FC<JobPostFormProps> = ({
           </div>
         </div>
 
-        {/* Section 3: Description */}
+        {/* Section 3: Unified details (description + responsibilities + requirements) */}
         <div className="space-y-2">
-          <label htmlFor="job-description" className={labelClass}><AlignLeft size={12} className="text-blue-600" /> الوصف والمهام الوظيفية *</label>
+          <label htmlFor="job-description" className={labelClass}><AlignLeft size={12} className="text-blue-600" /> تفاصيل الوظيفة (المهام والمتطلبات) *</label>
           <textarea
             id="job-description"
             name="description"
-            className={`${inputClass} min-h-[120px] resize-none leading-relaxed ${formErrors.description ? 'border-red-400 focus:border-red-500 focus:ring-red-100' : ''}`}
-            placeholder="اكتب نبذة شاملة عن الوظيفة، المسؤوليات اليومية، وما تقدمه الشركة..."
+            className={`${inputClass} min-h-[160px] resize-none leading-relaxed ${formErrors.description ? 'border-red-400 focus:border-red-500 focus:ring-red-100' : ''}`}
+            placeholder="اكتب كل تفاصيل الوظيفة في مكان واحد:&#10;• نبذة عن الدور والمسؤوليات اليومية&#10;• المتطلبات والمؤهلات والخبرة المطلوبة&#10;• المهارات وما تقدمه الشركة"
             value={formData.description || ''}
-            onChange={e => handleFieldChange('description', 'وصف الوظيفة', e.target.value)}
-            maxLength={5000}
+            onChange={e => handleFieldChange('description', 'تفاصيل الوظيفة', e.target.value)}
+            maxLength={8000}
           />
           <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
-            <span>{formErrors.description ? <span className="text-red-500">{formErrors.description}</span> : 'اكتب وصفاً واضحاً ومفصلاً'}</span>
-            <span>{(formData.description || '').length} / 5000</span>
-          </div>
-        </div>
-
-        {/* Section 4: Requirements */}
-        <div className="space-y-2">
-          <label htmlFor="job-requirements" className={labelClass}><FileText size={12} className="text-blue-600" /> المتطلبات والمؤهلات المطلوبة</label>
-          <textarea
-            id="job-requirements"
-            name="requirements"
-            className={`${inputClass} min-h-[100px] resize-none leading-relaxed ${formErrors.requirements ? 'border-red-400 focus:border-red-500 focus:ring-red-100' : ''}`}
-            placeholder="مثال:&#10;• خبرة لا تقل عن سنتين في المجال&#10;• إتقان أدوات العمل الحديثة&#10;• مهارات تواصل ممتازة"
-            value={formData.requirements || ''}
-            onChange={e => handleFieldChange('requirements', 'المتطلبات', e.target.value)}
-            maxLength={3000}
-          />
-          <div className="flex justify-between items-center text-[10px] font-bold text-slate-400">
-            <span>{formErrors.requirements ? <span className="text-red-500">{formErrors.requirements}</span> : 'حدد الشروط والمهارات المطلوبة بدقة'}</span>
-            <span>{(formData.requirements || '').length} / 3000</span>
+            <span>{formErrors.description ? <span className="text-red-500">{formErrors.description}</span> : 'اذكر المهام والمتطلبات معاً في هذا الحقل'}</span>
+            <span>{(formData.description || '').length} / 8000</span>
           </div>
         </div>
 

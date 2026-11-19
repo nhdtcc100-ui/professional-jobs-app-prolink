@@ -7,7 +7,6 @@ export interface PlatformPublicSettings {
   networkEnabled: boolean;
   accountSwitchEnabled: boolean;
   khakiThemeEnabled: boolean;
-  cvUploadEnabled: boolean;
   navStyle: string;
   supportWhatsapp: string;
   supportTelegram: string;
@@ -19,11 +18,10 @@ const KEY_GROUPS = 'groups_enabled';
 const KEY_NETWORK = 'network_enabled';
 const KEY_ACCOUNT_SWITCH = 'account_switch_enabled';
 const KEY_KHAKI_THEME = 'khaki_theme_enabled';
-const KEY_CV_UPLOAD = 'cv_upload_enabled';
 const KEY_NAV_STYLE = 'nav_style';
 const KEY_WHATSAPP = 'support_whatsapp_number';
 const KEY_TELEGRAM = 'telegram_support_handle';
-const KEYS = [KEY_MESSAGING, KEY_SUPPORT_CHAT, KEY_GROUPS, KEY_NETWORK, KEY_ACCOUNT_SWITCH, KEY_KHAKI_THEME, KEY_CV_UPLOAD, KEY_NAV_STYLE, KEY_WHATSAPP, KEY_TELEGRAM];
+const KEYS = [KEY_MESSAGING, KEY_SUPPORT_CHAT, KEY_GROUPS, KEY_NETWORK, KEY_ACCOUNT_SWITCH, KEY_KHAKI_THEME, KEY_NAV_STYLE, KEY_WHATSAPP, KEY_TELEGRAM];
 const CACHE_KEY = 'prolink_platform_public_settings';
 
 export const DEFAULT_PUBLIC_SETTINGS: PlatformPublicSettings = {
@@ -33,7 +31,6 @@ export const DEFAULT_PUBLIC_SETTINGS: PlatformPublicSettings = {
   networkEnabled: false,
   accountSwitchEnabled: false,
   khakiThemeEnabled: false,
-  cvUploadEnabled: false,
   navStyle: 'dock',
   supportWhatsapp: '',
   supportTelegram: '',
@@ -49,7 +46,6 @@ const parseRows = (rows: { key: string; value: string }[]): PlatformPublicSettin
     else if (row.key === KEY_NETWORK) next.networkEnabled = value === 'true';
     else if (row.key === KEY_ACCOUNT_SWITCH) next.accountSwitchEnabled = value === 'true';
     else if (row.key === KEY_KHAKI_THEME) next.khakiThemeEnabled = value === 'true';
-    else if (row.key === KEY_CV_UPLOAD) next.cvUploadEnabled = value === 'true';
     else if (row.key === KEY_NAV_STYLE) next.navStyle = value || 'dock';
     else if (row.key === KEY_WHATSAPP) next.supportWhatsapp = value;
     else if (row.key === KEY_TELEGRAM) next.supportTelegram = value;
@@ -95,7 +91,6 @@ export const platformSettingsService = {
       ['networkEnabled', KEY_NETWORK],
       ['accountSwitchEnabled', KEY_ACCOUNT_SWITCH],
       ['khakiThemeEnabled', KEY_KHAKI_THEME],
-      ['cvUploadEnabled', KEY_CV_UPLOAD],
     ];
     for (const [field, key] of boolKeys) {
       if (patch[field] !== undefined) rows.push({ key, value: String(patch[field]), updated_at: now });
@@ -116,17 +111,11 @@ export const platformSettingsService = {
     return { success: true };
   },
 
-  // Checks the existing server gate and the CV setting added by the updated migration.
+  // Detects whether the server-side gate migration (section 8) is applied.
   async isGateMigrationApplied(): Promise<boolean> {
     try {
       const { error } = await supabase.rpc('prolink_messaging_open' as any);
-      if (error) return false;
-      const { data, error: settingsError } = await supabase
-        .from('platform_settings')
-        .select('key')
-        .eq('key', KEY_CV_UPLOAD)
-        .maybeSingle();
-      return !settingsError && data?.key === KEY_CV_UPLOAD;
+      return !error;
     } catch {
       return false;
     }

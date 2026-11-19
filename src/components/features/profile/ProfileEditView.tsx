@@ -64,7 +64,7 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
   onScrollToTop,
   pendingCVName,
 }) => {
-  const { appUser } = useAppContext();
+  const { appUser, canUseAccountSwitch } = useAppContext();
   const effectiveUserId = formData?.id || (formData as any)?.user_id || appUser?.id;
 
   const [skillsText, setSkillsText] = React.useState<string>(() =>
@@ -144,6 +144,10 @@ export const ProfileEditView: React.FC<ProfileEditViewProps> = ({
 
   const handleRoleCardClick = (role: 'seeker' | 'employer' | 'freelancer') => {
     if (role === currentRole) return;
+    if (!canUseAccountSwitch) {
+      addToast('خاصية تبديل نوع الحساب مقفلة حالياً وتُفتح من قبل الإدارة 🔒', 'error');
+      return;
+    }
     if (isPendingRoleChange) {
       addToast('لديك طلب قيد المراجعة، يرجى انتظار رد الإدارة أولاً.', 'error');
       return;

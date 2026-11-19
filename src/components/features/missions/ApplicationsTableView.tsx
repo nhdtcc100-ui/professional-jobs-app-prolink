@@ -11,8 +11,10 @@ import { AppUser } from '../../../types';
 import { sanitizeInput } from '../../../lib/utils/sanitize';
 import { GlassCard, CloseButton } from '../../ui';
 import { useAppContext } from '../../../contexts/AppContext';
+import { openContactMenu, telUrl, whatsappUrl } from '../../../lib/utils/contact';
+import { openCv, downloadCv } from '../../../lib/utils/cv';
 import { EmployeeOnboardingModal } from '../erp/EmployeeOnboardingModal';
-import { AIEvaluationModal } from './AIEvaluationModal';
+import { GeneratedCVModal } from '../profile/GeneratedCVModal';
 interface ApplicantData {
   name?: string;
   email?: string;
@@ -220,13 +222,14 @@ function ApplicationsListViewContent({
   addToast,
   appUser,
 }: ApplicationsListViewProps) {
-  const { setActiveTab, setSelectedChat, allUsers = [], activeTab } = useAppContext();
+  const { setActiveTab, setSelectedChat, allUsers = [], activeTab, canUseMessaging } = useAppContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [selectedAppIndex, setSelectedAppIndex] = useState<number | null>(null);
   const [highlightedAppId, setHighlightedAppId] = useState<string | null>(null);
   const detailContainerRef = React.useRef<HTMLDivElement>(null);
   const [ratingFilter, setRatingFilter] = useState<number>(0); // 0 = all
+  const [previewApplicantCV, setPreviewApplicantCV] = useState<any>(null);
 
   // 🛡️ Keep-Alive guard: close the fixed z-[300] overlay when user navigates away.
   // Because MissionsView uses CSS `hidden` (not unmount), this component stays in
@@ -234,7 +237,7 @@ function ApplicationsListViewContent({
   useEffect(() => {
     if (activeTab !== 'jobs' && selectedAppIndex !== null) {
       setSelectedAppIndex(null);
-      try { document.body.style.overflow = ''; } catch (_) {}
+      try { document.body.style.overflow = ''; } catch (_) { }
     }
   }, [activeTab, selectedAppIndex]);
 
@@ -244,7 +247,7 @@ function ApplicationsListViewContent({
       setSelectedAppIndex(null);
       try {
         document.body.style.overflow = '';
-      } catch (_) {}
+      } catch (_) { }
     };
   }, []);
 
@@ -262,85 +265,25 @@ function ApplicationsListViewContent({
     }
   }, [selectedAppIndex]);
 
-  // Safe zero-freeze direct CV open & download helpers (100% Native - No iframes, No modals, Popup-blocker resistant)
-  const handleOpenApplicantCV = async (cvUrl: string, name?: string) => {
+  // CV open/download: signed URLs for private buckets, data:/blob: handled natively.
+  const handleOpenApplicantCV = async (cvUrl: string, _name?: string) => {
     if (!cvUrl) {
       addToast('لا يوجد ملف سيرة ذاتية مرفق لهذا الطلب', 'error');
       return;
     }
-
-    if (cvUrl.startsWith('blob:') || cvUrl.startsWith('data:') || cvUrl.includes('/storage/v1/object/public/')) {
-      const w = window.open(cvUrl, '_blank');
-      if (!w) {
-        const a = document.createElement('a');
-        a.href = cvUrl;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-      return;
-    }
-
-    // فتح نافذة متزامنة فوراً لتثبيت إذن المتصفح وتجنب الحظر في المرات المتكررة
-    const newWindow = window.open('about:blank', '_blank');
-
     try {
-      let finalUrl = cvUrl;
-      const markers = [
-        { marker: '/storage/v1/object/sign/resumes/', bkt: 'resumes' },
-        { marker: '/storage/v1/object/sign/applications/', bkt: 'applications' },
-        { marker: '/resumes/', bkt: 'resumes' },
-        { marker: '/applications/', bkt: 'applications' },
-      ];
-      for (const { marker, bkt } of markers) {
-        if (cvUrl.includes(marker)) {
-          const path = decodeURIComponent(cvUrl.split(marker)[1]?.split('?')[0] || '');
-          if (path) {
-            try {
-              const { data } = await supabase.storage.from(bkt).createSignedUrl(path, 300);
-              if (data?.signedUrl) finalUrl = data.signedUrl;
-            } catch (_) {}
-          }
-          break;
-        }
-      }
-
-      if (newWindow && !newWindow.closed) {
-        try {
-          newWindow.location.replace(finalUrl);
-        } catch (_) {
-          newWindow.location.href = finalUrl;
-        }
-      } else {
-        const a = document.createElement('a');
-        a.href = finalUrl;
-        a.target = '_blank';
-        a.rel = 'noopener noreferrer';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-      }
-    } catch (_) {
-      if (newWindow && !newWindow.closed) {
-        newWindow.location.href = cvUrl;
-      }
+      await openCv(cvUrl);
+    } catch (e: any) {
+      addToast(e?.message || 'تعذر فتح السيرة الذاتية', 'error');
     }
   };
 
   const handleDownloadApplicantCV = async (cvUrl: string, name?: string) => {
     if (!cvUrl) return;
     try {
-      const a = document.createElement('a');
-      a.href = cvUrl;
-      a.target = '_blank';
-      a.download = `CV_${name || 'applicant'}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (_) {
-      window.open(cvUrl, '_blank');
+      await downloadCv(cvUrl, name || 'applicant');
+    } catch (e: any) {
+      addToast(e?.message || 'تعذر تنزيل السيرة الذاتية', 'error');
     }
   };
 
@@ -412,8 +355,6 @@ function ApplicationsListViewContent({
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [interviewDate, setInterviewDate] = useState('');
   const [interviewTime, setInterviewTime] = useState('');
-  const [showAIEval, setShowAIEval] = useState(false);
-  const [appForAI, setAppForAI] = useState<JobApplication | null>(null);
 
   const safeApps = Array.isArray(incomingApplications) ? incomingApplications : [];
 
@@ -451,7 +392,7 @@ function ApplicationsListViewContent({
           localStorage.setItem(`prolink_seen_apps_${appUser.id}`, JSON.stringify(Array.from(set)));
           window.dispatchEvent(new Event('prolink_seen_apps_updated'));
         }
-      } catch (_) {}
+      } catch (_) { }
     }
   }, [selectedAppIndex, filteredApps, appUser?.id]);
 
@@ -517,7 +458,7 @@ function ApplicationsListViewContent({
       {/* Header & Filter Area */}
       {/* Header & Control Area (White Theme Horizontal Bars) */}
       <div className="bg-white dark:bg-slate-800 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-sm space-y-5 transition-colors">
-        
+
         {/* Title Row */}
         <div className="flex items-center justify-between">
           <div>
@@ -543,11 +484,10 @@ function ApplicationsListViewContent({
               <button
                 key={f.id}
                 onClick={() => setStatusFilter(f.id as any)}
-                className={`flex-1 sm:flex-none min-w-[90px] text-center px-5 py-2.5 rounded-2xl text-[11px] font-black transition-all ${
-                  statusFilter === f.id
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                    : 'bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
-                }`}
+                className={`flex-1 sm:flex-none min-w-[90px] text-center px-5 py-2.5 rounded-2xl text-[11px] font-black transition-all ${statusFilter === f.id
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                  : 'bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
               >
                 {f.label}
               </button>
@@ -621,11 +561,10 @@ function ApplicationsListViewContent({
                 layout
                 className="scroll-mt-24 transition-all duration-300"
               >
-                <GlassCard className={`p-5 rounded-[2.2rem] transition-all duration-300 group relative overflow-hidden ${
-                  isHighlighted
-                    ? 'ring-4 ring-blue-500/80 border-blue-500 shadow-2xl shadow-blue-500/30 scale-[1.01] bg-blue-50/70 dark:bg-blue-950/50'
-                    : 'border border-white dark:border-slate-700 shadow-sm hover:shadow-xl hover:translate-y-[-4px] bg-white/90 dark:bg-slate-800/90'
-                }`}>
+                <GlassCard className={`p-5 rounded-[2.2rem] transition-all duration-300 group relative overflow-hidden ${isHighlighted
+                  ? 'ring-4 ring-blue-500/80 border-blue-500 shadow-2xl shadow-blue-500/30 scale-[1.01] bg-blue-50/70 dark:bg-blue-950/50'
+                  : 'border border-white dark:border-slate-700 shadow-sm hover:shadow-xl hover:translate-y-[-4px] bg-white/90 dark:bg-slate-800/90'
+                  }`}>
                   {isHighlighted && (
                     <div className="absolute top-2 left-2 z-20 px-3 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full text-[9px] font-black shadow-lg flex items-center gap-1.5 animate-bounce">
                       <Sparkles size={11} className="text-amber-300" />
@@ -642,233 +581,231 @@ function ApplicationsListViewContent({
                             className={`w-14 h-14 rounded-2xl object-cover shadow-md border-2 transition-all ${isHighlighted ? 'border-blue-500 scale-105' : 'border-white dark:border-slate-700'}`}
                             alt=""
                           />
-                        <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white dark:border-slate-700 flex items-center justify-center shadow-sm ${app.status === 'approved' ? 'bg-emerald-500' :
+                          <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white dark:border-slate-700 flex items-center justify-center shadow-sm ${app.status === 'approved' ? 'bg-emerald-500' :
                             app.status === 'rejected' ? 'bg-red-500' :
                               'bg-amber-500'
-                          }`}>
-                          {app.status === 'approved' ? <CheckCircle size={10} className="text-white" /> :
-                            app.status === 'rejected' ? <XCircle size={10} className="text-white" /> :
-                              <Clock size={10} className="text-white" />}
+                            }`}>
+                            {app.status === 'approved' ? <CheckCircle size={10} className="text-white" /> :
+                              app.status === 'rejected' ? <XCircle size={10} className="text-white" /> :
+                                <Clock size={10} className="text-white" />}
+                          </div>
                         </div>
-                      </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h3 className="text-sm font-black text-slate-800 dark:text-white truncate">
-                              {isSentView ? (app.jobTitle || app.jobs?.title || 'وظيفة مهنية') : resolved.name}
-                            </h3>
-                            <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mb-1 flex items-center gap-1">
-                              <Briefcase size={10} /> {isSentView ? ((app as any).company || (app.jobs as any)?.company || 'الشركة المعلنة') : (app.jobTitle || app.jobs?.title || app.job?.title)}
-                            </p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <h3 className="text-sm font-black text-slate-800 dark:text-white truncate">
+                                {isSentView ? (app.jobTitle || app.jobs?.title || 'وظيفة مهنية') : resolved.name}
+                              </h3>
+                              <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mb-1 flex items-center gap-1">
+                                <Briefcase size={10} /> {isSentView ? ((app as any).company || (app.jobs as any)?.company || 'الشركة المعلنة') : (app.jobTitle || app.jobs?.title || app.job?.title)}
+                              </p>
 
-                        {/* Status badge for sent applications */}
-                        {isSentView && (
-                          <div className="mt-1.5 mb-1 flex items-center gap-1.5 flex-wrap">
-                            {app.status === 'approved' && (
-                              <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-xl text-[10px] font-black">
-                                <CheckCircle size={12} /> تم قبول طلبك بنجاح 🎉
-                              </span>
-                            )}
-                            {app.status === 'rejected' && (
-                              <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300 rounded-xl text-[10px] font-black">
-                                <XCircle size={12} /> تم الاعتذار عن الطلب 😔
-                              </span>
-                            )}
-                            {(!app.status || app.status === 'pending') && (
-                              <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 rounded-xl text-[10px] font-black">
-                                <Clock size={12} /> قيد المراجعة والانتظار ⏳
-                              </span>
-                            )}
+                              {/* Status badge for sent applications */}
+                              {isSentView && (
+                                <div className="mt-1.5 mb-1 flex items-center gap-1.5 flex-wrap">
+                                  {app.status === 'approved' && (
+                                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-xl text-[10px] font-black">
+                                      <CheckCircle size={12} /> تم قبول طلبك بنجاح 🎉
+                                    </span>
+                                  )}
+                                  {app.status === 'rejected' && (
+                                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300 rounded-xl text-[10px] font-black">
+                                      <XCircle size={12} /> تم الاعتذار عن الطلب 😔
+                                    </span>
+                                  )}
+                                  {(!app.status || app.status === 'pending') && (
+                                    <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 rounded-xl text-[10px] font-black">
+                                      <Clock size={12} /> قيد المراجعة والانتظار ⏳
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* ⭐ Star Rating - Employer view only */}
+                              {!isSentView && (
+                                <div className="flex items-center gap-0.5 mb-2">
+                                  {[1, 2, 3, 4, 5].map(star => (
+                                    <button
+                                      key={star}
+                                      onClick={(e) => { e.stopPropagation(); setRating(app.id, star); }}
+                                      className="p-0.5 transition-transform hover:scale-125 active:scale-95"
+                                    >
+                                      <Star
+                                        size={12}
+                                        className={star <= (ratings[app.id] || 0) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 dark:text-slate-600'}
+                                      />
+                                    </button>
+                                  ))}
+                                  {ratings[app.id] > 0 && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setShowNotesFor(showNotesFor === app.id ? null : app.id); }}
+                                      className={`mr-1 p-0.5 rounded transition-all ${notes[app.id] ? 'text-blue-500' : 'text-slate-300 hover:text-blue-400'}`}
+                                      title="ملاحظة خاصة"
+                                    >
+                                      <StickyNote size={11} />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                              {/* Notes input */}
+                              {!isSentView && (
+                                <AnimatePresence>
+                                  {showNotesFor === app.id && (
+                                    <motion.div
+                                      initial={{ opacity: 0, height: 0 }}
+                                      animate={{ opacity: 1, height: 'auto' }}
+                                      exit={{ opacity: 0, height: 0 }}
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="mb-2 overflow-hidden"
+                                    >
+                                      <textarea
+                                        autoFocus
+                                        defaultValue={notes[app.id] || ''}
+                                        onBlur={(e) => saveNote(app.id, e.target.value)}
+                                        placeholder="أضف ملاحظة خاصة..."
+                                        className="w-full text-[10px] font-bold bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-blue-100 resize-none"
+                                        rows={2}
+                                      />
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                              )}
+                            </div>
+                            <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold whitespace-nowrap">
+                              {new Date(app.created_at).toLocaleDateString('ar-EG')}
+                            </span>
                           </div>
-                        )}
 
-                        {/* ⭐ Star Rating - Employer view only */}
-                        {!isSentView && (
-                          <div className="flex items-center gap-0.5 mb-2">
-                            {[1, 2, 3, 4, 5].map(star => (
+                          {isSentView ? (
+                            <div className="flex items-center gap-2 mt-3">
+                              {app.status === 'approved' && canUseMessaging && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const targetEmployer = allUsers.find(u => u.id === (app as any).employer_id);
+                                    if (targetEmployer) {
+                                      setSelectedChat(targetEmployer);
+                                      setActiveTab('messages');
+                                    } else {
+                                      addToast('يمكنك التواصل مع الشركة عبر صفحة الوظيفة أو الرسائل', 'info');
+                                    }
+                                  }}
+                                  className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/20 active:scale-95"
+                                >
+                                  <MessageSquare size={13} /> محادثة صاحب العمل
+                                </button>
+                              )}
+                              {app.status === 'approved' && !canUseMessaging && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const targetEmployer = allUsers.find(u => u.id === (app as any).employer_id);
+                                    openContactMenu({ phone: targetEmployer?.phone, name: targetEmployer?.name, website: (targetEmployer as any)?.website });
+                                  }}
+                                  className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95"
+                                >
+                                  <Phone size={13} /> تواصل مع صاحب العمل
+                                </button>
+                              )}
                               <button
-                                key={star}
-                                onClick={(e) => { e.stopPropagation(); setRating(app.id, star); }}
-                                className="p-0.5 transition-transform hover:scale-125 active:scale-95"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (window.confirm('هل أنت متأكد من سحب هذا الطلب؟')) {
+                                    onDeleteApplication(app.id);
+                                  }
+                                }}
+                                className="py-2.5 px-4 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded-xl text-[10px] font-black hover:bg-red-100 transition-all flex items-center justify-center gap-1.5 active:scale-95"
                               >
-                                <Star
-                                  size={12}
-                                  className={star <= (ratings[app.id] || 0) ? 'text-amber-400 fill-amber-400' : 'text-slate-200 dark:text-slate-600'}
-                                />
+                                <Trash2 size={13} /> سحب الطلب
                               </button>
-                            ))}
-                            {ratings[app.id] > 0 && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); setShowNotesFor(showNotesFor === app.id ? null : app.id); }}
-                                className={`mr-1 p-0.5 rounded transition-all ${notes[app.id] ? 'text-blue-500' : 'text-slate-300 hover:text-blue-400'}`}
-                                title="ملاحظة خاصة"
-                              >
-                                <StickyNote size={11} />
-                              </button>
-                            )}
-                          </div>
-                        )}
-                        {/* Notes input */}
-                        {!isSentView && (
-                          <AnimatePresence>
-                            {showNotesFor === app.id && (
-                              <motion.div
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                exit={{ opacity: 0, height: 0 }}
-                                onClick={(e) => e.stopPropagation()}
-                                className="mb-2 overflow-hidden"
-                              >
-                                <textarea
-                                  autoFocus
-                                  defaultValue={notes[app.id] || ''}
-                                  onBlur={(e) => saveNote(app.id, e.target.value)}
-                                  placeholder="أضف ملاحظة خاصة..."
-                                  className="w-full text-[10px] font-bold bg-slate-50 dark:bg-slate-700 border border-slate-100 dark:border-slate-600 rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-blue-100 resize-none"
-                                  rows={2}
-                                />
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        )}
-                      </div>
-                      <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold whitespace-nowrap">
-                        {new Date(app.created_at).toLocaleDateString('ar-EG')}
-                      </span>
-                    </div>
-
-                    {isSentView ? (
-                      <div className="flex items-center gap-2 mt-3">
-                        {app.status === 'approved' && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const targetEmployer = allUsers.find(u => u.id === (app as any).employer_id);
-                              if (targetEmployer) {
-                                setSelectedChat(targetEmployer);
-                                setActiveTab('messages');
-                              } else {
-                                addToast('يمكنك التواصل مع الشركة عبر صفحة الوظيفة أو الرسائل', 'info');
-                              }
-                            }}
-                            className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/20 active:scale-95"
-                          >
-                            <MessageSquare size={13} /> محادثة صاحب العمل
-                          </button>
-                        )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (window.confirm('هل أنت متأكد من سحب هذا الطلب؟')) {
-                              onDeleteApplication(app.id);
-                            }
-                          }}
-                          className="py-2.5 px-4 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded-xl text-[10px] font-black hover:bg-red-100 transition-all flex items-center justify-center gap-1.5 active:scale-95"
-                        >
-                          <Trash2 size={13} /> سحب الطلب
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-2 mt-3">
-                        <button
-                          onClick={() => {
-                            const idx = filteredApps.findIndex(a => a.id === app.id);
-                            setSelectedAppIndex(idx >= 0 ? idx : 0);
-                            setShowScheduler(false);
-                            if (appUser?.id) {
-                              try {
-                                const raw = localStorage.getItem(`prolink_seen_apps_${appUser.id}`);
-                                const set = raw ? new Set(JSON.parse(raw)) : new Set<string>();
-                                set.add(app.id);
-                                localStorage.setItem(`prolink_seen_apps_${appUser.id}`, JSON.stringify(Array.from(set)));
-                                window.dispatchEvent(new Event('prolink_seen_apps_updated'));
-                              } catch (_) {}
-                            }
-                          }}
-                          className="flex-[2] py-2.5 bg-slate-900 dark:bg-slate-800 text-white rounded-xl text-[10px] font-black hover:bg-slate-800 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2 shadow-sm border border-transparent dark:border-slate-700 active:scale-95"
-                        >
-                          <User size={12} /> التفاصيل
-                        </button>
-
-                        {/* Quick Actions */}
-                        <div className="flex gap-1.5">
-                          {app.status === 'approved' ? (
-                            <motion.button
-                              whileHover={{ scale: 1.1, y: -2 }}
-                              whileTap={{ scale: 0.9 }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const targetUser = allUsers.find(u => u.id === app.applicant_id);
-                                if (targetUser) {
-                                  setSelectedChat(targetUser);
-                                  setActiveTab('messages');
-                                } else {
-                                  addToast('لم يتم العثور على حساب المتقدم', 'error');
-                                }
-                              }}
-                              className="w-9 h-9 flex items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/40 transition-all"
-                              title="دردشة فورية"
-                            >
-                              <MessageSquare size={16} />
-                            </motion.button>
+                            </div>
                           ) : (
-                            <motion.button
-                              whileHover={{ scale: 1.1, y: -2 }}
-                              whileTap={{ scale: 0.9 }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'approved');
-                              }}
-                              className="w-9 h-9 flex items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30 hover:bg-emerald-500 hover:text-white transition-all"
-                              title="قبول الطلب"
-                            >
-                              <CheckCircle size={16} />
-                            </motion.button>
+                            <div className="flex items-center gap-2 mt-3">
+                              <button
+                                onClick={() => {
+                                  const idx = filteredApps.findIndex(a => a.id === app.id);
+                                  setSelectedAppIndex(idx >= 0 ? idx : 0);
+                                  setShowScheduler(false);
+                                  if (appUser?.id) {
+                                    try {
+                                      const raw = localStorage.getItem(`prolink_seen_apps_${appUser.id}`);
+                                      const set = raw ? new Set(JSON.parse(raw)) : new Set<string>();
+                                      set.add(app.id);
+                                      localStorage.setItem(`prolink_seen_apps_${appUser.id}`, JSON.stringify(Array.from(set)));
+                                      window.dispatchEvent(new Event('prolink_seen_apps_updated'));
+                                    } catch (_) { }
+                                  }
+                                }}
+                                className="flex-[2] py-2.5 bg-slate-900 dark:bg-slate-800 text-white rounded-xl text-[10px] font-black hover:bg-slate-800 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2 shadow-sm border border-transparent dark:border-slate-700 active:scale-95"
+                              >
+                                <User size={12} /> التفاصيل
+                              </button>
+
+                              {/* Quick Actions */}
+                              <div className="flex gap-1.5">
+                                {app.status === 'approved' && canUseMessaging ? (
+                                  <motion.button
+                                    whileHover={{ scale: 1.1, y: -2 }}
+                                    whileTap={{ scale: 0.9 }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const targetUser = allUsers.find(u => u.id === app.applicant_id);
+                                      if (targetUser) {
+                                        setSelectedChat(targetUser);
+                                        setActiveTab('messages');
+                                      } else {
+                                        addToast('لم يتم العثور على حساب المتقدم', 'error');
+                                      }
+                                    }}
+                                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-blue-600 text-white shadow-lg shadow-blue-200 dark:shadow-blue-900/40 transition-all"
+                                    title="دردشة فورية"
+                                  >
+                                    <MessageSquare size={16} />
+                                  </motion.button>
+                                ) : (
+                                  <motion.button
+                                    whileHover={{ scale: 1.1, y: -2 }}
+                                    whileTap={{ scale: 0.9 }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'approved');
+                                    }}
+                                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30 hover:bg-emerald-500 hover:text-white transition-all"
+                                    title="قبول الطلب"
+                                  >
+                                    <CheckCircle size={16} />
+                                  </motion.button>
+                                )}
+
+                                <motion.button
+                                  whileHover={{ scale: 1.1, y: -2 }}
+                                  whileTap={{ scale: 0.9 }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (app.status !== 'rejected') {
+                                      handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'rejected');
+                                    }
+                                  }}
+                                  className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all ${app.status === 'rejected'
+                                    ? 'bg-red-500 text-white shadow-lg shadow-red-200 dark:shadow-red-900/40 cursor-default'
+                                    : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 border border-red-100 dark:border-red-800/30 hover:bg-red-500 hover:text-white hover:shadow-lg hover:shadow-red-200 dark:hover:shadow-red-900/40'
+                                    }`}
+                                  title="رفض الطلب"
+                                >
+                                  <XCircle size={16} />
+                                </motion.button>
+                              </div>
+                            </div>
                           )}
-
-                          <motion.button
-                            whileHover={{ scale: 1.1, y: -2 }}
-                            whileTap={{ scale: 0.9 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (app.status !== 'rejected') {
-                                handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'rejected');
-                              }
-                            }}
-                            className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all ${app.status === 'rejected'
-                                ? 'bg-red-500 text-white shadow-lg shadow-red-200 dark:shadow-red-900/40 cursor-default'
-                                : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 border border-red-100 dark:border-red-800/30 hover:bg-red-500 hover:text-white hover:shadow-lg hover:shadow-red-200 dark:hover:shadow-red-900/40'
-                              }`}
-                            title="رفض الطلب"
-                          >
-                            <XCircle size={16} />
-                          </motion.button>
-
-                          <motion.button
-                            whileHover={{ scale: 1.1, y: -2 }}
-                            whileTap={{ scale: 0.9 }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setAppForAI(app);
-                              setShowAIEval(true);
-                            }}
-                            className="w-9 h-9 flex items-center justify-center rounded-xl bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400 border border-purple-100 dark:border-purple-800/30 hover:bg-purple-600 hover:text-white transition-all shadow-sm"
-                            title="تحليل الذكاء الاصطناعي"
-                          >
-                            <Sparkles size={16} />
-                          </motion.button>
                         </div>
                       </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })()}
-          </GlassCard>
-            </motion.div>
-          );
-        })}
+                    );
+                  })()}
+                </GlassCard>
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
       </div>
 
@@ -979,11 +916,11 @@ function ApplicationsListViewContent({
                 if (!app) return null;
                 const index = selectedAppIndex;
                 const resolved = resolveApplicant(app);
-                const statusBadge = app.status === 'approved' 
+                const statusBadge = app.status === 'approved'
                   ? { label: 'مقبول', cls: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' }
                   : app.status === 'rejected'
-                  ? { label: 'مرفوض', cls: 'bg-red-500/15 border-red-500/30 text-red-600 dark:text-red-400' }
-                  : { label: 'قيد المراجعة', cls: 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400' };
+                    ? { label: 'مرفوض', cls: 'bg-red-500/15 border-red-500/30 text-red-600 dark:text-red-400' }
+                    : { label: 'قيد المراجعة', cls: 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400' };
 
                 return (
                   <motion.div
@@ -1012,9 +949,8 @@ function ApplicationsListViewContent({
                                 referrerPolicy="no-referrer"
                                 alt=""
                               />
-                              <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-white ${
-                                app.status === 'approved' ? 'bg-emerald-500' : app.status === 'rejected' ? 'bg-red-500' : 'bg-amber-500'
-                              }`}>
+                              <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-white ${app.status === 'approved' ? 'bg-emerald-500' : app.status === 'rejected' ? 'bg-red-500' : 'bg-amber-500'
+                                }`}>
                                 {app.status === 'approved' ? <CheckCircle size={12} /> : app.status === 'rejected' ? <XCircle size={12} /> : <Clock size={12} />}
                               </div>
                             </div>
@@ -1093,14 +1029,14 @@ function ApplicationsListViewContent({
                             {app.applicant_data?.phone && (
                               <div className="flex gap-1.5 shrink-0">
                                 <a
-                                  href={`tel:${app.applicant_data.phone}`}
+                                  href={telUrl(app.applicant_data.phone)}
                                   className="p-2 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white rounded-xl transition-all shadow-sm"
                                   title="اتصال هاتفي"
                                 >
                                   <Phone size={14} />
                                 </a>
                                 <a
-                                  href={`https://wa.me/${app.applicant_data.phone.replace(/[^0-9+]/g, '')}`}
+                                  href={whatsappUrl(app.applicant_data.phone)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="p-2 bg-green-50 dark:bg-green-900/40 text-green-600 dark:text-green-400 hover:bg-[#25D366] hover:text-white rounded-xl transition-all shadow-sm"
@@ -1173,8 +1109,8 @@ function ApplicationsListViewContent({
                             {(Array.isArray(app.applicant_data.skills)
                               ? app.applicant_data.skills
                               : typeof app.applicant_data.skills === 'string'
-                              ? app.applicant_data.skills.split(',')
-                              : []
+                                ? app.applicant_data.skills.split(',')
+                                : []
                             ).map((s: any, i: number) => (
                               <span key={i} className="px-3 py-1.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-[10px] font-black shadow-md">{String(s).trim()}</span>
                             ))}
@@ -1214,18 +1150,47 @@ function ApplicationsListViewContent({
                       {/* 📎 CV Options: Direct Native Zero-Freeze Viewer & Download (100% No Freezing) */}
                       {(() => {
                         const cvTargetUrl = app.cv_url || app.applicant_data?.cvUrl || (app.applicant_data as any)?.cv_url || resolved.cvUrl;
+                        const openPlatformCV = () => {
+                          setPreviewApplicantCV({
+                            user: resolved,
+                            applicantData: app.applicant_data || {
+                              name: resolved.name,
+                              avatar: resolved.avatar,
+                              title: resolved.title,
+                              industry: resolved.industry,
+                              location: resolved.location,
+                              phone: resolved.phone,
+                              email: resolved.email,
+                              bio: resolved.bio,
+                              experience: (app as any).experience ?? (resolved as any).experience,
+                              education: (app as any).education ?? (resolved as any).education,
+                              skills: (app as any).skills ?? (resolved as any).skills,
+                              prevWorks: (app.applicant_data as any)?.prevWorks ?? (resolved as any).prevWorks ?? [],
+                            },
+                            coverLetter: app.cover_letter,
+                          });
+                        };
+
                         if (!cvTargetUrl) {
                           return (
-                            <div className="p-4 bg-slate-100 dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between text-right">
+                            <div className="p-4 bg-slate-100 dark:bg-slate-850 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-right">
                               <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-750 text-slate-400 flex items-center justify-center shrink-0">
+                                <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
                                   <FileText size={18} />
                                 </div>
                                 <div>
-                                  <span className="text-xs font-black text-slate-700 dark:text-slate-300 block">ملف السيرة الذاتية (CV)</span>
-                                  <span className="text-[10px] text-slate-400 font-bold block">لم يرفق المتقدم ملف سيرة ذاتية في هذا الطلب</span>
+                                  <span className="text-xs font-black text-slate-700 dark:text-slate-300 block">السيرة الذاتية للمتقدم</span>
+                                  <span className="text-[10px] text-slate-400 font-bold block">منشأة تلقائياً بواسطة المنصة</span>
                                 </div>
                               </div>
+                              <button
+                                type="button"
+                                onClick={openPlatformCV}
+                                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-[#0a66c2] text-white text-xs font-black flex items-center gap-2 shadow-sm hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                              >
+                                <Eye size={14} />
+                                <span>معاينة السيرة الذاتية ↗</span>
+                              </button>
                             </div>
                           );
                         }
@@ -1236,28 +1201,28 @@ function ApplicationsListViewContent({
                               ملف السيرة الذاتية (CV) للمتقدم
                             </h4>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                              {/* Option 1: Direct Open in Browser Native Viewer (100% Zero-Freeze) */}
+                              {/* Option 1: Preview Platform-Generated CV */}
                               <button
                                 type="button"
-                                onClick={() => handleOpenApplicantCV(cvTargetUrl, resolved.name)}
+                                onClick={openPlatformCV}
                                 className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-600 to-[#0a66c2] hover:from-blue-700 hover:to-[#08529c] rounded-2xl text-white shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all group text-right cursor-pointer"
                               >
                                 <div className="flex items-center gap-3 min-w-0">
                                   <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center border border-white/30 shrink-0">
-                                    <ExternalLink size={18} />
+                                    <FileText size={18} />
                                   </div>
                                   <div className="min-w-0">
                                     <span className="text-xs font-black block truncate">معاينة السيرة الذاتية</span>
-                                    <span className="text-[9px] text-blue-100 font-bold block">عرض فوري في نافذة جديدة ↗</span>
+                                    <span className="text-[9px] text-blue-100 font-bold block">السيرة المنشأة عبر المنصة ↗</span>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/20 text-white text-[11px] font-black group-hover:bg-white/30 transition-colors shrink-0">
                                   <Eye size={13} />
-                                  <span>فتح</span>
+                                  <span>معاينة</span>
                                 </div>
                               </button>
 
-                              {/* Option 2: Direct Download */}
+                              {/* Option 2: Direct Download / Open Attached File */}
                               <button
                                 type="button"
                                 onClick={() => handleDownloadApplicantCV(cvTargetUrl, resolved.name)}
@@ -1268,8 +1233,8 @@ function ApplicationsListViewContent({
                                     <Download size={18} />
                                   </div>
                                   <div className="min-w-0">
-                                    <span className="text-xs font-black block truncate">تنزيل السيرة الذاتية</span>
-                                    <span className="text-[9px] text-emerald-100 font-bold block">تحميل مباشر للملف ⬇</span>
+                                    <span className="text-xs font-black block truncate">تنزيل الملف المرفق</span>
+                                    <span className="text-[9px] text-emerald-100 font-bold block">تحميل مباشر للملف الأصلي ⬇</span>
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/20 text-white text-[11px] font-black group-hover:bg-white/30 transition-colors shrink-0">
@@ -1321,24 +1286,34 @@ function ApplicationsListViewContent({
                                   </button>
                                 )}
 
-                                <button
-                                  onClick={() => {
-                                    const applicantId = app.applicant_id;
-                                    if (applicantId) {
-                                      const targetUser = allUsers.find(u => u.id === applicantId);
-                                      if (targetUser) {
-                                        setSelectedChat(targetUser);
-                                        setActiveTab('messages');
-                                        setSelectedAppIndex(null);
-                                      } else {
-                                        addToast('لم يتم العثور على حساب المتقدم', 'error');
+                                {canUseMessaging && (
+                                  <button
+                                    onClick={() => {
+                                      const applicantId = app.applicant_id;
+                                      if (applicantId) {
+                                        const targetUser = allUsers.find(u => u.id === applicantId);
+                                        if (targetUser) {
+                                          setSelectedChat(targetUser);
+                                          setActiveTab('messages');
+                                          setSelectedAppIndex(null);
+                                        } else {
+                                          addToast('لم يتم العثور على حساب المتقدم', 'error');
+                                        }
                                       }
-                                    }
-                                  }}
-                                  className="flex-1 min-w-[130px] py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25 active:scale-95"
-                                >
-                                  <MessageSquare size={16} /> دردشة فورية
-                                </button>
+                                    }}
+                                    className="flex-1 min-w-[130px] py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-500/25 active:scale-95"
+                                  >
+                                    <MessageSquare size={16} /> دردشة فورية
+                                  </button>
+                                )}
+                                {!canUseMessaging && app.applicant_data?.phone && (
+                                  <button
+                                    onClick={() => openContactMenu({ phone: app.applicant_data?.phone, name: app.applicant_data?.name, cvUrl: app.cv_url || (app.applicant_data as any)?.cvUrl })}
+                                    className="flex-1 min-w-[130px] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95"
+                                  >
+                                    <Phone size={16} /> تواصل: واتساب / اتصال
+                                  </button>
+                                )}
                               </>
                             )}
 
@@ -1406,14 +1381,13 @@ function ApplicationsListViewContent({
         onClose={() => { setShowOnboarding(false); }}
       />
 
-      <AnimatePresence>
-        {showAIEval && appForAI && (
-          <AIEvaluationModal
-            application={appForAI}
-            onClose={() => { setShowAIEval(false); setAppForAI(null); }}
-          />
-        )}
-      </AnimatePresence>
+      <GeneratedCVModal
+        isOpen={Boolean(previewApplicantCV)}
+        onClose={() => setPreviewApplicantCV(null)}
+        user={previewApplicantCV?.user}
+        applicantData={previewApplicantCV?.applicantData}
+        coverLetter={previewApplicantCV?.coverLetter}
+      />
 
     </div>
   );

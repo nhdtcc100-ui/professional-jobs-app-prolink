@@ -13,7 +13,7 @@ interface EditPostModalProps {
 }
 
 export const EditPostModal: React.FC<EditPostModalProps> = ({ post, onClose, onSuccess }) => {
-  const { addToast, refreshData, appUser, updatePostInState } = useAppContext();
+  const { addToast, refreshData, appUser } = useAppContext();
   const [content, setContent] = useState(post?.content || '');
   const [imageUrl, setImageUrl] = useState(post?.imageUrl || '');
   const [videoUrl, setVideoUrl] = useState(post?.videoUrl || '');
@@ -33,7 +33,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ post, onClose, onS
   };
 
   const handleSave = async () => {
-    const sanitizedContent = sanitizeInput(content.trim());
+    const sanitizedContent = sanitizeInput(content.trim(), 20000);
     if (!sanitizedContent) {
       addToast('يرجى كتابة محتوى للمنشور', 'error');
       return;
@@ -61,15 +61,10 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({ post, onClose, onS
     } catch (err: any) {
       console.warn('Backend update note:', err);
     } finally {
-      // Optimistic local update with immediate cache persistence
+      // Optimistic local update
       post.content = sanitizedContent;
       post.imageUrl = imageUrl.trim() || undefined;
       post.videoUrl = videoUrl.trim() || undefined;
-      updatePostInState(post.id, {
-        content: sanitizedContent,
-        imageUrl: imageUrl.trim() || null,
-        videoUrl: videoUrl.trim() || null,
-      });
 
       addToast('✨ تم تعديل وحفظ المنشور بنجاح', 'success');
       if (onSuccess) onSuccess({ ...post, content: sanitizedContent, imageUrl: imageUrl.trim() || undefined, videoUrl: videoUrl.trim() || undefined });

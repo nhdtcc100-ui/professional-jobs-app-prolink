@@ -9,6 +9,7 @@ import { withCollisionRetry } from './collisionHandler';
 import { generateUUID } from '../security/distributedId';
 import { withTimeout } from '../utils/withTimeout';
 import { concurrencyMutex } from './concurrencyMutex';
+import { withSessionRecovery } from './sessionRecovery';
 
 // ✅ Max content lengths to prevent payload abuse
 const MAX_POST_LENGTH = 5000;
@@ -42,10 +43,8 @@ export const postService = {
     }
 
     try {
-      const threeDaysAgo = new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString();
       const { data, error } = await supabase.from('posts')
         .select(POST_COLUMNS)
-        .gte('created_at', threeDaysAgo)
         .order('created_at', { ascending: false })
         .limit(Math.min(limit, 100));
 
@@ -53,7 +52,6 @@ export const postService = {
         // Fallback to select('*') in case specific column schema varies
         const fallback = await supabase.from('posts')
           .select('*')
-          .gte('created_at', threeDaysAgo)
           .order('created_at', { ascending: false })
           .limit(Math.min(limit, 100));
 
@@ -117,6 +115,7 @@ export const postService = {
   },
 
   async createPost(postData: any) {
+    return withSessionRecovery(async () => {
     const authorId = postData.author_id || 'anonymous';
     const mutexKey = `post_create_${authorId}`;
     // ✅ Use a fresh UUID per attempt as idempotency key so retries are not blocked by cached errors
@@ -197,7 +196,7 @@ export const postService = {
               }
             }, { scope: 'createPost' });
           },
-          { ttlMs: 15000, scope: 'posts' }
+          { ttlMs: 3000, scope: 'posts' }
         )
       );
 
@@ -213,6 +212,7 @@ export const postService = {
       concurrencyMutex.clearKey(mutexKey);
       return { data: null, error: outerErr instanceof Error ? outerErr : new Error(String(outerErr)) };
     }
+    });
   },
 
   /**
@@ -326,6 +326,6 @@ export const postService = {
     if (!isAdmin && authorId) {
       query = query.eq('author_id', authorId);
     }
-    return query;
+    return query.select('id');
   },
 };

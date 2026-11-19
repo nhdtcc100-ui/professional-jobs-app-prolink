@@ -19,7 +19,7 @@ interface JobCardProps {
   compact?: boolean;
   matchScore?: number;
   onEditJob?: (job: Job) => void;
-  onDeleteJob?: (jobId: string) => void;
+  onDeleteJob?: (jobId: string) => void | boolean | Promise<void | boolean>;
   onPublisherClick?: (employer: any) => void;
 }
 
@@ -128,7 +128,12 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
     setIsDeletingCard(true);
     try {
       if (onDeleteJob) {
-        await onDeleteJob(job.id);
+        const result = await onDeleteJob(job.id);
+        // ✅ لا تُخفَ البطاقة إذا فشل الحذف فعلياً (حتى لا تبقى الوظيفة في صفحة الوظائف)
+        if (result === false) {
+          setShowDeleteConfirm(false);
+          return;
+        }
         setDeleted(true);
         setShowDeleteConfirm(false);
       } else {

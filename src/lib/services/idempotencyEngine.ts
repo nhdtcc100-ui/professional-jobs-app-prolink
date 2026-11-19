@@ -29,7 +29,7 @@ interface CachedRecord<T> {
   expiresAt: number;
 }
 
-const DEFAULT_TTL_MS = 30_000;
+const DEFAULT_TTL_MS = 5_000;
 const SESSION_PREFIX = 'prolink_idempotency_';
 
 class IdempotencyEngine {
@@ -103,17 +103,23 @@ class IdempotencyEngine {
       } catch {}
     }
 
-    // 3. Deduplicate in-flight execution: If already running, wait for it
+    // 3. Deduplicate in-flight execution: If already running, wait briefly (max 2.5s)
     if (this.inFlightMap.has(key)) {
       console.log(`[Idempotency] In-flight request detected for key: ${key}. Awaiting active operation...`);
       const existing = this.inFlightMap.get(key) as Promise<T>;
-      return new Promise<T>((resolve, reject) => {
-        const t = setTimeout(() => {
-          this.inFlightMap.delete(key); // never let a stuck request block retries forever
-          reject(new Error('[Idempotency] انتهت مهلة انتظار الطلب السابق، أعد المحاولة.'));
-        }, 25_000);
-        existing.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
-      });
+      try {
+        return await new Promise<T>((resolve, reject) => {
+          const t = setTimeout(() => {
+            this.inFlightMap.delete(key);
+            // Don't reject — proceed to execute freshly so user is never blocked!
+            resolve(operation());
+          }, 2500);
+          existing.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(operation()); });
+        });
+      } catch {
+        this.inFlightMap.delete(key);
+        return operation();
+      }
     }
 
     // 4. Start execution and register in inFlightMap
@@ -167,9 +173,25 @@ class IdempotencyEngine {
   }
 
   /**
+   * Forcibly clears all in-flight promises and completed cache.
+   */
+  clearAll() {
+    this.inFlightMap.clear();
+    this.memoryCache.clear();
+  }
+
+  /**
+   * Forcibly clears any hanging in-flight promises (e.g. after tab focus or resume).
+   */
+  clearInFlight() {
+    this.inFlightMap.clear();
+  }
+
+  /**
    * Explicitly invalidates a key (e.g. if an operation is rolled back).
    */
   invalidate(key: string) {
+    this.inFlightMap.delete(key);
     this.memoryCache.delete(key);
     if (typeof sessionStorage !== 'undefined') {
       try {

@@ -22,6 +22,7 @@ import { useAppContext } from '../../contexts/AppContext';
 import { telegramSupportService } from '../../lib/services/telegramSupportService';
 
 import { isUUID, sanitizeInput } from '../../lib/utils/sanitize';
+import { whatsappUrl } from '../../lib/utils/contact';
 
 /* ─────────────────────────────────────────────────────────────
    Constants
@@ -59,7 +60,7 @@ const SUPPORT_TABLE = 'support_messages';
    Component
 ───────────────────────────────────────────────────────────── */
 export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
-  const { allUsers = [] } = useAppContext();
+  const { allUsers = [], platformSettings, canUseSupportChat } = useAppContext();
   type Tab = 'overview' | 'terms' | 'labor' | 'privacy' | 'support';
   const [activeTab, setActiveTab] = useState<Tab>('overview');
 
@@ -87,11 +88,6 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
       // 1. فحص فوري من قائمة المستخدمين في الذاكرة
       const memIds = (allUsers || [])
         .filter(u => u.isAdmin || u.is_admin || (u as any).role === 'admin' || (u as any).role === 'superadmin' ||
-          (u.email && (
-            u.email.toLowerCase().includes('admin@prolink.com') ||
-            u.email.toLowerCase().includes('nhdtcc100@gmail.com') ||
-            u.email.toLowerCase().includes('nhd0770@gmail.com')
-          )) ||
           u.phone === SUPPORT_PHONE || u.phone === SUPPORT_PHONE_2
         )
         .map(u => u.id)
@@ -106,7 +102,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
       const { data } = await (supabase as any)
         .from("profiles")
         .select("id, role, is_admin, phone, email")
-        .or(`is_admin.eq.true,role.eq.admin,role.eq.superadmin,phone.eq.${SUPPORT_PHONE},phone.eq.${SUPPORT_PHONE_2},email.ilike.%admin@prolink.com%,email.ilike.%nhdtcc100@gmail.com%,email.ilike.%nhd0770@gmail.com%`);
+        .or(`is_admin.eq.true,role.eq.admin,role.eq.superadmin,phone.eq.${SUPPORT_PHONE},phone.eq.${SUPPORT_PHONE_2}`);
       if (data && data.length > 0) {
         const ids: string[] = data.map((p: any) => p.id).filter(Boolean);
         if (ids.length > 0) {
@@ -136,12 +132,12 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
 
   /* ── Resolve admin ID once when support tab opens ──────── */
   useEffect(() => {
-    if (activeTab !== "support" || adminId) return;
+    if (activeTab !== "support" || !canUseSupportChat || adminId) return;
     resolveAllAdminIDs();
-  }, [activeTab, adminId]);
+  }, [activeTab, adminId, canUseSupportChat]);
   /* ── Load conversation history ────────────────────── */
   useEffect(() => {
-    if (activeTab !== "support" || !appUser?.id) return;
+    if (activeTab !== "support" || !canUseSupportChat || !appUser?.id) return;
     setChatLoading(true);
 
     const twoDaysAgoISO = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
@@ -155,11 +151,11 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
         setMessages(data || []);
         setChatLoading(false);
       });
-  }, [activeTab, appUser?.id]);
+  }, [activeTab, appUser?.id, canUseSupportChat]);
 
   /* ── Auto-sync Telegram replies while in support tab ────── */
   useEffect(() => {
-    if (activeTab !== "support" || !appUser?.id) return;
+    if (activeTab !== "support" || !canUseSupportChat || !appUser?.id) return;
 
     const pullAndRefresh = async () => {
       try {
@@ -180,11 +176,11 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
     pullAndRefresh();
     const interval = setInterval(pullAndRefresh, 6000);
     return () => clearInterval(interval);
-  }, [activeTab, appUser?.id]);
+  }, [activeTab, appUser?.id, canUseSupportChat]);
 
   /* ── Real‑time subscription ─────────────────────── */
   useEffect(() => {
-    if (!appUser?.id) return;
+    if (!appUser?.id || !canUseSupportChat) return;
     // موجة دعم منفصلة لجدول support_messages فقط
     const channel = (supabase as any)
       .channel(`support-chat-live-${appUser.id}`)
@@ -204,7 +200,7 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
     return () => {
       (supabase as any).removeChannel(channel);
     };
-  }, [appUser?.id]);
+  }, [appUser?.id, canUseSupportChat]);
 
   /* ── Scroll to bottom whenever messages change ─────────── */
   useEffect(() => {
@@ -628,15 +624,40 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
                   </div>
                   <div>
                     <h3 className="text-base font-black text-slate-800 dark:text-white">تواصل مع فريق الدعم</h3>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Technical Support — {SUPPORT_PHONE}</p>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest">Technical Support — {platformSettings.supportWhatsapp || SUPPORT_PHONE_2}</p>
                   </div>
                 </div>
                 <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                  اكتب رسالتك وسيردّ عليك فريق الدعم مباشرةً من لوحة التحكم. السبت–الخميس ٩ص–٩م.
+                  {canUseSupportChat
+                    ? 'اكتب رسالتك وسيردّ عليك فريق الدعم مباشرةً من لوحة التحكم. السبت–الخميس ٩ص–٩م.'
+                    : 'تواصل مع فريق الدعم عبر واتساب أو تلكرام. الدردشة داخل التطبيق متاحة للإدارة فقط حالياً.'}
                 </p>
+                <div className="grid grid-cols-2 gap-2.5 mt-4">
+                  {(platformSettings.supportWhatsapp || SUPPORT_PHONE_2) && (
+                    <a
+                      href={whatsappUrl(platformSettings.supportWhatsapp || SUPPORT_PHONE_2)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs rounded-2xl shadow-lg shadow-emerald-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                      <MessageCircle size={16} /> واتساب الدعم
+                    </a>
+                  )}
+                  {platformSettings.supportTelegram && (
+                    <a
+                      href={`https://t.me/${platformSettings.supportTelegram.replace(/^@+/, '').replace(/^https?:\/\/t\.me\//, '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="py-3 bg-sky-500 hover:bg-sky-600 text-white font-black text-xs rounded-2xl shadow-lg shadow-sky-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Send size={16} /> تلكرام الدعم
+                    </a>
+                  )}
+                </div>
               </div>
 
-              {/* Chat window */}
+              {/* Chat window — admin-only until opened */}
+              {canUseSupportChat ? (
               <div className="bg-white dark:bg-slate-800 rounded-[2rem] border border-slate-100 dark:border-slate-700 shadow-sm flex flex-col overflow-hidden" style={{ minHeight: '380px', maxHeight: '60vh' }}>
                 {/* Messages area */}
                 <div className="flex-1 overflow-y-auto p-5 space-y-3">
@@ -708,6 +729,12 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
                   )}
                 </div>
               </div>
+              ) : (
+              <div className="bg-amber-50 dark:bg-amber-950/20 rounded-[2rem] p-6 border border-amber-100 dark:border-amber-800/30 text-center">
+                <p className="text-xs font-black text-amber-700 dark:text-amber-300">🔒 الدردشة المباشرة مع الدعم مقفلة حالياً ومتاحة للإدارة فقط.</p>
+                <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80 font-bold mt-1.5">استخدم زرّي واتساب أو تلكرام أعلاه للتواصل مع فريق الدعم.</p>
+              </div>
+              )}
 
               {/* Hours note */}
               <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl p-4 border border-blue-100 dark:border-blue-800/30 flex items-center gap-3">

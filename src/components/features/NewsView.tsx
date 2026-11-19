@@ -142,14 +142,15 @@ const fetchFeed = async (feed: { url: string; region: NewsItem['region']; label:
   // 3. Fallback through resilient, active CORS proxies (No dead thingproxy)
   if (items.length === 0) {
     const proxies = [
+      (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
       (u: string) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-      (u: string) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`
+      (u: string) => `https://api.allorigins.win/get?url=${encodeURIComponent(u)}`
     ];
 
     for (const proxy of proxies) {
       try {
         const pUrl = proxy(feed.url);
-        const res = await fetch(pUrl, { signal: AbortSignal.timeout(3500) });
+        const res = await fetch(pUrl, { signal: AbortSignal.timeout(4500) });
         if (!res.ok) continue;
         let text = '';
         if (pUrl.includes('/get?url=')) {
@@ -324,24 +325,8 @@ export function NewsCarousel({
             } catch {}
           }
 
-          // If no items yet, show instant rich fallback so carousel never blocks
-          if (items.length === 0) {
-            const fallbackJobs = newsService.getChannelFallback('thekhana', 'الخانة - وظائف العراق');
-            setItems(fallbackJobs.slice(0, 8));
-            setLoading(false);
-          }
-
           const sources = newsService.getDefaultSources();
-          const results: NewsItem[][] = [];
-          for (let i = 0; i < sources.length; i++) {
-            if (i > 0) await new Promise(r => setTimeout(r, 300));
-            try {
-              const res = await newsService.fetchRSS(sources[i].url, sources[i].name);
-              results.push(res);
-            } catch {
-              results.push([]);
-            }
-          }
+          const results = await Promise.all(sources.map(s => newsService.fetchRSS(s.url, s.name)));
           const flat = results.flat().sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
           const jobNews = flat.filter(n => n.topic === 'وظائف' || /فرصة|وظيفة|وظائف|تعيين|توظيف|شواغر|سيرة ذاتية|التقديم على/i.test(n.title + ' ' + (n.description || '')));
           

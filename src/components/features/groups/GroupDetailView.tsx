@@ -265,7 +265,8 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
           from_name: appUser.name,
           from_avatar: appUser.avatar,
           target_id: group.id,
-          read: false
+          read: false,
+          message: `طلب ${appUser.name || 'مستخدم'} الانضمام إلى مجموعتك "${group.name}" ⏳`
         }]);
       } else {
         addToast('تم الانضمام للمجموعة بنجاح ✅');
@@ -277,7 +278,8 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
           from_name: appUser.name,
           from_avatar: appUser.avatar,
           target_id: group.id,
-          read: false
+          read: false,
+          message: `انضم ${appUser.name || 'مستخدم'} إلى مجموعتك "${group.name}" ✅`
         }]);
       }
       checkMembership();

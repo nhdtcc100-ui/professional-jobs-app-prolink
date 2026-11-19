@@ -27,6 +27,7 @@ import {
 } from './missions';
 
 import { getJobCategory } from '../../lib/utils/jobCategoryUtils';
+import { withSessionRecovery } from '../../lib/services/sessionRecovery';
 
 interface MissionsViewProps {
   jobs: Job[];
@@ -66,7 +67,7 @@ export function MissionsView({
   jobs, appUser, allUsers, addToast, messages, onApplyJob, setActiveTab, onPublisherClick,
   initialSelectedJob, onClearInitialJob, onViewJob
 }: MissionsViewProps) {
-  const { refreshData, markJobApplicationNotificationsAsRead, addJobToState, updateJobInState } = useAppContext();
+  const { refreshData, markJobApplicationNotificationsAsRead, handleDeleteJob: deleteJobGlobal } = useAppContext();
   const isAdmin = isUserAdmin(appUser);
 
   const [mainTab, setMainTab] = useState<MainTab>('jobs');
@@ -108,18 +109,8 @@ export function MissionsView({
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
   const [editCourseData, setEditCourseData] = useState<Course | null>(null);
   const [jobToDelete, setJobToDelete] = useState<string | null>(null);
-  const [incomingApplications, setIncomingApplications] = useState<any[]>(() => {
-    try {
-      const raw = localStorage.getItem(`prolink_cached_incoming_apps_${appUser?.id}`);
-      return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
-  });
-  const [sentApplications, setSentApplications] = useState<any[]>(() => {
-    try {
-      const raw = localStorage.getItem(`prolink_cached_sent_apps_${appUser?.id}`);
-      return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
-  });
+  const [incomingApplications, setIncomingApplications] = useState<any[]>([]);
+  const [sentApplications, setSentApplications] = useState<any[]>([]);
   const [appsLoading, setAppsLoading] = useState(false);
 
   const [seenAppIds, setSeenAppIds] = useState<Set<string>>(() => {
@@ -183,7 +174,7 @@ export function MissionsView({
       const incoming = incomingRes.data;
 
       if (incoming) {
-        const mappedIncoming = (incoming as any[]).map((app: any) => {
+        setIncomingApplications((incoming as any[]).map((app: any) => {
           const job = app.jobs || jobs.find((j: any) => j.id === app.job_id);
           const userProfile = app.applicant || allUsers.find((u: any) => u.id === app.applicant_id);
           const applicantData = {
@@ -205,9 +196,9 @@ export function MissionsView({
             jobTitle: job?.title || 'وظيفة غير معروفة',
             requirements: job?.requirements || job?.description || ''
           };
-        });
-        setIncomingApplications(mappedIncoming);
-        try { localStorage.setItem(`prolink_cached_incoming_apps_${appUser.id}`, JSON.stringify(mappedIncoming.slice(0, 100))); } catch {}
+        }));
+      } else {
+        setIncomingApplications([]);
       }
 
       const { data: sent } = await (supabase as any)
@@ -217,12 +208,12 @@ export function MissionsView({
         .order('created_at', { ascending: false });
 
       if (sent) {
-        const mappedSent = (sent as any[]).map((app: any) => {
+        setSentApplications((sent as any[]).map((app: any) => {
           const job = jobs.find(j => j.id === app.job_id);
           return { ...app, jobTitle: job?.title || 'وظيفة', company: job?.company || 'شركة' };
-        });
-        setSentApplications(mappedSent);
-        try { localStorage.setItem(`prolink_cached_sent_apps_${appUser.id}`, JSON.stringify(mappedSent.slice(0, 100))); } catch {}
+        }));
+      } else {
+        setSentApplications([]);
       }
     } catch (err) {
       console.error('fetchApplications error:', err);
@@ -290,76 +281,47 @@ export function MissionsView({
       return;
     }
 
-    const tempJobId = editingJobId || `job-opt-${Date.now()}`;
-    const postData = {
-      title: formData.title,
-      company,
-      description: formData.description,
-      requirements: formData.requirements,
-      location: formData.location || appUser.location || 'عن بُعد',
-      salary: formData.salary,
-      jobType: formData.jobType,
-      category: formData.category,
-      working_hours: formData.working_hours,
-      employer_id: appUser.id,
-      imageUrl: formData.imageUrl || appUser.coverUrl || (appUser as any)?.cover_url || null,
-      is_active: formData.is_active,
-    };
+    setIsPosting(true);
 
-    // ⚡ 1. Immediate optimistic UI & cache update
-    if (editingJobId) {
-      updateJobInState(editingJobId, {
-        ...postData,
-        workingHours: postData.working_hours,
-        employerName: company,
-        image_url: postData.imageUrl,
-      });
-    } else {
-      const optimisticJob: Job = {
-        id: tempJobId,
-        title: postData.title,
-        company: postData.company,
-        description: postData.description,
-        requirements: postData.requirements,
-        location: postData.location,
-        salary: postData.salary,
-        jobType: postData.jobType,
-        category: postData.category,
-        workingHours: postData.working_hours,
-        working_hours: postData.working_hours,
-        employer_id: appUser.id,
-        employerName: company,
-        image_url: postData.imageUrl,
-        is_active: postData.is_active,
-        postedAt: { toDate: () => new Date() },
-        created_at: new Date().toISOString()
-      };
-      addJobToState(optimisticJob);
-    }
+    // Safety timeout — resets loading after 15 seconds no matter what
+    const safetyTimer = setTimeout(() => {
+      setIsPosting(false);
+      addToast('انتهت المهلة، يرجى المحاولة مجدداً', 'error');
+    }, 15000);
 
-    addToast(editingJobId ? '✅ تم تحديث الوظيفة!' : '🚀 تم نشر الوظيفة!');
-    setFormData({ ...EMPTY_JOB_FORM, company: appUser.companyName || '' });
-    setShowPostForm(false);
-    const wasEditing = Boolean(editingJobId);
-    setEditingJobId(null);
-
-    // ⚡ 2. Async backend persistence in background
     try {
-      const res: any = wasEditing
-        ? await jobService.updateJob(tempJobId, appUser.id, postData)
+      // لا نحفظ الصورة مرتين — نستخدم employer_id لجلب صورة صاحب العمل من جدول profiles عند العرض
+      const postData = {
+        title: formData.title,
+        company,
+        description: formData.description,
+        requirements: formData.requirements,
+        location: formData.location || appUser.location || 'عن بُعد',
+        salary: formData.salary,
+        jobType: formData.jobType,
+        category: formData.category,
+        working_hours: formData.working_hours,
+        employer_id: appUser.id,
+        imageUrl: formData.imageUrl || appUser.coverUrl || (appUser as any)?.cover_url || null,
+        is_active: formData.is_active,
+      };
+
+      const { error } = editingJobId
+        ? await jobService.updateJob(editingJobId, appUser.id, postData)
         : await jobService.postJob(postData);
 
-      if (res?.error) throw res.error;
+      if (error) throw error;
 
-      if (!wasEditing && res?.data) {
-        const createdRow = Array.isArray(res.data) ? res.data[0] : res.data;
-        if (createdRow?.id && createdRow.id !== tempJobId) {
-          updateJobInState(tempJobId, { id: createdRow.id });
-        }
-      }
+      addToast(editingJobId ? '✅ تم تحديث الوظيفة!' : '🚀 تم نشر الوظيفة!');
+      setFormData({ ...EMPTY_JOB_FORM, company: appUser.companyName || '' });
+      setShowPostForm(false);
+      setEditingJobId(null);
+      refreshData();
     } catch (e: any) {
-      console.error('Job post error:', e);
-      addToast('تنبيه: فشل الحفظ في السحابة: ' + (e.message || 'خطأ غير معروف'), 'error');
+      addToast('فشل: ' + (e.message || 'خطأ غير معروف'), 'error');
+    } finally {
+      clearTimeout(safetyTimer);
+      setIsPosting(false);
     }
   };
 
@@ -446,58 +408,42 @@ export function MissionsView({
 
   const handleDeleteJob = async (jobId: string) => {
     if (!appUser?.id) { addToast('يجب تسجيل الدخول أولاً', 'error'); return; }
-    try {
-      const { error } = await jobService.deleteJob(jobId, appUser.id);
-      if (error) throw error;
-      refreshData();
-      addToast('تم حذف الوظيفة');
+    // ✅ الحذف عبر المعالج العام يزيل الوظيفة من الحالة المشتركة فوراً
+    // فتختفي من الرئيسية وصفحة الوظائف معاً بدون رفرش.
+    const ok = await deleteJobGlobal(jobId);
+    if (ok) {
       setJobToDelete(null);
-    } catch (e: any) {
-      addToast('خطأ: ' + e.message, 'error');
+      refreshData();
     }
   };
 
   const handleDeleteApplication = async (appId: string) => {
-    if (!window.confirm('هل أنت متأكد من حذف الطلب؟')) return;
-    setIncomingApplications(prev => {
-      const next = prev.filter(a => a.id !== appId);
-      try { localStorage.setItem(`prolink_cached_incoming_apps_${appUser?.id}`, JSON.stringify(next.slice(0, 100))); } catch {}
-      return next;
-    });
-    setSentApplications(prev => {
-      const next = prev.filter(a => a.id !== appId);
-      try { localStorage.setItem(`prolink_cached_sent_apps_${appUser?.id}`, JSON.stringify(next.slice(0, 100))); } catch {}
-      return next;
-    });
-    addToast('تم حذف الطلب');
+    if (!window.confirm('هل أنت متأكد؟')) return;
     try {
       const { error } = await supabase.from('job_applications').delete().eq('id', appId);
       if (error) throw error;
+      fetchApplications();
+      addToast('تم حذف الطلب');
     } catch (e: any) {
       addToast('خطأ: ' + e.message, 'error');
-      fetchApplications();
     }
   };
 
   const handleApplicationAction = async (appId: string, jobTitle: string, status: 'approved' | 'rejected' | 'pending') => {
     if (!appUser) return;
-    // ⚡ 1. Optimistic state & cache update immediately
-    setIncomingApplications(prev => {
-      const next = prev.map((a: any) => a.id === appId ? { ...a, status } : a);
-      try { localStorage.setItem(`prolink_cached_incoming_apps_${appUser.id}`, JSON.stringify(next.slice(0, 100))); } catch {}
-      return next;
-    });
-
-    addToast(status === 'approved' ? '✅ تم قبول الطلب بنجاح' : status === 'rejected' ? 'تم الرفض' : '🔄 تمت الإعادة للمراجعة');
-
     try {
-      const { error } = await (supabase as any).from('job_applications').update({ status }).eq('id', appId);
-      if (error) throw error;
-      fetchApplications();
+      await withSessionRecovery(async () => {
+        const { data: updatedRows, error } = await (supabase as any).from('job_applications').update({ status }).eq('id', appId).select('id');
+        if (error) throw error;
+        if (!updatedRows || updatedRows.length === 0) throw new Error('لا تملك صلاحية تعديل هذا الطلب');
+        return updatedRows;
+      });
+
+      setIncomingApplications(prev => prev.map((a: any) => a.id === appId ? { ...a, status } : a));
+      addToast(status === 'approved' ? '✅ تم قبول الطلب بنجاح' : status === 'rejected' ? 'تم الرفض' : '🔄 تمت الإعادة للمراجعة');
+      await fetchApplications();
     } catch (e: any) {
-      console.error('Update status error:', e);
-      addToast('خطأ أثناء التحديث: ' + e.message, 'error');
-      fetchApplications();
+      addToast('خطأ: ' + e.message, 'error');
     }
   };
 
@@ -505,44 +451,9 @@ export function MissionsView({
     if (!appUser) return;
     if (job.is_active === false) { addToast('هذه الوظيفة مغلقة حالياً للتقديم', 'error'); return; }
     if (!job.employer_id) { addToast('بيانات صاحب العمل مفقودة', 'error'); return; }
-
-    const cvUrl = (appUser as any).cvUrl || (appUser as any).cv_url || '';
-    const tempAppId = `opt-app-${Date.now()}`;
-    const newSentApp = {
-      id: tempAppId,
-      job_id: job.id,
-      applicant_id: appUser.id,
-      employer_id: job.employer_id,
-      status: 'pending',
-      created_at: new Date().toISOString(),
-      jobTitle: job.title,
-      company: job.company,
-      cover_letter: 'أرغب في التقديم عبر ملفي الشخصي.',
-      cv_url: cvUrl,
-      jobs: { title: job.title, company: job.company, description: job.description, requirements: job.requirements }
-    };
-
-    // ⚡ 1. Optimistic sent applications state & cache update immediately
-    setSentApplications(prev => {
-      const next = [newSentApp, ...prev.filter(a => a.job_id !== job.id)];
-      try { localStorage.setItem(`prolink_cached_sent_apps_${appUser.id}`, JSON.stringify(next.slice(0, 100))); } catch {}
-      return next;
-    });
-
-    // Mark applied job in localStorage
     try {
-      const appliedKey = `prolink_applied_jobs_${appUser.id}`;
-      const existing = JSON.parse(localStorage.getItem(appliedKey) || '[]') as string[];
-      if (!existing.includes(job.id)) {
-        existing.push(job.id);
-        localStorage.setItem(appliedKey, JSON.stringify(existing.slice(-500)));
-      }
-    } catch {}
-
-    addToast('🚀 تم إرسال طلب التقديم بنجاح!');
-    setSelectedJobDetails(null);
-
-    try {
+      addToast('جاري إرسال طلبك... ⚡');
+      const cvUrl = (appUser as any).cvUrl || (appUser as any).cv_url || '';
       const { error } = await jobService.applyToJob(appUser.id, job.employer_id, {
         jobId: job.id,
         skills: appUser.skills || [],
@@ -563,6 +474,8 @@ export function MissionsView({
         coverLetter: 'أرغب في التقديم عبر ملفي الشخصي.'
       });
       if (error) throw error;
+      addToast('🚀 تم التقديم بنجاح!');
+      setSelectedJobDetails(null);
       fetchApplications();
     } catch (e: any) {
       addToast('فشل التقديم: ' + e.message, 'error');
@@ -774,6 +687,7 @@ export function MissionsView({
                         compact={filteredJobs.length >= 3}
                         matchScore={score > 0 ? score : calculateMatchScore(job.requirements || job.description || '')}
                         onPublisherClick={onPublisherClick}
+                        onDeleteJob={handleDeleteJob}
                       />
                     </RecedeCard>
                   ))}

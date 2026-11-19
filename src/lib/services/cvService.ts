@@ -15,7 +15,7 @@
  *  FIX-10 Async errors   – all throws caught and returned as typed { error }
  */
 
-import { supabase } from '../supabase';
+import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY, AUTH_STORAGE_KEY, LEGACY_AUTH_STORAGE_KEY } from '../supabase';
 import { generateUUID } from '../security/distributedId';
 import { logger } from '../logger';
 
@@ -136,13 +136,13 @@ async function uploadBlobToSupabase(
   path: string,
   contentType: string
 ): Promise<string | null> {
-  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ubeqmsyyyojojmswmidq.supabase.co';
-  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InViZXFtc3l5eW9qb2ptc3dtaWRxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc5NDMzNTcsImV4cCI6MjEwMzUxOTM1N30.sc4MWy_zn0bY3XaCZfwtt5kBTMSd84hiAfhevOwOj_0';
+  const supabaseUrl = SUPABASE_URL;
+  const supabaseAnonKey = SUPABASE_ANON_KEY;
 
   let token = supabaseAnonKey;
   try {
-    const raw = localStorage.getItem('prolink_v2_auth_session') ||
-                localStorage.getItem('sb-ubeqmsyyyojojmswmidq-auth-token');
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY) ||
+                localStorage.getItem(LEGACY_AUTH_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
       token = parsed?.access_token || parsed?.currentSession?.access_token || supabaseAnonKey;

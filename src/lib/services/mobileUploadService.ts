@@ -205,8 +205,14 @@ async function uploadToStorage(
   }
   const fileName = `${userId}/${uuid}.${ext}`;
 
-  // Ensure auth session headers are fresh (required for Storage RLS)
-  try { await supabase.auth.getSession(); } catch {}
+  // Ensure auth session headers are fresh (required for Storage RLS).
+  // ⏱️ بمهلة حتى لا يعلّق الرفع قبل أن يبدأ إذا كان قفل المصادقة عالقاً بعد تجميد التبويب.
+  try {
+    await Promise.race([
+      supabase.auth.getSession(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('getSession timeout')), 4000)),
+    ]);
+  } catch {}
 
   for (const bucket of buckets) {
     try {

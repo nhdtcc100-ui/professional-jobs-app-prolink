@@ -2,15 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Phone, MessageCircle, Copy, Check, Link2, X, FileText } from 'lucide-react';
 import { ContactMenuDetail, normalizeIraqiPhone, telUrl, whatsappUrl } from '../../lib/utils/contact';
 import { shareCvFile } from '../../lib/utils/cv';
-import { CvData, normalizeCvUrl, readCvSnapshot } from '../../lib/cv/cvData';
-import { cvProfileService } from '../../lib/services/cvProfileService';
-import { CvViewerModal } from '../features/cv/CvViewerModal';
 
 export function ContactMenu({ detail, onClose }: { detail: ContactMenuDetail; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const [sharingCv, setSharingCv] = useState(false);
   const [cvError, setCvError] = useState('');
-  const [builtCv, setBuiltCv] = useState<CvData | null>(null);
   const phone = (detail.phone || '').trim();
   const normalized = normalizeIraqiPhone(phone);
   const website = (detail.website || '').trim();
@@ -31,8 +27,8 @@ export function ContactMenu({ detail, onClose }: { detail: ContactMenuDetail; on
   };
 
   const openWebsite = () => {
-    const url = normalizeCvUrl(website);
-    if (url) window.open(url, '_blank', 'noopener,noreferrer');
+    const url = /^https?:\/\//i.test(website) ? website : `https://${website}`;
+    window.open(url, '_blank', 'noopener');
   };
 
   const shareCv = async () => {
@@ -47,20 +43,6 @@ export function ContactMenu({ detail, onClose }: { detail: ContactMenuDetail; on
       setSharingCv(false);
     }
   };
-
-  const viewBuiltCv = async () => {
-    if (sharingCv) return;
-    setSharingCv(true); setCvError('');
-    try {
-      const snapshot = readCvSnapshot(detail.cv);
-      const data = snapshot?.data || (detail.cvUserId ? (await cvProfileService.loadPublic(detail.cvUserId))?.data : null);
-      if (data) setBuiltCv(data);
-      else setCvError('لم يختر صاحب الملف إتاحة سيرته للعرض');
-    } catch { setCvError('تعذر تحميل السيرة الذاتية'); }
-    finally { setSharingCv(false); }
-  };
-
-  if (builtCv) return <CvViewerModal data={builtCv} onClose={() => setBuiltCv(null)} />;
 
   return (
     <div className="fixed inset-0 z-[1200] flex items-end sm:items-center justify-center" dir="rtl">
@@ -113,7 +95,6 @@ export function ContactMenu({ detail, onClose }: { detail: ContactMenuDetail; on
               الرابط المنشور (موقع / لينكدإن)
             </button>
           )}
-          {(detail.cvUserId || detail.cv) && <button onClick={viewBuiltCv} disabled={sharingCv} className="flex items-center gap-3 w-full px-4 py-3 rounded-2xl bg-[#0a66c2] text-white font-bold disabled:opacity-60"><FileText size={20} />{sharingCv ? 'جاري تحميل السيرة...' : 'معاينة ومشاركة السيرة الذاتية'}</button>}
           {cvUrl && (
             <>
               <button
@@ -124,10 +105,10 @@ export function ContactMenu({ detail, onClose }: { detail: ContactMenuDetail; on
                 <FileText size={20} />
                 {sharingCv ? 'جاري تجهيز السيرة...' : 'إرسال السيرة الذاتية (CV) كملف'}
               </button>
+              {cvError && <p className="text-xs text-red-500 font-bold text-center">{cvError}</p>}
             </>
           )}
-          {cvError && <p role="alert" className="text-xs text-red-500 font-bold text-center">{cvError}</p>}
-          {!normalized && !website && !cvUrl && !detail.cvUserId && !detail.cv && (
+          {!normalized && !website && !cvUrl && (
             <p className="text-sm text-slate-500 dark:text-slate-400 text-center py-3">لا تتوفر بيانات تواصل لهذا المستخدم</p>
           )}
         </div>
@@ -142,7 +123,7 @@ export function ContactMenuHost() {
   useEffect(() => {
     const onOpen = (e: Event) => {
       const d = (e as CustomEvent<ContactMenuDetail>).detail;
-      if (d && (d.phone || d.website || d.cvUrl || d.cvUserId || d.cv)) setDetail(d);
+      if (d && (d.phone || d.website || d.cvUrl)) setDetail(d);
     };
     window.addEventListener('prolink:contact-menu', onOpen);
     return () => window.removeEventListener('prolink:contact-menu', onOpen);

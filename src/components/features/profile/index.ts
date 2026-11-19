@@ -5,3 +5,5 @@ export * from './ProfileActivityView';
 export * from './ProfilePage';
 export * from './ProfileInfoCard';
 export * from './ModernProfileView';
+export * from './CVBuilderPage';
+export * from './GeneratedCVModal';

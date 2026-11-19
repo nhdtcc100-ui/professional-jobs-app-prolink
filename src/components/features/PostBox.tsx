@@ -21,6 +21,7 @@ import { imageService } from '../../lib/services/imageService';
 import { GlassButton } from '../ui';
 import { useAppContext } from '../../contexts/AppContext';
 import { withTimeout } from '../../lib/utils/withTimeout';
+import { withSessionRecovery } from '../../lib/services/sessionRecovery';
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -42,7 +43,7 @@ const EMPTY_JOB_FORM = {
 };
 
 export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, searchQuery, setSearchQuery }) => {
-  const { setPosts, refreshData, setActiveTab, appUser: contextUser, setIsPublishingArticle, searchQuery: ctxSearchQuery, setSearchQuery: ctxSetSearchQuery, addPostToState, updatePostInState, removePostFromState } = useAppContext();
+  const { setPosts, refreshData, setActiveTab, appUser: contextUser, setIsPublishingArticle, searchQuery: ctxSearchQuery, setSearchQuery: ctxSetSearchQuery } = useAppContext();
   const effectiveSearchQuery = searchQuery !== undefined ? searchQuery : (ctxSearchQuery || '');
   const handleSearchChange = (val: string) => {
     if (setSearchQuery) setSearchQuery(val);
@@ -158,7 +159,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
     const rawContent = (uploadType === 'article' && articleTitle.trim())
       ? `# ${articleTitle.trim()}\n\n${content}`
       : content;
-    const postContent = sanitizeInput(rawContent, {
+    const postContent = sanitizeInput(rawContent, 20000, {
       id: appUser?.id,
       name: appUser?.name,
       email: appUser?.email
@@ -177,7 +178,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
     setUploadType(null);
     setIsPosting(true);
 
-    // 2. Optimistic Update (Immediate state + localStorage cache persistence)
+    // 2. Optimistic Update
     const optimisticPost = {
       id: tempId,
       authorId: appUser.id,
@@ -190,7 +191,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       likesCount: 0,
       timestamp: { toDate: () => new Date() }
     };
-    addPostToState(optimisticPost as any);
+    setPosts(prev => [optimisticPost as any, ...prev]);
 
     try {
       let finalImageUrl: string | null = null;
@@ -209,40 +210,42 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
         finalVideoUrl = await imageService.uploadVideo(postSelectedFile, appUser.id);
       }
 
-      const { data: newPost, error }: any = await withTimeout<any>(
-        db.from('posts').insert([{
-          author_id:     appUser.id,
-          author_name:   appUser.name   || 'مستخدم Elevate عراق',
-          author_avatar: appUser.avatar || null,
-          author_title:  appUser.role === 'employer'
-                           ? (appUser.companyName || 'صاحب عمل')
-                           : 'باحث عن عمل',
-          content:       postContent,
-          image_url:     (postType === 'photo' || postType === 'article')
-                           ? (finalImageUrl || postAttachment)
-                           : null,
-          video_url:     postType === 'video'
-                           ? (finalVideoUrl || null)
-                           : (postVideoUrl || null),
-          likes_count:   0,
-        }]).select('id').single(),
-        15000,
-        'postBox.insert'
-      );
+      const { data: newPost, error }: any = await withSessionRecovery(async () => {
+        return withTimeout<any>(
+          db.from('posts').insert([{
+            author_id:     appUser.id,
+            author_name:   appUser.name   || 'مستخدم Elevate عراق',
+            author_avatar: appUser.avatar || null,
+            author_title:  appUser.role === 'employer'
+                             ? (appUser.companyName || 'صاحب عمل')
+                             : 'باحث عن عمل',
+            content:       postContent,
+            image_url:     (postType === 'photo' || postType === 'article')
+                             ? (finalImageUrl || postAttachment)
+                             : null,
+            video_url:     postType === 'video'
+                             ? (finalVideoUrl || null)
+                             : (postVideoUrl || null),
+            likes_count:   0,
+          }]).select('id').single(),
+          15000,
+          'postBox.insert'
+        );
+      });
 
       if (error) throw error;
 
       postService.invalidateCache();
 
       if (newPost?.id) {
-        updatePostInState(tempId, { id: newPost.id });
+        setPosts(prev => prev.map(p => p.id === tempId ? { ...p, id: newPost.id } : p));
       }
 
       addToast('تم النشر بنجاح! 🚀');
     } catch (e: any) {
       console.error(e);
       addToast('فشل الإرسال: ' + e.message, 'error');
-      removePostFromState(tempId);
+      setPosts(prev => prev.filter(p => p.id !== tempId));
     } finally {
       setIsPosting(false);
       setIsPublishingArticle(false);
