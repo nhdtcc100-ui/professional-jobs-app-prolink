@@ -24,13 +24,15 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
 }) => {
   const printAreaRef = useRef<HTMLDivElement>(null);
 
-  // 🔒 Lock background scroll and keep modal dead-centered in the user's viewport
+  // 🔒 Lock background scroll and isolate print layout to this modal only
   useEffect(() => {
     if (!isOpen) return;
     const originalOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    document.body.classList.add('printable-modal-open');
     return () => {
       document.body.style.overflow = originalOverflow;
+      document.body.classList.remove('printable-modal-open');
     };
   }, [isOpen]);
 

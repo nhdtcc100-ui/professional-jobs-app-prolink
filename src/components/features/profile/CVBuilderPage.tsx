@@ -350,9 +350,9 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
       </header>
 
       {/* ── Main Workspace: Split View on Desktop ── */}
-      <main className="max-w-7xl mx-auto w-full p-3 sm:p-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <main className="max-w-7xl mx-auto w-full p-3 sm:p-6 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 print:block print:p-0 print:m-0 print:max-w-none">
         {/* ── Left / Editor Column (Hidden on mobile if preview tab is active) ── */}
-        <div className={`lg:col-span-6 space-y-5 print:hidden ${activeView === 'preview' ? 'hidden lg:block' : 'block'}`}>
+        <div className={`lg:col-span-6 space-y-5 print:hidden cv-editor-column ${activeView === 'preview' ? 'hidden lg:block' : 'block'}`}>
           {/* Card: Personal Info */}
           <div className="p-5 sm:p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
             <div className="flex items-center gap-2.5 pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -748,7 +748,7 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
         </div>
 
         {/* ── Right / ATS Preview Column (Always visible on desktop, or when activeView==='preview' on mobile) ── */}
-        <div className={`lg:col-span-6 space-y-4 ${activeView === 'editor' ? 'hidden lg:block' : 'block'}`}>
+        <div className={`lg:col-span-6 space-y-4 print:w-full print:p-0 print:m-0 print:block ${activeView === 'editor' ? 'hidden lg:block' : 'block'}`}>
           <div className="flex items-center justify-between px-1 print:hidden">
             <span className="text-xs font-black text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
               <Eye size={15} className="text-blue-600 dark:text-blue-400" />
