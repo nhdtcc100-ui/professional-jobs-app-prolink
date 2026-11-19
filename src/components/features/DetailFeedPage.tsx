@@ -259,15 +259,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
       <div
         className="flex-1 min-h-0 w-full flex items-center justify-center relative overflow-hidden px-2 sm:px-4 py-2 bg-slate-100/70 dark:bg-slate-950"
       >
-        {/* Floating Top Corner Return Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-3.5 right-3.5 z-40 p-2.5 rounded-full bg-white/95 dark:bg-slate-900/95 text-blue-600 dark:text-blue-400 shadow-md border border-slate-200 dark:border-slate-800 hover:scale-105 active:scale-95 transition-all backdrop-blur-xl cursor-pointer flex items-center justify-center"
-          title="رجوع"
-          aria-label="رجوع"
-        >
-          <ArrowRight size={18} />
-        </button>
         {/* Floating Side Button: Next (Left in RTL) - With soft ambient glowing light */}
         {currentIndex < resolvedItems.length - 1 && (
           <button

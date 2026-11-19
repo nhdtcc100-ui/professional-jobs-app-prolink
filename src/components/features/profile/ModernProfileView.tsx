@@ -36,6 +36,7 @@ interface ModernProfileViewProps {
   showCallButton?: boolean;
   returnToJob?: Job | null;
   onReturnToJob?: (job: Job) => void;
+  returnToServiceUser?: any | null;
 }
 
 // ─── Fast Client-Side Image Resizer (Canvas-based, RAM efficient) ───────────
@@ -120,6 +121,7 @@ export function ModernProfileView({
   showCallButton = false,
   returnToJob,
   onReturnToJob,
+  returnToServiceUser,
 }: ModernProfileViewProps) {
   const effectiveUserId = user?.id || profile?.id;
   // ─── Form State ───────────────────────────────────────────────────────────────
@@ -1077,6 +1079,47 @@ export function ModernProfileView({
             <ArrowRight size={14} />
           </button>
         </motion.div>
+      )}
+
+      {/* Return to Services & Trades Market Banner */}
+      {returnToServiceUser && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-3.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 rounded-2xl shadow-lg flex items-center justify-between text-white gap-3 border border-blue-400/30 mb-2"
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+              <Wrench size={18} className="text-white" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-black truncate">أنت تتصفح ملف مزود الخدمة: {returnToServiceUser.name || profile?.name || 'المهني'}</p>
+              <p className="text-[10px] text-blue-100 font-bold truncate">انقر هنا للعودة لمكانه في سوق الخدمات والمهن</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onBack?.()}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-white text-blue-700 hover:bg-blue-50 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
+          >
+            <span>العودة لسوق الخدمات</span>
+            <ArrowRight size={14} />
+          </button>
+        </motion.div>
+      )}
+
+      {/* General Back Button when viewing someone else's profile */}
+      {!isMe && !returnToJob && !returnToServiceUser && onBack && (
+        <div className="flex items-center justify-between mb-2">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl text-xs font-black shadow-sm border border-slate-200 dark:border-slate-700 transition-all active:scale-95 cursor-pointer"
+          >
+            <ArrowRight size={15} />
+            <span>رجوع</span>
+          </button>
+        </div>
       )}
 
       {/* ══════════════════════════════════════════════════════════════════════════

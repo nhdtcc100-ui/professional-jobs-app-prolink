@@ -344,10 +344,11 @@ export const HomeServicesSection: React.FC<HomeServicesSectionProps> = ({
                 return (
                   <motion.div
                     key={p.id}
+                    id={`service-provider-${p.id}`}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.03 }}
-                    className="p-3 rounded-2xl bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-700/60 shadow-xs hover:shadow-md transition-all flex items-start gap-2.5 group"
+                    className="p-3 rounded-2xl bg-white dark:bg-slate-800/90 border border-slate-100 dark:border-slate-700/60 shadow-xs hover:shadow-md transition-all flex items-start gap-2.5 group scroll-mt-24"
                   >
                     {/* Avatar */}
                     <div className="relative shrink-0">

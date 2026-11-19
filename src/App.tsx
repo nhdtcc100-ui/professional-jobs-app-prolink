@@ -254,6 +254,7 @@ function App() {
   } | null>(null);
   // 🔙 يتذكر التبويب السابق قبل فتح الملف الشخصي من سوق الخدمات أو غيرها
   const [profileReturnTab, setProfileReturnTab] = useState<string>('home');
+  const [returnToServiceUser, setReturnToServiceUser] = useState<any | null>(null);
   const [initialJobForMissions, setInitialJobForMissions] = useState<Job | null>(null);
   const webRTCServiceRef = useRef<WebRTCService | null>(null);
   
@@ -1047,6 +1048,7 @@ function App() {
                           appUser={appUser}
                           onUserClick={(u) => {
                             setProfileReturnTab('home-services'); // remember we came from services inside home
+                            setReturnToServiceUser(u);
                             setSelectedProfile(u);
                             setActiveTab('profile');
                           }}
@@ -1456,6 +1458,7 @@ function App() {
                       appUser={appUser}
                       onUserClick={(u) => {
                         setProfileReturnTab('services'); // remember we came from services tab
+                        setReturnToServiceUser(u);
                         setSelectedProfile(u);
                         setActiveTab('profile');
                       }}
@@ -1531,6 +1534,7 @@ function App() {
                       isEditing={isEditingProfile}
                       user={user || appUser}
                       returnToJob={returnToJob}
+                      returnToServiceUser={returnToServiceUser}
                       onReturnToJob={(job: any) => {
                         setSelectedProfile(null);
                         setActiveTab('jobs');
@@ -1548,16 +1552,32 @@ function App() {
                           setInitialJobForMissions(returnToJob);
                           setReturnToJob(null);
                         } else if (profileReturnTab === 'services') {
-                          // العودة لسوق الخدمات (تبويب مستقل)
+                          // العودة لسوق الخدمات (تبويب مستقل) مع التمرير للشخص
+                          const targetId = returnToServiceUser?.id;
                           setSelectedProfile(null);
                           setProfileReturnTab('home');
+                          setReturnToServiceUser(null);
                           setActiveTab('services');
+                          if (targetId) {
+                            setTimeout(() => {
+                              const el = document.getElementById(`service-provider-${targetId}`);
+                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }, 150);
+                          }
                         } else if (profileReturnTab === 'home-services') {
-                          // العودة للرئيسية مع تحديد قسم سوق الخدمات
+                          // العودة للرئيسية مع تحديد قسم سوق الخدمات والتمرير للشخص
+                          const targetId = returnToServiceUser?.id;
                           setSelectedProfile(null);
                           setProfileReturnTab('home');
+                          setReturnToServiceUser(null);
                           setActiveTab('home');
                           setSelectedJobCategory('services');
+                          if (targetId) {
+                            setTimeout(() => {
+                              const el = document.getElementById(`service-provider-${targetId}`);
+                              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                            }, 150);
+                          }
                         } else {
                           setSelectedProfile(null);
                           setActiveTab('home');

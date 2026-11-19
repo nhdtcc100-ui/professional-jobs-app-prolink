@@ -798,6 +798,15 @@ button, a, input, select, textarea {
     display: none !important;
   }
 
+  .printable-cv-modal {
+    position: static !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    overflow: visible !important;
+  }
+
   .printable-cv-area {
     width: 100% !important;
     max-width: 100% !important;

@@ -1,12 +1,11 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  X, Printer, Share2, Briefcase, GraduationCap, MapPin,
-  Phone, Mail, Globe, CheckCircle2, Award, Sparkles, Building2,
-  Calendar, Wrench, Download, ExternalLink
+  X, Printer, Share2, MapPin,
+  Phone, Mail, CheckCircle2, Sparkles, Building2
 } from 'lucide-react';
 import { AppUser } from '../../../types';
-import { openContactMenu } from '../../../lib/utils/contact';
 
 export interface GeneratedCVModalProps {
   isOpen: boolean;
@@ -25,27 +24,119 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
 }) => {
   const printAreaRef = useRef<HTMLDivElement>(null);
 
-  if (!isOpen || !user) return null;
+  // 🔒 Lock background scroll and keep modal dead-centered in the user's viewport
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
+
+  // Keyboard navigation: Escape closes modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   // Resolve merged profile fields
-  const name = applicantData?.name || user?.name || user?.fullName || 'محترف ProLink';
-  const avatar = applicantData?.avatar || user?.avatar || user?.avatarUrl || user?.avatar_url || '';
-  const title = applicantData?.title || user?.title || user?.displayTitle || user?.specialty || user?.headline || 'متخصص مهني';
-  const industry = applicantData?.industry || user?.industry || 'كفاءات ProLink';
+  const fullName = applicantData?.name || user?.name || user?.fullName || 'محترف ProLink';
+  const title = applicantData?.title || user?.title || user?.displayTitle || user?.display_title || user?.specialty || user?.headline || 'متخصص مهني';
   const location = applicantData?.location || user?.location || 'العراق';
   const phone = applicantData?.phone || user?.phone || '';
   const email = applicantData?.email || user?.email || '';
-  const website = applicantData?.website || user?.website || '';
   const bio = applicantData?.bio || user?.bio || '';
-  const experience = applicantData?.experience || user?.experience || '';
   const education = applicantData?.education || user?.education || '';
-  const skills: string[] = Array.isArray(applicantData?.skills) && applicantData.skills.length > 0
-    ? applicantData.skills
-    : Array.isArray(user?.skills) && user.skills.length > 0
-    ? user.skills
-    : [];
 
-  const prevWorks = applicantData?.prevWorks || [];
+  // Resolve skills
+  const skills: string[] = useMemo(() => {
+    if (Array.isArray(applicantData?.skills) && applicantData.skills.length > 0) return applicantData.skills;
+    if (Array.isArray(user?.skills) && user.skills.length > 0) return user.skills;
+    return [];
+  }, [applicantData?.skills, user?.skills]);
+
+  // Resolve languages
+  const languages = useMemo(() => {
+    if (Array.isArray(applicantData?.languages) && applicantData.languages.length > 0) {
+      return applicantData.languages.map((l: any, i: number) => {
+        if (typeof l === 'object' && l.name) return l;
+        const parts = String(l).split(' - ');
+        return { id: `lang-${i}`, name: parts[0] || l, level: parts[1] || 'طليق / ممتاز' };
+      });
+    }
+    const userId = user?.id || applicantData?.userId;
+    if (userId) {
+      try {
+        const saved = localStorage.getItem(`prolink_ats_languages_${userId}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (_) {}
+    }
+    if (Array.isArray(user?.languages) && user.languages.length > 0) {
+      return user.languages.map((l: any, i: number) => {
+        if (typeof l === 'object' && l.name) return l;
+        const parts = String(l).split(' - ');
+        return { id: `lang-${i}`, name: parts[0] || l, level: parts[1] || 'طليق / ممتاز' };
+      });
+    }
+    return [
+      { id: 'l-1', name: 'العربية', level: 'اللغة الأم' },
+      { id: 'l-2', name: 'الإنجليزية', level: 'متقدم' }
+    ];
+  }, [applicantData, user]);
+
+  // Resolve experiences
+  const experiences = useMemo(() => {
+    if (Array.isArray(applicantData?.workExperiences) && applicantData.workExperiences.length > 0) {
+      return applicantData.workExperiences;
+    }
+    if (Array.isArray(applicantData?.experiences) && applicantData.experiences.length > 0) {
+      return applicantData.experiences;
+    }
+    const userId = user?.id || applicantData?.userId;
+    if (userId) {
+      try {
+        const saved = localStorage.getItem(`prolink_ats_experiences_${userId}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch (_) {}
+    }
+    if (Array.isArray(user?.workExperiences) && user.workExperiences.length > 0) {
+      return user.workExperiences;
+    }
+    // If experience is a raw text string, split and structure it
+    const expText = applicantData?.experience || user?.experience;
+    if (typeof expText === 'string' && expText.trim().length > 0) {
+      const lines = expText.split('\n').map(l => l.trim()).filter(Boolean);
+      return [{
+        id: 'exp-text-1',
+        role: title || 'أخصائي مهني',
+        company: user?.companyName || 'منشأة معتمدة',
+        duration: 'سجل الخبرات المعتمد',
+        tasks: lines.join('\n'),
+        skills: skills.slice(0, 3).join(', ')
+      }];
+    }
+    return [
+      {
+        id: 'exp-default-1',
+        role: title || 'أخصائي مهني',
+        company: user?.companyName || 'شركة رائدة',
+        duration: '2023 - حتى الآن',
+        tasks: 'قيادة وتنفيذ المهام التخصصية بكفاءة عالية، وتطوير أداء الفريق، وتحقيق أهداف المنشأة وفق أعلى المعايير.',
+        skills: skills.slice(0, 3).join(', ') || 'التخطيط، إدارة المهام، حل المشكلات'
+      }
+    ];
+  }, [applicantData, user, title, skills]);
 
   const handlePrint = () => {
     window.print();
@@ -55,53 +146,56 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
         await navigator.share({
-          title: `السيرة الذاتية - ${name}`,
-          text: `السيرة الذاتية الرسمية للمحترف ${name} من منصة ProLink`,
+          title: `السيرة الذاتية - ${fullName}`,
+          text: `السيرة الذاتية الرسمية للمحترف ${fullName} بنظام ATS من منصة ProLink`,
           url: window.location.href,
         });
       } catch (_) {}
     }
   };
 
-  return (
+  if (!isOpen || !user) return null;
+
+  // 🚀 Render directly in document.body via Portal to guarantee it is centered in the current viewport!
+  return createPortal(
     <AnimatePresence>
       <div
-        className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto printable-cv-modal print:p-0 print:m-0 print:bg-white print:static print:overflow-visible"
+        className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto printable-cv-modal print:p-0 print:m-0 print:bg-white print:static print:overflow-visible"
         dir="rtl"
         onClick={onClose}
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 20 }}
+          initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95, y: 20 }}
-          transition={{ duration: 0.22, ease: 'easeOut' }}
-          className="relative w-full max-w-4xl bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh] print:border-none print:shadow-none print:w-full print:max-w-none print:max-h-none print:rounded-none"
+          exit={{ opacity: 0, scale: 0.95, y: 15 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
+          className="relative w-full max-w-3xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden flex flex-col max-h-[94vh] print:border-none print:shadow-none print:w-full print:max-w-none print:max-h-none print:rounded-none"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Top Bar Header (Not printed) */}
-          <div className="shrink-0 px-5 py-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-[#0a66c2] text-white flex items-center justify-between shadow-md print:hidden">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-inner">
-                <Sparkles size={20} className="text-white" />
+          {/* Top Bar Controls (Not printed) */}
+          <div className="shrink-0 px-4 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-[#0a66c2] text-white flex items-center justify-between shadow-md print:hidden">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-inner">
+                <Sparkles size={16} className="text-white" />
               </div>
               <div>
-                <h3 className="font-black text-sm sm:text-base leading-tight">
-                  السيرة الذاتية الرقمية المعتمدة
+                <h3 className="font-black text-xs sm:text-sm leading-tight">
+                  معاينة السيرة الذاتية القياسية (ATS)
                 </h3>
-                <p className="text-[10px] text-blue-100 font-bold mt-0.5">
-                  منشأة وموثقة تلقائياً بواسطة المنصة 🛡️
+                <p className="text-[10px] text-blue-100 font-bold">
+                  تنسيق صفحة واحدة موثقة • جاهزة للطباعة والتقديم المباشر 🛡️
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={handlePrint}
-                className="px-3.5 py-2 rounded-xl bg-white/20 hover:bg-white/30 text-white font-black text-xs flex items-center gap-1.5 backdrop-blur-md border border-white/25 transition-all active:scale-95 cursor-pointer shadow-sm"
-                title="طباعة أو حفظ كملف PDF"
+                className="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-black text-xs flex items-center gap-1.5 backdrop-blur-md border border-white/25 transition-all active:scale-95 cursor-pointer shadow-xs"
+                title="طباعة أو تصدير PDF"
               >
-                <Printer size={15} />
+                <Printer size={14} />
                 <span className="hidden sm:inline">طباعة / PDF</span>
               </button>
 
@@ -109,264 +203,204 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
                 <button
                   type="button"
                   onClick={handleShare}
-                  className="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all active:scale-95 cursor-pointer"
+                  className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all active:scale-95 cursor-pointer"
                   title="مشاركة"
                 >
-                  <Share2 size={16} />
+                  <Share2 size={15} />
                 </button>
               )}
 
               <button
                 type="button"
                 onClick={onClose}
-                className="p-2 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all active:scale-95 cursor-pointer"
+                className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all active:scale-95 cursor-pointer"
                 title="إغلاق"
               >
-                <X size={18} />
+                <X size={17} />
               </button>
             </div>
           </div>
 
-          {/* Printable CV Canvas */}
-          <div
-            ref={printAreaRef}
-            className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-8 bg-slate-50/50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-100 print:bg-white print:text-black print:p-0 print:overflow-visible"
-            id="prolink-generated-cv"
-          >
-            {/* CV Sheet Container */}
-            <div className="printable-cv-area bg-white dark:bg-slate-800/90 rounded-3xl p-6 sm:p-10 shadow-sm border border-slate-200/80 dark:border-slate-700/80 space-y-6 print:border-none print:shadow-none print:p-0 print:bg-white">
-              
-              {/* Header: Name, Contact & Avatar */}
-              <div className="printable-section flex flex-col sm:flex-row items-center sm:items-start justify-between gap-6 pb-6 border-b-2 border-slate-100 dark:border-slate-700/60 print:border-blue-600 print:border-b-4">
-                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-right">
-                  {avatar ? (
-                    <img
-                      src={avatar}
-                      alt={name}
-                      className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl object-cover border-4 border-white dark:border-slate-700 shadow-md ring-2 ring-blue-500/20 shrink-0"
-                    />
-                  ) : (
-                    <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white text-3xl font-black shadow-md shrink-0">
-                      {name.charAt(0)}
-                    </div>
+          {/* 📄 Paper ATS Document Container ── Exactly mirrors CVBuilderPage preview ── */}
+          <div className="flex-1 overflow-y-auto p-3 sm:p-6 bg-slate-100/60 dark:bg-slate-950 text-slate-900 print:bg-white print:text-black print:p-0 print:overflow-visible">
+            <div
+              ref={printAreaRef}
+              className="printable-cv-area w-full max-w-[760px] mx-auto bg-white text-black p-5 sm:p-8 rounded-2xl shadow-xl border border-slate-300 space-y-3.5 print:shadow-none print:border-none print:p-0 print:m-0"
+              style={{ color: '#000000', backgroundColor: '#ffffff' }}
+            >
+              {/* Header: Full Name & Contact Details */}
+              <div className="printable-section border-b-2 border-black pb-2.5 text-center">
+                <h1 className="text-xl sm:text-2xl font-black tracking-tight text-black uppercase mb-0.5">
+                  {fullName}
+                </h1>
+                <p className="text-xs sm:text-sm font-bold text-slate-800 tracking-wide mb-2">
+                  {title}
+                </p>
+
+                {/* Contact details line */}
+                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-slate-700 font-semibold">
+                  {phone && (
+                    <span className="inline-flex items-center gap-1" dir="ltr">
+                      <Phone size={11} className="text-black" />
+                      <span>{phone}</span>
+                    </span>
                   )}
-
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap">
-                      <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white print:text-black">
-                        {name}
-                      </h1>
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-[10px] font-black print:border-blue-600">
-                        <CheckCircle2 size={11} className="text-blue-600 dark:text-blue-400" />
-                        سيرة موثقة بالمنصة
-                      </span>
-                    </div>
-
-                    <p className="text-base font-bold text-blue-600 dark:text-blue-400 print:text-blue-700">
-                      {title}
-                    </p>
-
-                    <p className="text-xs font-bold text-slate-400 dark:text-slate-500">
-                      {industry} • {location}
-                    </p>
-
-                    {/* Contact Badges */}
-                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 pt-2">
-                      {phone && (
-                        <div
-                          onClick={() => openContactMenu({ phone })}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700/60 hover:bg-emerald-50 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer print:bg-slate-100"
-                        >
-                          <Phone size={12} className="text-emerald-500" />
-                          <span dir="ltr">{phone}</span>
-                        </div>
-                      )}
-
-                      {email && (
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 text-xs font-bold print:bg-slate-100">
-                          <Mail size={12} className="text-blue-500" />
-                          <span dir="ltr">{email}</span>
-                        </div>
-                      )}
-
-                      {location && (
-                        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 text-xs font-bold print:bg-slate-100">
-                          <MapPin size={12} className="text-amber-500" />
-                          <span>{location}</span>
-                        </div>
-                      )}
-
-                      {website && (
-                        <a
-                          href={website}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-700/60 hover:bg-blue-50 text-blue-600 dark:text-blue-400 text-xs font-bold transition-all print:bg-slate-100"
-                        >
-                          <Globe size={12} />
-                          <span dir="ltr">{website}</span>
-                        </a>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* ProLink Official Stamp Card */}
-                <div className="hidden md:flex flex-col items-center justify-center p-3 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-slate-700/40 dark:to-slate-800/40 border border-blue-100 dark:border-slate-700 text-center shrink-0 w-36">
-                  <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md mb-1.5">
-                    <Award size={16} />
-                  </div>
-                  <span className="text-[10px] font-black text-slate-800 dark:text-white uppercase tracking-wider">
-                    PROLINK CV
-                  </span>
-                  <span className="text-[9px] text-slate-400 font-bold mt-0.5">
-                    معتمدة رقمياً
+                  {email && (
+                    <span className="inline-flex items-center gap-1" dir="ltr">
+                      <Mail size={11} className="text-black" />
+                      <span>{email}</span>
+                    </span>
+                  )}
+                  {location && (
+                    <span className="inline-flex items-center gap-1">
+                      <MapPin size={11} className="text-black" />
+                      <span>{location}</span>
+                    </span>
+                  )}
+                  <span className="inline-flex items-center gap-1 text-emerald-800 font-bold">
+                    <CheckCircle2 size={11} />
+                    <span>عضو موثق في ProLink</span>
                   </span>
                 </div>
               </div>
 
-              {/* Cover Letter / Note (If viewing inside an application) */}
+              {/* Cover Letter (If provided with application) */}
               {coverLetter && (
-                <section className="space-y-2">
-                  <h2 className="text-xs font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 flex items-center gap-2">
-                    <Sparkles size={14} />
-                    خطاب التقديم والرسالة التعريفية
-                  </h2>
-                  <div className="p-4 rounded-2xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40 text-sm font-medium leading-relaxed whitespace-pre-line">
+                <div className="printable-section space-y-1">
+                  <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
+                    خطاب التقديم والرسالة التعريفية (Cover Letter)
+                  </h3>
+                  <p className="text-xs text-slate-800 leading-relaxed font-medium whitespace-pre-line">
                     {coverLetter}
-                  </div>
-                </section>
+                  </p>
+                </div>
               )}
 
-              {/* Bio / Summary */}
+              {/* Professional Summary */}
               {bio && (
-                <section className="space-y-2.5">
-                  <h2 className="text-xs font-black uppercase tracking-widest text-[#0a66c2] dark:text-blue-400 flex items-center gap-2 border-r-4 border-[#0a66c2] pr-2.5">
-                    النبذة المهنية والشخصية
-                  </h2>
-                  <p className="text-sm md:text-base leading-relaxed text-slate-700 dark:text-slate-200 print:text-black whitespace-pre-line font-medium bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+                <div className="printable-section space-y-1">
+                  <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
+                    النبذة المهنية (Professional Summary)
+                  </h3>
+                  <p className="text-xs text-slate-800 leading-relaxed font-medium">
                     {bio}
                   </p>
-                </section>
+                </div>
               )}
 
-              {/* Previous Works (Structured) */}
-              {prevWorks && prevWorks.length > 0 && (
-                <section className="space-y-3">
-                  <h2 className="text-xs font-black uppercase tracking-widest text-[#0a66c2] dark:text-blue-400 flex items-center gap-2 border-r-4 border-[#0a66c2] pr-2.5">
-                    <Building2 size={15} />
-                    سجل الأعمال والشركات السابقة
-                  </h2>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {prevWorks.map((pw: any, idx: number) => (
-                      <div
-                        key={idx}
-                        className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 space-y-2"
-                      >
-                        <div className="flex items-center justify-between">
-                          <h3 className="font-black text-sm text-slate-800 dark:text-white print:text-black">
-                            {pw.role || 'المسمى الوظيفي'}
-                          </h3>
-                          {pw.company && (
-                            <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
-                              {pw.company}
-                            </span>
-                          )}
-                        </div>
-                        {pw.tasks && (
-                          <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                            {pw.tasks}
-                          </p>
-                        )}
-                        <div className="flex flex-wrap gap-2 pt-1 text-[10px] text-slate-400">
-                          {pw.skills && <span>🛠️ المهارات: {pw.skills}</span>}
-                          {pw.hours && <span>⏰ {pw.hours}</span>}
-                          {pw.salary && <span>💰 {pw.salary}</span>}
-                        </div>
+              {/* Work Experiences */}
+              <div className="printable-section space-y-2">
+                <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
+                  الخبرات العملية وسجل الأعمال السابقة (Work Experience)
+                </h3>
+
+                <div className="space-y-2.5">
+                  {experiences.map((exp: any, idx: number) => (
+                    <div key={idx} className="space-y-0.5">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="text-xs font-black text-black">
+                          {exp.role} — <span className="font-bold text-slate-700">{exp.company}</span>
+                        </span>
+                        <span className="text-[10px] font-bold text-slate-600 whitespace-nowrap">
+                          {exp.duration}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                </section>
-              )}
 
-              {/* Professional Experience */}
-              {experience && (
-                <section className="space-y-2.5">
-                  <h2 className="text-xs font-black uppercase tracking-widest text-[#0a66c2] dark:text-blue-400 flex items-center gap-2 border-r-4 border-[#0a66c2] pr-2.5">
-                    <Briefcase size={15} />
-                    الخبرات العملية وسجل الإنجازات
-                  </h2>
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 text-sm leading-relaxed text-slate-700 dark:text-slate-200 print:text-black whitespace-pre-line font-medium">
-                    {experience}
-                  </div>
-                </section>
-              )}
+                      <p className="text-[11px] text-slate-800 leading-relaxed font-normal whitespace-pre-line pl-2">
+                        {exp.tasks}
+                      </p>
+
+                      {exp.skills && (
+                        <p className="text-[10px] text-slate-600 font-semibold">
+                          المهارات المستخدمة: {exp.skills}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+
+                  {experiences.length === 0 && (
+                    <p className="text-xs text-slate-400 italic">لم يتم إدراج خبرات سابقة بعد.</p>
+                  )}
+                </div>
+              </div>
 
               {/* Education */}
               {education && (
-                <section className="space-y-2.5">
-                  <h2 className="text-xs font-black uppercase tracking-widest text-[#0a66c2] dark:text-blue-400 flex items-center gap-2 border-r-4 border-[#0a66c2] pr-2.5">
-                    <GraduationCap size={15} />
-                    التعليم والمؤهلات الأكاديمية والشهادات
-                  </h2>
-                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-100 dark:border-slate-700/50 text-sm leading-relaxed text-slate-700 dark:text-slate-200 print:text-black whitespace-pre-line font-medium">
+                <div className="printable-section space-y-1">
+                  <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
+                    المؤهلات العلمية (Education & Credentials)
+                  </h3>
+                  <p className="text-xs text-slate-800 font-bold">
                     {education}
-                  </div>
-                </section>
+                  </p>
+                </div>
               )}
 
-              {/* Key Skills */}
+              {/* Core Competencies & Skills */}
               {skills.length > 0 && (
-                <section className="space-y-2.5">
-                  <h2 className="text-xs font-black uppercase tracking-widest text-[#0a66c2] dark:text-blue-400 flex items-center gap-2 border-r-4 border-[#0a66c2] pr-2.5">
-                    <Wrench size={15} />
-                    المهارات والكفاءات الرئيسية
-                  </h2>
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    {skills.map((skill, sIdx) => (
+                <div className="printable-section space-y-1.5">
+                  <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
+                    المهارات والقدرات الأساسية (Core Competencies)
+                  </h3>
+                  <div className="flex flex-wrap gap-1">
+                    {skills.map((s, idx) => (
                       <span
-                        key={sIdx}
-                        className="px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold text-xs border border-blue-200/60 dark:border-blue-800/50 print:bg-slate-100 print:text-black print:border-slate-300"
+                        key={idx}
+                        className="px-2 py-0.5 rounded bg-slate-100 text-slate-900 text-[10px] font-bold border border-slate-300"
                       >
-                        {skill}
+                        {s}
                       </span>
                     ))}
                   </div>
-                </section>
+                </div>
               )}
 
-              {/* Footer */}
-              <div className="pt-6 border-t border-slate-100 dark:border-slate-700/60 flex flex-col sm:flex-row items-center justify-between text-slate-400 text-[10px] font-bold gap-2 print:text-slate-500">
-                <span>تم إنشاء هذه السيرة الذاتية عبر منصة ProLink المهنية © {new Date().getFullYear()}</span>
-                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
-                  <CheckCircle2 size={12} />
-                  معتمد وموثق رقمياً
-                </span>
+              {/* Languages */}
+              {languages.length > 0 && (
+                <div className="printable-section space-y-1.5">
+                  <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
+                    اللغات (Languages)
+                  </h3>
+                  <div className="flex flex-wrap gap-3 text-xs text-slate-800 font-medium">
+                    {languages.map((l: any, idx: number) => (
+                      <span key={idx} className="font-bold">
+                        {l.name}: <span className="font-normal text-slate-600">{l.level}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ATS Certification Footnote */}
+              <div className="printable-section pt-3 border-t border-slate-200 flex items-center justify-between text-[9px] text-slate-500 font-bold">
+                <span>تم إنشاء هذه السيرة وتوثيقها عبر منصة ProLink المهنية</span>
+                <span>ATS Compliant Resume • Verified Professional</span>
               </div>
             </div>
           </div>
 
           {/* Bottom Actions Bar (Not printed) */}
-          <div className="shrink-0 p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-3 print:hidden">
+          <div className="shrink-0 px-4 py-3 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200/80 dark:border-slate-800 flex items-center justify-between gap-3 print:hidden">
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-black hover:bg-slate-100 dark:hover:bg-slate-700 transition-all active:scale-95 cursor-pointer"
+              className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-black hover:bg-slate-100 dark:hover:bg-slate-700 transition-all active:scale-95 cursor-pointer"
             >
-              إغلاق المعاينة
+              إغلاق
             </button>
 
             <button
               type="button"
               onClick={handlePrint}
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-[#0a66c2] hover:from-blue-700 hover:to-[#08529c] text-white text-xs font-black shadow-md flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
+              className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-[#0a66c2] hover:from-blue-700 hover:to-[#08529c] text-white text-xs font-black shadow-md flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
             >
-              <Printer size={15} />
-              <span>طباعة وتصدير PDF 📄</span>
+              <Printer size={14} />
+              <span>طباعة وتصدير PDF (صفحة واحدة A4)</span>
             </button>
           </div>
         </motion.div>
       </div>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 };
