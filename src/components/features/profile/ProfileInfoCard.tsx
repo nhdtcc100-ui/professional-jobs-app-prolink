@@ -22,7 +22,7 @@ export const ProfileInfoCard: React.FC<ProfileInfoCardProps> = ({
   onGoToSettings,
 }) => {
   const currentRole = profile?.role || (profile as any)?.account_type || 'seeker';
-  const isEmployer   = currentRole === 'employer' || (profile as any)?.account_type === 'employer' || !!(profile as any)?.company;
+  const isEmployer   = currentRole === 'employer';
   const isFreelancer = currentRole === 'freelancer';
   const isPro        = profile?.is_pro || profile?.isPro;
 

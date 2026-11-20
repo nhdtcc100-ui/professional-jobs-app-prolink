@@ -3,7 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ArrowRight, Printer, CheckCircle2, Sparkles, Plus, Trash2,
   Briefcase, GraduationCap, Languages, Wrench, MapPin, Phone, Mail,
-  FileText, Download, Eye, Edit3, Building2, Calendar, Award, Share2
+  FileText, Download, Eye, Edit3, Building2, Calendar, Award, Share2,
+  Save, Loader2
 } from 'lucide-react';
 import { AppUser, WorkExperience } from '../../../types';
 import { profileService } from '../../../lib/services/profileService';
@@ -400,11 +401,11 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
               type="button"
               onClick={handleExportToAllJobs}
               disabled={isSaving}
+              title="حفظ كافة تعديلات السيرة الذاتية وتصديرها للتقديم المباشر"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white text-xs font-black shadow-md shadow-blue-500/20 active:scale-95 transition-all cursor-pointer disabled:opacity-50"
             >
-              <CheckCircle2 size={15} />
-              <span className="hidden sm:inline">{isSaving ? 'جاري الحفظ...' : 'تصدير لجميع الوظائف'}</span>
-              <span className="sm:hidden">{isSaving ? 'حفظ...' : 'تصدير'}</span>
+              {isSaving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+              <span>{isSaving ? 'جاري الحفظ...' : 'حفظ التعديلات'}</span>
             </button>
           </div>
         </div>
@@ -831,6 +832,31 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
                 className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-white focus:bg-white dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all"
               />
             </div>
+
+            {/* 💾 Save Changes Action Card (Always visible at bottom of editor) */}
+            <div className="pt-5 border-t border-slate-200 dark:border-slate-700 space-y-2">
+              <button
+                type="button"
+                onClick={handleExportToAllJobs}
+                disabled={isSaving}
+                className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 active:scale-98 transition-all cursor-pointer disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    <span>جاري حفظ السيرة الذاتية في قاعدة البيانات...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save size={18} />
+                    <span>حفظ التعديلات واعتماد السيرة الذاتية (ATS)</span>
+                  </>
+                )}
+              </button>
+              <p className="text-center text-[10px] text-slate-400 font-bold">
+                💡 يتم حفظ التعديلات فوراً في ملفك الشخصي وتطبيقها تلقائياً على كل طلبات التقديم للوظائف.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -991,6 +1017,21 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
           </div>
         </div>
       </main>
+
+      {/* Floating Save Button on Mobile Editor View */}
+      {activeView === 'editor' && (
+        <div className="sm:hidden fixed bottom-4 left-4 right-4 z-40 print:hidden pointer-events-auto">
+          <button
+            type="button"
+            onClick={handleExportToAllJobs}
+            disabled={isSaving}
+            className="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black text-xs flex items-center justify-center gap-2 shadow-xl shadow-blue-600/30 active:scale-95 transition-all cursor-pointer disabled:opacity-50 border border-blue-400/30 backdrop-blur-md"
+          >
+            {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            <span>{isSaving ? 'جاري الحفظ...' : '💾 حفظ التعديلات الآن'}</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

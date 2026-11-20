@@ -50,7 +50,7 @@ export async function snapshotFile(rawFile: File): Promise<File> {
     try {
       const bmp = await Promise.race([
         createImageBitmap(rawFile),
-        new Promise<null>((res) => setTimeout(() => res(null), 8000)),
+        new Promise<null>((res) => setTimeout(() => res(null), 800)),
       ]);
 
       if (bmp && bmp.width > 0 && bmp.height > 0) {
@@ -204,13 +204,13 @@ export async function snapshotFile(rawFile: File): Promise<File> {
     if (typeof rawFile.arrayBuffer === 'function') {
       buffer = await Promise.race([
         rawFile.arrayBuffer(),
-        new Promise<null>((res) => setTimeout(() => res(null), 10000))
+        new Promise<null>((res) => setTimeout(() => res(null), 1500))
       ]);
     }
     if (!buffer) {
       buffer = await new Promise<ArrayBuffer | null>((resolve) => {
         const reader = new FileReader();
-        const t = setTimeout(() => resolve(null), 10000);
+        const t = setTimeout(() => resolve(null), 1500);
         reader.onload = () => {
           clearTimeout(t);
           resolve(reader.result instanceof ArrayBuffer ? reader.result : null);
@@ -307,7 +307,7 @@ export const imageService = {
         try {
           const probe = await Promise.race([
             createImageBitmap(file),
-            new Promise<null>((res) => setTimeout(() => res(null), 3500)),
+            new Promise<null>((res) => setTimeout(() => res(null), 800)),
           ]);
 
           if (probe && probe.width > 0 && probe.height > 0) {
@@ -581,7 +581,7 @@ export const imageService = {
             .upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' });
 
           const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-            setTimeout(() => reject(new Error(`Storage upload timeout (25s) for bucket '${b}'`)), 25000)
+            setTimeout(() => reject(new Error(`Storage upload timeout (2.5s) for bucket '${b}'`)), 2500)
           );
 
           const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);

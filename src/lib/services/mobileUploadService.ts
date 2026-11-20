@@ -92,23 +92,25 @@ async function compressImageFile(
   maxDim = IMAGE_MAX_DIM,
   quality = IMAGE_QUALITY
 ): Promise<File> {
+  if ((file as any).__isCompressed && file.size <= 400 * 1024) return file;
+
   // Convert HEIC before any canvas or bitmap operation
   file = await convertHeicIfNeeded(file);
 
-  // Fast path: createImageBitmap with hardware downscale (prevents OOM on 108MP mobile photos)
+  // Fast path: createImageBitmap with hardware downscale (ultra-fast sub-second decode)
   if (typeof createImageBitmap === 'function') {
     try {
       let bmp: ImageBitmap | null = null;
       try {
-        // Hardware subsampling decode
+        // Hardware subsampling decode (fast 800ms race)
         bmp = await Promise.race([
           (createImageBitmap as any)(file, { resizeWidth: maxDim, resizeQuality: 'medium' }),
-          new Promise<null>(res => setTimeout(() => res(null), 8000)),
+          new Promise<null>(res => setTimeout(() => res(null), 800)),
         ]);
       } catch {
         bmp = await Promise.race([
           createImageBitmap(file),
-          new Promise<null>(res => setTimeout(() => res(null), 8000)),
+          new Promise<null>(res => setTimeout(() => res(null), 800)),
         ]);
       }
 
@@ -124,8 +126,8 @@ async function compressImageFile(
         bmp.close();
 
         let blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', quality));
-        // Strict cloud payload cap: if > 800KB, re-compress to ensure < 1MB limit for Cloudflare/Vercel
-        if (blob && blob.size > 800 * 1024) {
+        // Strict cloud payload cap: if > 600KB, re-compress to ensure lightweight payload
+        if (blob && blob.size > 600 * 1024) {
           blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.65));
         }
         if (blob && blob.size > 0) {
@@ -133,17 +135,18 @@ async function compressImageFile(
             type: 'image/jpeg', lastModified: Date.now(),
           });
           (out as any).__isSnapshot = true;
+          (out as any).__isCompressed = true;
           return out;
         }
       }
     } catch {/* fall through */ }
   }
 
-  // Slow path: Image + Canvas
+  // Fast Canvas fallback (1200ms max)
   return new Promise<File>((resolve) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
-    const timer = setTimeout(() => { URL.revokeObjectURL(url); resolve(file); }, 12000);
+    const timer = setTimeout(() => { URL.revokeObjectURL(url); resolve(file); }, 1200);
     img.onload = () => {
       clearTimeout(timer);
       URL.revokeObjectURL(url);
@@ -154,7 +157,7 @@ async function compressImageFile(
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
       canvas.toBlob(async (blob) => {
-        if (blob && blob.size > 800 * 1024) {
+        if (blob && blob.size > 600 * 1024) {
           blob = await new Promise<Blob | null>(res => canvas.toBlob(res, 'image/jpeg', 0.65));
         }
         if (blob && blob.size > 0) {
@@ -162,6 +165,7 @@ async function compressImageFile(
             type: 'image/jpeg', lastModified: Date.now(),
           });
           (out as any).__isSnapshot = true;
+          (out as any).__isCompressed = true;
           resolve(out);
         } else {
           resolve(file);
@@ -173,17 +177,20 @@ async function compressImageFile(
   });
 }
 
-/** Compact to base64 JPEG for DB storage fallback */
+/** Compact to base64 JPEG for DB storage fallback (single-pass, reuse compressed file) */
 async function toCompactBase64(file: File, type: UploadType = 'avatar'): Promise<string | null> {
   try {
-    const maxDim = type === 'cover' ? 800 : THUMB_MAX_DIM;
-    const quality = type === 'cover' ? 0.72 : THUMB_QUALITY;
-    const compressed = await compressImageFile(file, maxDim, quality);
+    let targetFile = file;
+    if (!(file as any).__isCompressed && file.size > 250 * 1024) {
+      const maxDim = type === 'cover' ? 800 : THUMB_MAX_DIM;
+      const quality = type === 'cover' ? 0.72 : THUMB_QUALITY;
+      targetFile = await compressImageFile(file, maxDim, quality);
+    }
     return new Promise(resolve => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result as string);
       reader.onerror = () => resolve(null);
-      reader.readAsDataURL(compressed);
+      reader.readAsDataURL(targetFile);
     });
   } catch {
     return null;
@@ -205,16 +212,15 @@ async function uploadToStorage(
   }
   const fileName = `${userId}/${uuid}.${ext}`;
 
-  // Ensure auth session headers are fresh (required for Storage RLS).
-  // ⏱️ مهلة سريعة جداً (1500ms) حتى لا يعلّق الرفع إطلاقاً
+  // Ensure auth session headers are fresh (required for Storage RLS) - fast 800ms
   try {
     await Promise.race([
       supabase.auth.getSession(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('getSession timeout')), 1500)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('getSession timeout')), 800)),
     ]);
   } catch { }
 
-  // نحصر المحاولة بأول باكتين كحد أقصى بمهلة 3.5 ثوانٍ
+  // مهلة سريعة (2.0 ثانية لكل باكت) حتى يتم الانتقال فوراً إلى Base64 بدون أي تأخير للمستخدم
   const targetBuckets = buckets.slice(0, 2);
   for (const bucket of targetBuckets) {
     try {
@@ -223,7 +229,7 @@ async function uploadToStorage(
         .upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' });
 
       const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-        setTimeout(() => reject(new Error(`Storage timeout – bucket: ${bucket}`)), 3500)
+        setTimeout(() => reject(new Error(`Storage timeout – bucket: ${bucket}`)), 2000)
       );
 
       const { error } = await Promise.race([uploadPromise, timeoutPromise]);

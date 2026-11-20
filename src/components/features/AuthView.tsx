@@ -165,15 +165,23 @@ export const AuthView: React.FC<AuthViewProps> = ({ onSuccess, handleGoogleLogin
                 service_request: null,
               });
               // تحديث حالة المستخدم محلياً فوراً لمنع أي تضارب مع كاش الجلسة
+              const freshUserObj = {
+                id: registeredUserId,
+                name: finalName,
+                email: identifier.includes('@') ? identifier.trim() : `${identifier.trim()}@prolink.internal`,
+                role: selectedRole,
+                location: sanitizeInput(location, 100) || '',
+                companyName: selectedRole === 'employer' ? sanitizeInput(companyName, 100) : '',
+                displayTitle: displayTitle || '',
+              };
+              try {
+                localStorage.setItem('prolink_cached_user', JSON.stringify(freshUserObj));
+              } catch (_) {}
+
               if (setAppUser) {
                 setAppUser((prev: any) => ({
                   ...(prev || {}),
-                  id: registeredUserId,
-                  name: finalName,
-                  role: selectedRole,
-                  location: sanitizeInput(location, 100) || '',
-                  companyName: selectedRole === 'employer' ? sanitizeInput(companyName, 100) : '',
-                  displayTitle: displayTitle || '',
+                  ...freshUserObj,
                 }));
               }
             } catch (updateErr) {

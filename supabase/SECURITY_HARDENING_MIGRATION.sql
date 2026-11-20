@@ -15,6 +15,7 @@
 --   H3: missing login_attempts table (now RPC-based, fail-closed)
 --   C1: platform_settings secrets readable by anon
 --   M3: security_logs table with attributable, owner-scoped inserts
+--   + NEW: CV configuration columns (cv_data, cv_template, cv_updated_at)
 -- ============================================================================
 
 -- ─────────────────────────────────────────────────────────────
@@ -38,6 +39,14 @@ $$;
 -- 1. profiles: ownership-based RLS + role lock on INSERT and UPDATE
 -- ─────────────────────────────────────────────────────────────
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+
+-- Add CV configuration columns to profiles
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS cv_data JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS cv_template TEXT DEFAULT 'standard_ats';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS cv_updated_at TIMESTAMPTZ DEFAULT now();
+
+-- ضمان أن القيمة الافتراضية لعمود role هي دائماً 'seeker' وليس 'employer'
+ALTER TABLE public.profiles ALTER COLUMN role SET DEFAULT 'seeker';
 
 DO $$
 DECLARE pol RECORD;
@@ -95,8 +104,13 @@ BEGIN
   END IF;
 
   IF NEW.role IS DISTINCT FROM OLD.role THEN
+    -- أول اختيار للدور عند التسجيل
     IF (OLD.role IS NULL OR OLD.role = '') AND NEW.role IN ('seeker','employer','freelancer') THEN
-      RETURN NEW; -- first role selection at signup
+      RETURN NEW;
+    END IF;
+    -- إذا كان مسجلاً كـ employer بالخطأ من القيمة الافتراضية ولم ينشر المستخدم أي وظيفة إطلاقاً
+    IF OLD.role = 'employer' AND NEW.role = 'seeker' AND NOT EXISTS (SELECT 1 FROM public.jobs WHERE employer_id = auth.uid()) THEN
+      RETURN NEW;
     END IF;
     NEW.role := OLD.role;
   END IF;
@@ -131,8 +145,10 @@ BEGIN
   END IF;
 
   NEW.is_admin := false;
-  IF NEW.role IS NOT NULL AND NEW.role NOT IN ('seeker','employer','freelancer') THEN
-    NEW.role := NULL;
+  IF NEW.role IS NULL OR NEW.role = '' THEN
+    NEW.role := 'seeker';
+  ELSIF NEW.role NOT IN ('seeker','employer','freelancer') THEN
+    NEW.role := 'seeker';
   END IF;
 
   RETURN NEW;
@@ -143,6 +159,94 @@ DROP TRIGGER IF EXISTS trg_protect_profile_role_insert ON public.profiles;
 CREATE TRIGGER trg_protect_profile_role_insert
   BEFORE INSERT ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.protect_profile_role_insert();
+
+-- ─────────────────────────────────────────────────────────────
+-- تريجر إنشاء البروفايل تلقائياً عند تسجيل المستخدم (auth.users)
+-- يقرأ الدور المختار (role) من بيانات التسجيل والافتراضي 'seeker' دائماً
+-- ─────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_name      TEXT;
+  v_email     TEXT;
+  v_phone     TEXT;
+  v_avatar    TEXT;
+  v_role      TEXT;
+  v_is_admin  BOOLEAN := false;
+BEGIN
+  v_email  := COALESCE(NEW.email, '');
+  v_name   := COALESCE(
+                NULLIF(TRIM(NEW.raw_user_meta_data->>'full_name'), ''),
+                NULLIF(TRIM(NEW.raw_user_meta_data->>'name'), ''),
+                SPLIT_PART(v_email, '@', 1),
+                'مستخدم جديد'
+              );
+  v_phone  := COALESCE(TRIM(NEW.raw_user_meta_data->>'phone'), '');
+  v_avatar := COALESCE(NEW.raw_user_meta_data->>'avatar_url', NULL);
+  
+  -- قراءة الدور المختار بدقة، والافتراضي دائماً باحث عن عمل 'seeker'
+  v_role := COALESCE(
+              NULLIF(TRIM(NEW.raw_user_meta_data->>'role'), ''),
+              'seeker'
+            );
+  IF v_role NOT IN ('seeker', 'employer', 'freelancer') THEN
+    v_role := 'seeker';
+  END IF;
+
+  IF LOWER(v_email) IN ('nhdtcc100@gmail.com', 'nhd0770@gmail.com', 'admin@prolink.com') THEN
+    v_is_admin := TRUE;
+  END IF;
+
+  INSERT INTO public.profiles (
+    id, name, email, phone, avatar_url, role, 
+    is_pro, is_admin, is_active, has_calls_access, 
+    has_erp_access, has_support_access, bio
+  )
+  VALUES (
+    NEW.id, v_name, v_email, v_phone, v_avatar, v_role, 
+    v_is_admin, v_is_admin, TRUE, TRUE, 
+    v_is_admin, v_is_admin, ''
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    role = CASE 
+      WHEN public.profiles.role IS NULL OR public.profiles.role = '' THEN EXCLUDED.role 
+      WHEN public.profiles.role = 'employer' AND EXCLUDED.role = 'seeker' AND NOT EXISTS (SELECT 1 FROM public.jobs WHERE employer_id = NEW.id) THEN 'seeker'
+      ELSE public.profiles.role 
+    END,
+    name = CASE 
+      WHEN public.profiles.name IS NULL OR public.profiles.name = '' OR public.profiles.name = 'مستخدم جديد' THEN EXCLUDED.name 
+      ELSE public.profiles.name 
+    END;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- تصحيح أي مستخدم باحث عن عمل علق بحساب صاحب عمل وهو لا يملك أي وظيفة منشورة
+UPDATE public.profiles p
+   SET role = 'seeker'
+ WHERE p.is_admin = false
+   AND p.role = 'employer'
+   AND (
+     p.company_name IS NULL 
+     OR p.company_name = '' 
+     OR EXISTS (
+       SELECT 1 FROM auth.users u 
+        WHERE u.id = p.id AND u.raw_user_meta_data->>'role' = 'seeker'
+     )
+   )
+   AND NOT EXISTS (
+     SELECT 1 FROM public.jobs j WHERE j.employer_id = p.id
+   );
 
 -- ─────────────────────────────────────────────────────────────
 -- 1b. One-time owner promotion (replaces the removed client-side
@@ -352,7 +456,6 @@ CREATE INDEX IF NOT EXISTS idx_login_attempts_identifier_time
   ON public.login_attempts (identifier, attempted_at DESC);
 
 ALTER TABLE public.login_attempts ENABLE ROW LEVEL SECURITY;
--- No policies: anon/authenticated have no direct access (service_role bypasses).
 
 CREATE OR REPLACE FUNCTION public.check_login_lockout(p_identifier text)
 RETURNS jsonb
@@ -453,16 +556,7 @@ CREATE POLICY "security_logs_admin_delete" ON public.security_logs
   FOR DELETE TO authenticated USING (public.prolink_is_admin());
 
 -- ─────────────────────────────────────────────────────────────
--- 7. Verification queries (run manually after applying)
--- ─────────────────────────────────────────────────────────────
--- SELECT policyname, cmd, roles, qual, with_check FROM pg_policies
---  WHERE tablename IN ('profiles','group_members','platform_settings','login_attempts','security_logs')
---     OR (schemaname='storage' AND tablename='objects');
--- SELECT id, public FROM storage.buckets;
-
--- ─────────────────────────────────────────────────────────────
 -- 8. Messaging gate: DMs are admin-only until messaging_enabled='true'
---    Conversations involving an admin always work (support flows).
 -- ─────────────────────────────────────────────────────────────
 CREATE OR REPLACE FUNCTION public.prolink_feature_open(p_key text)
 RETURNS boolean
@@ -555,9 +649,7 @@ CREATE POLICY "messages_delete" ON public.messages FOR DELETE
   );
 
 -- ─────────────────────────────────────────────────────────────
--- 9. Feature gates: groups / network / in-app support chat are
---    admin-only until the matching platform_settings key = 'true'.
---    Admins always retain full access.
+-- 9. Feature gates: groups / network / in-app support chat
 -- ─────────────────────────────────────────────────────────────
 
 -- 9a. groups
@@ -596,7 +688,7 @@ CREATE POLICY "groups_update_gated" ON public.groups FOR UPDATE TO authenticated
 CREATE POLICY "groups_delete_gated" ON public.groups FOR DELETE TO authenticated
   USING (public.prolink_is_admin() OR (public.prolink_feature_open('groups_enabled') AND created_by = auth.uid()));
 
--- 9b. group_members (ownership rules from section 2 + feature gate)
+-- 9b. group_members
 DO $$
 DECLARE pol RECORD;
 BEGIN
@@ -674,8 +766,7 @@ CREATE POLICY "connections_delete_gated" ON public.connections FOR DELETE TO aut
     OR (public.prolink_feature_open('network_enabled') AND (requester_id = auth.uid() OR recipient_id = auth.uid()))
   );
 
--- 9d. support_messages (in-app support chat): admin-only until opened.
---     Telegram replies still arrive via receive_telegram_reply (SECURITY DEFINER).
+-- 9d. support_messages
 ALTER TABLE public.support_messages ENABLE ROW LEVEL SECURITY;
 DO $$
 DECLARE pol RECORD;
@@ -708,16 +799,13 @@ CREATE POLICY "support_messages_update_gated" ON public.support_messages FOR UPD
   );
 
 -- ─────────────────────────────────────────────────────────────
--- 10. notifications: expand schema to match the client payload
---     (fixes POST/PATCH 400 Bad Request on missing columns)
---     Defensive: legacy tables may lack 'message' or use 'content'.
+-- 10. notifications schema expansion
 -- ─────────────────────────────────────────────────────────────
 ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS message TEXT;
 ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS from_name TEXT;
 ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS from_avatar TEXT;
 ALTER TABLE public.notifications ADD COLUMN IF NOT EXISTS target_id TEXT;
 
--- If a legacy 'content' column exists, relax its NOT NULL and backfill 'message'
 DO $$
 BEGIN
   IF EXISTS (
@@ -733,13 +821,3 @@ ALTER TABLE public.notifications ALTER COLUMN message SET DEFAULT '';
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON public.notifications (user_id, read);
 CREATE INDEX IF NOT EXISTS idx_notifications_type ON public.notifications (type);
-
--- ─────────────────────────────────────────────────────────────
--- 11. job_applications: add extended payload columns used by the client
---     (fixes PGRST204 400 on 'applicant_data' / 'cover_letter' / etc.)
--- ─────────────────────────────────────────────────────────────
-ALTER TABLE public.job_applications ADD COLUMN IF NOT EXISTS cover_letter TEXT DEFAULT '';
-ALTER TABLE public.job_applications ADD COLUMN IF NOT EXISTS experience TEXT DEFAULT '';
-ALTER TABLE public.job_applications ADD COLUMN IF NOT EXISTS education TEXT DEFAULT '';
-ALTER TABLE public.job_applications ADD COLUMN IF NOT EXISTS skills JSONB DEFAULT '[]'::jsonb;
-ALTER TABLE public.job_applications ADD COLUMN IF NOT EXISTS applicant_data JSONB DEFAULT '{}'::jsonb;

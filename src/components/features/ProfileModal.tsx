@@ -4,6 +4,7 @@ import { Plus, Briefcase, CheckCircle2, AlertCircle, Loader2, CloudUpload } from
 import { supabase } from '../../lib/supabase';
 import { profileService } from '../../lib/services/profileService';
 import { imageService, snapshotFile } from '../../lib/services/imageService';
+import { mobileUploadService } from '../../lib/services/mobileUploadService';
 import { PostTransmissionCard } from '../features';
 import { AppUser, Post } from '../../types';
 import { ProfileHeader, ProfileTabs, ProfileEditView, ProfileActivityView } from './profile';
@@ -224,16 +225,14 @@ export function ProfileModal({
     if (!rawFile || !targetUserId) return;
     setSaveStatus('saving');
     try {
-      const localUrl = URL.createObjectURL(rawFile);
-      setFormData(prev => ({ ...prev, avatar: localUrl }));
-    } catch {}
-    addToast('جاري استلام وتجهيز الصورة... ⏳');
-    try {
-      const url = await imageService.processAndUpload(rawFile, targetUserId, 'profiles');
+      const { preview, uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'avatar', targetUserId);
+      if (preview) setFormData(prev => ({ ...prev, avatar: preview }));
+      const url = await uploadPromise;
       const newData = { ...formData, avatar: url, avatar_url: url };
       setFormData(newData);
-      await persistToDatabase(newData);
+      setSaveStatus('idle');
       addToast('تم تحديث الصورة الشخصية بنجاح ✨', 'success');
+      persistToDatabase(newData);
     } catch (err: any) {
       addToast(`خطأ: ${err.message}`, 'error');
       setSaveStatus('error');
@@ -256,16 +255,14 @@ export function ProfileModal({
     if (!rawFile || !targetUserId) return;
     setSaveStatus('saving');
     try {
-      const localUrl = URL.createObjectURL(rawFile);
-      setFormData(prev => ({ ...prev, coverUrl: localUrl, cover_url: localUrl }));
-    } catch {}
-    addToast('جاري استلام وتجهيز الغلاف... ⏳');
-    try {
-      const url = await imageService.processAndUpload(rawFile, targetUserId, 'profiles');
+      const { preview, uploadPromise } = await mobileUploadService.uploadFile(rawFile, 'cover', targetUserId);
+      if (preview) setFormData(prev => ({ ...prev, coverUrl: preview, cover_url: preview }));
+      const url = await uploadPromise;
       const newData = { ...formData, coverUrl: url, cover_url: url };
       setFormData(newData);
-      await persistToDatabase(newData);
+      setSaveStatus('idle');
       addToast('تم تحديث الغلاف بنجاح ✨', 'success');
+      persistToDatabase(newData);
     } catch (err: any) {
       addToast(`خطأ: ${err.message}`, 'error');
       setSaveStatus('error');

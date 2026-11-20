@@ -90,8 +90,8 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
   };
 
   const currentRole = formData?.role || profile?.role || (formData as any)?.account_type || (profile as any)?.account_type || 'seeker';
-  const isEmployer = currentRole === 'employer' || (profile as any)?.account_type === 'employer' || (formData as any)?.account_type === 'employer' || !!(profile as any)?.company;
-  const isFreelancer = currentRole === 'freelancer' && !isEmployer;
+  const isEmployer = currentRole === 'employer';
+  const isFreelancer = currentRole === 'freelancer';
   const isSeeker = !isEmployer && !isFreelancer;
 
   const openToStatus = formData.open_to === 'work' || formData.is_available ? 'work' : 'none';

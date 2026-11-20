@@ -438,7 +438,7 @@ export function ModernProfileView({
         },
         body: JSON.stringify(payload),
       }),
-      6000,
+      3500,
       'طلب REST المباشر لتحديث profiles'
     );
 
@@ -455,7 +455,7 @@ export function ModernProfileView({
           },
           body: JSON.stringify(payload),
         }),
-        6000,
+        3500,
         'طلب REST المباشر (Anon Key)'
       );
     }
@@ -630,10 +630,14 @@ export function ModernProfileView({
         else setCoverUrl(preview);
       }
 
-      // 3. Wait for background upload (HEIC conversion -> Smart Canvas compression -> Storage / Base64 fallback)
+      // 3. Fast upload (sub-second compression -> Storage / Base64 fallback in <2s)
       const finalUrl = await uploadPromise;
 
-      // 4. Apply atomic sync across state, DB, and context
+      // 4. Release upload spinner immediately so user doesn't wait
+      if (isAvatar) setIsUploadingAvatar(false);
+      else setIsUploadingCover(false);
+
+      // 5. Apply atomic sync across state, DB, and context
       await applyImageUpdate(kind, finalUrl);
     } catch (err: any) {
       console.error(`[${kind}Upload] Upload error:`, err);
@@ -664,6 +668,7 @@ export function ModernProfileView({
         const { preview, uploadPromise } = await mobileUploadService.pickAndUpload('avatar', { userId: effectiveUserId });
         if (preview) setAvatar(preview);
         const finalUrl = await uploadPromise;
+        setIsUploadingAvatar(false);
         await applyImageUpdate('avatar', finalUrl);
       } catch (err: any) {
         setAvatar(prevAvatar);
@@ -686,6 +691,7 @@ export function ModernProfileView({
         const { preview, uploadPromise } = await mobileUploadService.pickAndUpload('cover', { userId: effectiveUserId });
         if (preview) setCoverUrl(preview);
         const finalUrl = await uploadPromise;
+        setIsUploadingCover(false);
         await applyImageUpdate('cover', finalUrl);
       } catch (err: any) {
         setCoverUrl(prevCover);

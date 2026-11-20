@@ -45,6 +45,9 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS cv_data JSONB DEFAULT '{}':
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS cv_template TEXT DEFAULT 'standard_ats';
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS cv_updated_at TIMESTAMPTZ DEFAULT now();
 
+-- ضمان أن القيمة الافتراضية لعمود role هي دائماً 'seeker' وليس 'employer'
+ALTER TABLE public.profiles ALTER COLUMN role SET DEFAULT 'seeker';
+
 DO $$
 DECLARE pol RECORD;
 BEGIN
@@ -101,8 +104,13 @@ BEGIN
   END IF;
 
   IF NEW.role IS DISTINCT FROM OLD.role THEN
+    -- أول اختيار للدور عند التسجيل
     IF (OLD.role IS NULL OR OLD.role = '') AND NEW.role IN ('seeker','employer','freelancer') THEN
-      RETURN NEW; -- first role selection at signup
+      RETURN NEW;
+    END IF;
+    -- إذا كان مسجلاً كـ employer بالخطأ من القيمة الافتراضية ولم ينشر المستخدم أي وظيفة إطلاقاً
+    IF OLD.role = 'employer' AND NEW.role = 'seeker' AND NOT EXISTS (SELECT 1 FROM public.jobs WHERE employer_id = auth.uid()) THEN
+      RETURN NEW;
     END IF;
     NEW.role := OLD.role;
   END IF;
@@ -137,8 +145,10 @@ BEGIN
   END IF;
 
   NEW.is_admin := false;
-  IF NEW.role IS NOT NULL AND NEW.role NOT IN ('seeker','employer','freelancer') THEN
-    NEW.role := NULL;
+  IF NEW.role IS NULL OR NEW.role = '' THEN
+    NEW.role := 'seeker';
+  ELSIF NEW.role NOT IN ('seeker','employer','freelancer') THEN
+    NEW.role := 'seeker';
   END IF;
 
   RETURN NEW;
@@ -149,6 +159,94 @@ DROP TRIGGER IF EXISTS trg_protect_profile_role_insert ON public.profiles;
 CREATE TRIGGER trg_protect_profile_role_insert
   BEFORE INSERT ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.protect_profile_role_insert();
+
+-- ─────────────────────────────────────────────────────────────
+-- تريجر إنشاء البروفايل تلقائياً عند تسجيل المستخدم (auth.users)
+-- يقرأ الدور المختار (role) من بيانات التسجيل والافتراضي 'seeker' دائماً
+-- ─────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_name      TEXT;
+  v_email     TEXT;
+  v_phone     TEXT;
+  v_avatar    TEXT;
+  v_role      TEXT;
+  v_is_admin  BOOLEAN := false;
+BEGIN
+  v_email  := COALESCE(NEW.email, '');
+  v_name   := COALESCE(
+                NULLIF(TRIM(NEW.raw_user_meta_data->>'full_name'), ''),
+                NULLIF(TRIM(NEW.raw_user_meta_data->>'name'), ''),
+                SPLIT_PART(v_email, '@', 1),
+                'مستخدم جديد'
+              );
+  v_phone  := COALESCE(TRIM(NEW.raw_user_meta_data->>'phone'), '');
+  v_avatar := COALESCE(NEW.raw_user_meta_data->>'avatar_url', NULL);
+  
+  -- قراءة الدور المختار بدقة، والافتراضي دائماً باحث عن عمل 'seeker'
+  v_role := COALESCE(
+              NULLIF(TRIM(NEW.raw_user_meta_data->>'role'), ''),
+              'seeker'
+            );
+  IF v_role NOT IN ('seeker', 'employer', 'freelancer') THEN
+    v_role := 'seeker';
+  END IF;
+
+  IF LOWER(v_email) IN ('nhdtcc100@gmail.com', 'nhd0770@gmail.com', 'admin@prolink.com') THEN
+    v_is_admin := TRUE;
+  END IF;
+
+  INSERT INTO public.profiles (
+    id, name, email, phone, avatar_url, role, 
+    is_pro, is_admin, is_active, has_calls_access, 
+    has_erp_access, has_support_access, bio
+  )
+  VALUES (
+    NEW.id, v_name, v_email, v_phone, v_avatar, v_role, 
+    v_is_admin, v_is_admin, TRUE, TRUE, 
+    v_is_admin, v_is_admin, ''
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    role = CASE 
+      WHEN public.profiles.role IS NULL OR public.profiles.role = '' THEN EXCLUDED.role 
+      WHEN public.profiles.role = 'employer' AND EXCLUDED.role = 'seeker' AND NOT EXISTS (SELECT 1 FROM public.jobs WHERE employer_id = NEW.id) THEN 'seeker'
+      ELSE public.profiles.role 
+    END,
+    name = CASE 
+      WHEN public.profiles.name IS NULL OR public.profiles.name = '' OR public.profiles.name = 'مستخدم جديد' THEN EXCLUDED.name 
+      ELSE public.profiles.name 
+    END;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- تصحيح أي مستخدم باحث عن عمل علق بحساب صاحب عمل وهو لا يملك أي وظيفة منشورة
+UPDATE public.profiles p
+   SET role = 'seeker'
+ WHERE p.is_admin = false
+   AND p.role = 'employer'
+   AND (
+     p.company_name IS NULL 
+     OR p.company_name = '' 
+     OR EXISTS (
+       SELECT 1 FROM auth.users u 
+        WHERE u.id = p.id AND u.raw_user_meta_data->>'role' = 'seeker'
+     )
+   )
+   AND NOT EXISTS (
+     SELECT 1 FROM public.jobs j WHERE j.employer_id = p.id
+   );
 
 -- ─────────────────────────────────────────────────────────────
 -- 1b. One-time owner promotion (replaces the removed client-side
