@@ -304,6 +304,11 @@ export const profileService = {
     if (updates.phone !== undefined)       dbUpdates.phone         = updates.phone;
     if (updates.cvUrl !== undefined)      dbUpdates.cv_url        = updates.cvUrl;
     if (updates.cv_url !== undefined)     dbUpdates.cv_url        = updates.cv_url;
+    if (updates.cv_data !== undefined)     dbUpdates.cv_data       = updates.cv_data;
+    if (updates.cvData !== undefined)      dbUpdates.cv_data       = updates.cvData;
+    if (updates.cv_template !== undefined) dbUpdates.cv_template   = updates.cv_template;
+    if (updates.cvTemplate !== undefined)  dbUpdates.cv_template   = updates.cvTemplate;
+    if (updates.cv_updated_at !== undefined) dbUpdates.cv_updated_at = updates.cv_updated_at;
     if (updates.open_to !== undefined)    dbUpdates.open_to       = updates.open_to;  // ← حالة "متاح للعمل"
     if (updates.is_available !== undefined) dbUpdates.is_available = updates.is_available;
     if (updates.isAvailable !== undefined)  dbUpdates.is_available = updates.isAvailable;
@@ -324,8 +329,8 @@ export const profileService = {
     if (updates.current_peer_id !== undefined) dbUpdates.current_peer_id = updates.current_peer_id;
     // 🛡️ WAF Real-Time Threat Inspection before writing to database
     for (const [key, val] of Object.entries(dbUpdates)) {
-      // Skip image URLs, document URLs, and base64 payloads from text XSS inspection
-      if (key === 'avatar_url' || key === 'cover_url' || key === 'cv_url') continue;
+      // Skip image URLs, document URLs, JSON data, and base64 payloads from text XSS inspection
+      if (key === 'avatar_url' || key === 'cover_url' || key === 'cv_url' || key === 'cv_data') continue;
       const strVal = Array.isArray(val) ? val.join(' ') : typeof val === 'string' ? val : '';
       if (!strVal) continue;
       if (strVal.startsWith('data:image/') || strVal.startsWith('data:application/') || strVal.startsWith('http://') || strVal.startsWith('https://')) continue;

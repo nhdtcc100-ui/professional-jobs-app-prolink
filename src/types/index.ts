@@ -110,6 +110,11 @@ export interface AppUser {
   phone?: string;
   coverUrl?: string;
   cvUrl?: string;
+  cv_url?: string;
+  cv_data?: any;
+  cvData?: any;
+  cv_template?: string;
+  cv_updated_at?: string;
   experience?: string;
   education?: string;
   workExperiences?: WorkExperience[];

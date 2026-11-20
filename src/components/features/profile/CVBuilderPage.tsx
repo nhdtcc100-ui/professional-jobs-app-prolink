@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ArrowRight, Printer, CheckCircle2, Sparkles, Plus, Trash2,
@@ -48,25 +48,36 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const printAreaRef = useRef<HTMLDivElement>(null);
 
+  // 0. Resolve saved CV data from database or localStorage
+  const savedCvData = (appUser as any)?.cv_data || (appUser as any)?.cvData;
+
   // 1. Personal & Contact Info
-  const [fullName, setFullName] = useState(appUser.name || '');
-  const [title, setTitle] = useState(appUser.title || appUser.displayTitle || '');
-  const [phone, setPhone] = useState(appUser.phone || '');
-  const [email, setEmail] = useState(appUser.email || '');
-  const [location, setLocation] = useState(appUser.location || '');
-  const [bio, setBio] = useState(appUser.bio || '');
+  const [fullName, setFullName] = useState(savedCvData?.name || appUser.name || '');
+  const [title, setTitle] = useState(savedCvData?.title || appUser.title || appUser.displayTitle || '');
+  const [phone, setPhone] = useState(savedCvData?.phone || appUser.phone || '');
+  const [email, setEmail] = useState(savedCvData?.email || appUser.email || '');
+  const [location, setLocation] = useState(savedCvData?.location || appUser.location || '');
+  const [bio, setBio] = useState(savedCvData?.bio || appUser.bio || '');
 
   // 2. Education
-  const [education, setEducation] = useState(appUser.education || '');
+  const [education, setEducation] = useState(savedCvData?.education || appUser.education || '');
 
   // 3. Skills
   const [skills, setSkills] = useState<string[]>(() => {
+    if (Array.isArray(savedCvData?.skills) && savedCvData.skills.length > 0) return [...savedCvData.skills];
     return Array.isArray(appUser.skills) ? [...appUser.skills] : [];
   });
   const [newSkillInput, setNewSkillInput] = useState('');
 
   // 4. Languages
   const [languages, setLanguages] = useState<LanguageItem[]>(() => {
+    if (Array.isArray(savedCvData?.languages) && savedCvData.languages.length > 0) {
+      return savedCvData.languages.map((l: any, i: number) => {
+        if (typeof l === 'object' && l.name) return l;
+        const parts = String(l).split(' - ');
+        return { id: `lang-${i}`, name: parts[0] || String(l), level: parts[1] || 'طليق / ممتاز' };
+      });
+    }
     const saved = localStorage.getItem(`prolink_ats_languages_${appUser.id}`);
     if (saved) {
       try { return JSON.parse(saved); } catch (_) {}
@@ -91,6 +102,9 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
 
   // 5. Work Experiences
   const [experiences, setExperiences] = useState<WorkExperience[]>(() => {
+    if (Array.isArray(savedCvData?.workExperiences) && savedCvData.workExperiences.length > 0) {
+      return [...savedCvData.workExperiences];
+    }
     const saved = localStorage.getItem(`prolink_ats_experiences_${appUser.id}`);
     if (saved) {
       try { return JSON.parse(saved); } catch (_) {}
@@ -217,7 +231,7 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
       localStorage.setItem(`prolink_ats_experiences_${appUser.id}`, JSON.stringify(experiences));
       localStorage.setItem(`prolink_ats_languages_${appUser.id}`, JSON.stringify(languages));
 
-      // 2. Update Supabase profiles table
+      // 2. Update Supabase profiles table with complete cv_data payload
       const profileUpdates: any = {
         name: fullCVBundle.name,
         title: fullCVBundle.title,
@@ -227,6 +241,9 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
         education: fullCVBundle.education,
         skills: fullCVBundle.skills,
         experience: fullCVBundle.experienceText,
+        cv_data: fullCVBundle,
+        cv_template: 'standard_ats',
+        cv_updated_at: new Date().toISOString(),
       };
 
       if (phone) profileUpdates.phone = fullCVBundle.phone;
@@ -236,11 +253,11 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
         console.warn('Profile sync warning:', res.error);
       }
 
-      // 3. Update React context state
+      // 3. Update React context state & localStorage cache
       if (setAppUser) {
         setAppUser((prev: AppUser | null) => {
           if (!prev) return prev;
-          return {
+          const updated = {
             ...prev,
             name: fullCVBundle.name,
             title: fullCVBundle.title,
@@ -251,8 +268,14 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
             skills: fullCVBundle.skills,
             languages: fullCVBundle.languages,
             workExperiences: fullCVBundle.workExperiences,
-            experience: fullCVBundle.experienceText
+            experience: fullCVBundle.experienceText,
+            cv_data: fullCVBundle,
+            cvData: fullCVBundle,
           };
+          try {
+            localStorage.setItem('prolink_cached_user', JSON.stringify(updated));
+          } catch (_) {}
+          return updated;
         });
       }
 
@@ -271,6 +294,70 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
   const handlePrint = () => {
     window.print();
   };
+
+  // ── Calculate dynamic content density for responsive 1-page A4 scaling ──
+  const contentDensity = useMemo<'compact' | 'normal' | 'spacious'>(() => {
+    let score = 0;
+    if (bio) score += Math.ceil(bio.length / 90);
+    score += (experiences?.length || 0) * 3;
+    experiences?.forEach((exp) => {
+      if (exp.tasks) score += Math.ceil(exp.tasks.length / 75);
+    });
+    if (education) score += Math.ceil(education.length / 80) + 1;
+    score += Math.ceil((skills?.length || 0) / 4);
+    score += Math.ceil((languages?.length || 0) / 3);
+
+    if (score > 13) return 'compact';
+    if (score < 8) return 'spacious';
+    return 'normal';
+  }, [bio, experiences, education, skills, languages]);
+
+  const densityStyles = useMemo(() => {
+    if (contentDensity === 'compact') {
+      return {
+        container: 'p-4 sm:p-6 space-y-2.5 print:space-y-1.5 print:p-0',
+        headerPad: 'pb-2 mb-1',
+        titleSize: 'text-base sm:text-lg print:text-base mb-0.5',
+        subtitleSize: 'text-[11px] sm:text-xs print:text-[11px] mb-1',
+        contactSize: 'text-[9.5px] print:text-[9px] gap-x-3 gap-y-0.5',
+        sectionHeader: 'text-[10px] print:text-[9.5px] pb-0.5 font-black',
+        bodyText: 'text-[10px] sm:text-[10.5px] print:text-[9.5px] leading-snug print:leading-[1.2]',
+        expSpacing: 'space-y-2',
+        badgePadding: 'px-1.5 py-0.5 text-[9px] print:text-[8.5px]',
+        langGap: 'gap-2 text-[10px] print:text-[9.5px]',
+        footerText: 'text-[8.5px] print:text-[8px] pt-1.5',
+      };
+    }
+    if (contentDensity === 'spacious') {
+      return {
+        container: 'p-8 sm:p-11 space-y-4 print:space-y-3 print:p-0',
+        headerPad: 'pb-3.5 mb-2',
+        titleSize: 'text-xl sm:text-2xl print:text-xl mb-1',
+        subtitleSize: 'text-xs sm:text-sm print:text-xs mb-2',
+        contactSize: 'text-[11px] print:text-[10.5px] gap-x-4 gap-y-1',
+        sectionHeader: 'text-[11.5px] print:text-[11px] pb-0.5 font-black',
+        bodyText: 'text-xs print:text-[11px] leading-relaxed print:leading-[1.35]',
+        expSpacing: 'space-y-3.5',
+        badgePadding: 'px-2.5 py-0.5 text-[10.5px] print:text-[10px]',
+        langGap: 'gap-3.5 text-xs print:text-[10.5px]',
+        footerText: 'text-[9.5px] print:text-[9px] pt-3',
+      };
+    }
+    // Normal default
+    return {
+      container: 'p-6 sm:p-9 space-y-3.5 print:space-y-2 print:p-0',
+      headerPad: 'pb-3 mb-1.5',
+      titleSize: 'text-lg sm:text-xl print:text-lg mb-0.5',
+      subtitleSize: 'text-xs sm:text-sm print:text-xs mb-1.5',
+      contactSize: 'text-[10.5px] print:text-[10px] gap-x-3.5 gap-y-1',
+      sectionHeader: 'text-[11px] print:text-[10px] pb-0.5 font-black',
+      bodyText: 'text-[11px] sm:text-xs print:text-[10px] leading-normal print:leading-[1.28]',
+      expSpacing: 'space-y-2.5',
+      badgePadding: 'px-2 py-0.5 text-[10px] print:text-[9px]',
+      langGap: 'gap-3 text-[11px] print:text-[10px]',
+      footerText: 'text-[9px] print:text-[8.5px] pt-2',
+    };
+  }, [contentDensity]);
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col font-sans transition-colors" dir="rtl">
@@ -759,23 +846,23 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
             </span>
           </div>
 
-          {/* 📄 Paper ATS Document Card ── Pure Black & White ATS standard ── */}
+          {/* 📄 Paper ATS Document Card ── Pure Black & White ATS standard with Adaptive Density ── */}
           <div
             ref={printAreaRef}
-            className="printable-cv-area w-full bg-white text-black p-6 sm:p-9 rounded-[2rem] shadow-xl border border-slate-300/80 dark:border-slate-700 space-y-4 print:shadow-none print:border-none print:p-0 print:m-0"
+            className={`printable-cv-area w-full bg-white text-black ${densityStyles.container} rounded-[2rem] shadow-xl border border-slate-300/80 dark:border-slate-700 print:shadow-none print:border-none print:p-0 print:m-0`}
             style={{ color: '#000000', backgroundColor: '#ffffff' }}
           >
             {/* Header: Name & Contact Details */}
-            <div className="printable-section border-b-2 border-black pb-3 text-center">
-              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-black uppercase mb-0.5">
+            <div className={`printable-section border-b-2 border-black ${densityStyles.headerPad} text-center`}>
+              <h1 className={`${densityStyles.titleSize} font-black tracking-tight text-black uppercase`}>
                 {fullName || 'الاسم الكامل للمرشح'}
               </h1>
-              <p className="text-xs sm:text-sm font-bold text-slate-800 tracking-wide mb-2">
+              <p className={`${densityStyles.subtitleSize} font-bold text-slate-800 tracking-wide`}>
                 {title || 'المسمى الوظيفي والتخصص المهني'}
               </p>
 
               {/* Contact details line */}
-              <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-[11px] text-slate-700 font-semibold">
+              <div className={`flex flex-wrap items-center justify-center ${densityStyles.contactSize} text-slate-700 font-semibold`}>
                 {phone && (
                   <span className="inline-flex items-center gap-1" dir="ltr">
                     <Phone size={11} className="text-black" />
@@ -804,26 +891,26 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
             {/* Professional Summary */}
             {bio && (
               <div className="printable-section space-y-1">
-                <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
+                <h3 className={`${densityStyles.sectionHeader} text-black tracking-wider uppercase border-b border-slate-300`}>
                   النبذة المهنية (Professional Summary)
                 </h3>
-                <p className="text-xs text-slate-800 leading-relaxed font-medium">
+                <p className={`${densityStyles.bodyText} text-slate-800 font-medium`}>
                   {bio}
                 </p>
               </div>
             )}
 
             {/* Work Experiences */}
-            <div className="printable-section space-y-2">
-              <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
+            <div className="printable-section space-y-1.5">
+              <h3 className={`${densityStyles.sectionHeader} text-black tracking-wider uppercase border-b border-slate-300`}>
                 الخبرات العملية وسجل الأعمال السابقة (Work Experience)
               </h3>
 
-              <div className="space-y-3">
+              <div className={densityStyles.expSpacing}>
                 {experiences.map((exp, idx) => (
                   <div key={idx} className="space-y-0.5">
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-xs font-black text-black">
+                      <span className={`${densityStyles.bodyText} font-black text-black`}>
                         {exp.role} — <span className="font-bold text-slate-700">{exp.company}</span>
                       </span>
                       <span className="text-[10px] font-bold text-slate-600 whitespace-nowrap">
@@ -831,12 +918,12 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
                       </span>
                     </div>
 
-                    <p className="text-[11px] text-slate-800 leading-relaxed font-normal whitespace-pre-line pl-2">
+                    <p className={`${densityStyles.bodyText} text-slate-800 font-normal whitespace-pre-line pl-2`}>
                       {exp.tasks}
                     </p>
 
                     {exp.skills && (
-                      <p className="text-[10px] text-slate-600 font-semibold">
+                      <p className="text-[9.5px] print:text-[9px] text-slate-600 font-semibold">
                         المهارات المستخدمة: {exp.skills}
                       </p>
                     )}
@@ -852,10 +939,10 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
             {/* Education */}
             {education && (
               <div className="printable-section space-y-1">
-                <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
+                <h3 className={`${densityStyles.sectionHeader} text-black tracking-wider uppercase border-b border-slate-300`}>
                   المؤهلات العلمية (Education & Credentials)
                 </h3>
-                <p className="text-xs text-slate-800 font-bold">
+                <p className={`${densityStyles.bodyText} text-slate-800 font-bold`}>
                   {education}
                 </p>
               </div>
@@ -863,15 +950,15 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
 
             {/* Core Competencies & Skills */}
             {skills.length > 0 && (
-              <div className="printable-section space-y-1.5">
-                <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
+              <div className="printable-section space-y-1">
+                <h3 className={`${densityStyles.sectionHeader} text-black tracking-wider uppercase border-b border-slate-300`}>
                   المهارات والقدرات الأساسية (Core Competencies)
                 </h3>
                 <div className="flex flex-wrap gap-1">
                   {skills.map((s, idx) => (
                     <span
                       key={idx}
-                      className="px-2 py-0.5 rounded bg-slate-100 text-slate-900 text-[10px] font-bold border border-slate-300"
+                      className={`${densityStyles.badgePadding} rounded bg-slate-100 text-slate-900 font-bold border border-slate-300`}
                     >
                       {s}
                     </span>
@@ -882,11 +969,11 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
 
             {/* Languages */}
             {languages.length > 0 && (
-              <div className="printable-section space-y-1.5">
-                <h3 className="text-[11px] font-black text-black tracking-wider uppercase border-b border-slate-300 pb-0.5">
+              <div className="printable-section space-y-1">
+                <h3 className={`${densityStyles.sectionHeader} text-black tracking-wider uppercase border-b border-slate-300`}>
                   اللغات (Languages)
                 </h3>
-                <div className="flex flex-wrap gap-3 text-xs text-slate-800 font-medium">
+                <div className={`flex flex-wrap ${densityStyles.langGap} text-slate-800 font-medium`}>
                   {languages.map((l, idx) => (
                     <span key={idx} className="font-bold">
                       {l.name}: <span className="font-normal text-slate-600">{l.level}</span>
@@ -897,7 +984,7 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
             )}
 
             {/* ATS Certification Footnote */}
-            <div className="printable-section pt-4 border-t border-slate-200 flex items-center justify-between text-[9px] text-slate-500 font-bold">
+            <div className={`printable-section ${densityStyles.footerText} border-t border-slate-200 flex items-center justify-between text-slate-500 font-bold`}>
               <span>تم إنشاء هذه السيرة وتوثيقها عبر منصة ProLink المهنية</span>
               <span>ATS Compliant Resume • Verified Professional</span>
             </div>

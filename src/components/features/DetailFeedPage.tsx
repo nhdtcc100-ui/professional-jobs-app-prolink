@@ -713,7 +713,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                 <div className="shrink-0 relative overflow-hidden rounded-t-3xl border-b border-slate-200/80 dark:border-slate-800 z-10 bg-slate-950">
                   <div className={`relative overflow-hidden ${heroCover ? 'h-48 sm:h-56' : 'h-40 sm:h-48'} shrink-0`}>
                     <img
-                      src={newsService.proxyImage(currentItem.thumbnail || currentItem.imageUrl || heroCover)}
+                      src={newsService.proxyImage(currentItem.thumbnail || currentItem.imageUrl || currentItem.image_url || currentItem.image || currentItem.urlToImage || heroCover)}
                       alt={currentItem.title}
                       className="w-full h-full object-cover"
                       onError={(e) => handleImageError(e, DEFAULT_NEWS_PLACEHOLDER)}
@@ -767,6 +767,24 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     touchAction: 'pan-y',
                   }}
                 >
+                  {/* 📷 صورة الخبر واضحة وكاملة في صلب المقال التفصيلي */}
+                  {(currentItem.thumbnail || currentItem.imageUrl || currentItem.image_url || currentItem.image || currentItem.urlToImage || heroCover) && (
+                    <div className="relative rounded-2xl overflow-hidden shadow-md border border-slate-200/80 dark:border-slate-800 group bg-slate-950">
+                      <img
+                        src={newsService.proxyImage(currentItem.thumbnail || currentItem.imageUrl || currentItem.image_url || currentItem.image || currentItem.urlToImage || heroCover)}
+                        alt={currentItem.title || 'صورة الخبر'}
+                        className="w-full h-auto max-h-72 sm:max-h-96 object-cover object-center transition-transform duration-500 group-hover:scale-105"
+                        onError={(e) => handleImageError(e, DEFAULT_NEWS_PLACEHOLDER)}
+                        loading="lazy"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
+                      <div className="absolute bottom-2.5 right-3 text-[10px] font-bold text-white/95 bg-black/60 px-2.5 py-1 rounded-lg backdrop-blur-md flex items-center gap-1.5 shadow-xs">
+                        <Newspaper size={11} className="text-emerald-400" />
+                        <span>{currentItem.source || currentItem.category || 'صورة الخبر المعتمدة'}</span>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
                     <BilingualSmartText text={currentItem.content || currentItem.description || ''} className="space-y-3" paragraphClassName="!text-black dark:!text-slate-100 font-medium" />
                   </div>

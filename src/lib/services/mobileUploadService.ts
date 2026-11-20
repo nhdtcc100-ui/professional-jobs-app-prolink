@@ -55,12 +55,12 @@ const IMAGE_MAX_DIM = 1000;   // px
 const IMAGE_QUALITY = 0.82;
 const THUMB_MAX_DIM = 400;    // px – compact Base64 thumbnail (crisp on mobile retina)
 const THUMB_QUALITY = 0.75;
-const UPLOAD_TIMEOUT = 30_000; // 30 s per bucket attempt
+const UPLOAD_TIMEOUT = 4_000;  // ⚡ 4s max per bucket attempt — fast fallback to Base64 in <150ms!
 
 const IMAGE_BUCKETS: Record<string, string[]> = {
-  avatar: ['profiles', 'images', 'avatars', 'public'],
-  cover: ['profiles', 'images', 'covers', 'public'],
-  'post-image': ['posts', 'images', 'public'],
+  avatar: ['profiles', 'images'],
+  cover: ['profiles', 'images'],
+  'post-image': ['posts', 'images'],
   'post-video': ['posts'],
 };
 
@@ -206,22 +206,24 @@ async function uploadToStorage(
   const fileName = `${userId}/${uuid}.${ext}`;
 
   // Ensure auth session headers are fresh (required for Storage RLS).
-  // ⏱️ بمهلة حتى لا يعلّق الرفع قبل أن يبدأ إذا كان قفل المصادقة عالقاً بعد تجميد التبويب.
+  // ⏱️ مهلة سريعة جداً (1500ms) حتى لا يعلّق الرفع إطلاقاً
   try {
     await Promise.race([
       supabase.auth.getSession(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('getSession timeout')), 4000)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('getSession timeout')), 1500)),
     ]);
   } catch { }
 
-  for (const bucket of buckets) {
+  // نحصر المحاولة بأول باكتين كحد أقصى بمهلة 3.5 ثوانٍ
+  const targetBuckets = buckets.slice(0, 2);
+  for (const bucket of targetBuckets) {
     try {
       const uploadPromise = supabase.storage
         .from(bucket)
         .upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' });
 
       const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-        setTimeout(() => reject(new Error(`Storage timeout (${UPLOAD_TIMEOUT / 1000}s) – bucket: ${bucket}`)), UPLOAD_TIMEOUT)
+        setTimeout(() => reject(new Error(`Storage timeout – bucket: ${bucket}`)), 3500)
       );
 
       const { error } = await Promise.race([uploadPromise, timeoutPromise]);

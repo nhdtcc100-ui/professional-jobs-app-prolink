@@ -860,6 +860,10 @@ button, a, input, select, textarea {
   .printable-section {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
-    margin-bottom: 8px !important;
+    margin-bottom: 6px !important;
+  }
+
+  .printable-cv-area .printable-section:last-child {
+    margin-bottom: 0 !important;
   }
 }
