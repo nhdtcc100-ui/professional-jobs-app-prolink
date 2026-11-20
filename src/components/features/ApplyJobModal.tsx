@@ -51,11 +51,12 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
   const atsCV = React.useMemo(() => {
     try {
       const raw = localStorage.getItem(`prolink_ats_cv_${appUser.id}`);
-      return raw ? JSON.parse(raw) : null;
+      if (raw) return JSON.parse(raw);
+      return (appUser as any)?.cv_data || (appUser as any)?.cvData || null;
     } catch {
-      return null;
+      return (appUser as any)?.cv_data || (appUser as any)?.cvData || null;
     }
-  }, [appUser.id]);
+  }, [appUser.id, (appUser as any)?.cv_data, (appUser as any)?.cvData]);
 
   if (!applyingJob || !appUser) return null;
 
@@ -164,7 +165,9 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
 
       applicantDataPayload.isATSVerified = true;
       applicantDataPayload.atsCV = finalAtsCV;
-      applicantDataPayload.languages = finalAtsCV.languages;
+      applicantDataPayload.cv_data = finalAtsCV;
+      applicantDataPayload.workExperiences = finalAtsCV.workExperiences || prevWorks || [];
+      applicantDataPayload.languages = finalAtsCV.languages || (appUser as any).languages || [];
 
       console.log("💎 [UI_STEP_3] Calling service.applyToJob...");
       const applyResult = await jobService.applyToJob(appUser.id, applyingJob.employer_id!, {
@@ -187,6 +190,24 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
       if ((applyResult as any).isUpdated) {
         addToast('تم تحديث طلب التقديم الخاص بك بنجاح! 🚀');
       }
+
+      // ⚡ Optimistic broadcast to instant-sync sentApplications across all views
+      try {
+        const optimisticApp = {
+          id: (applyResult as any)?.data?.id || `sent-${Date.now()}`,
+          job_id: applyingJob.id,
+          applicant_id: appUser.id,
+          employer_id: applyingJob.employer_id,
+          cover_letter: cvCoverLetter,
+          cv_url: cvUrl,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          jobTitle: applyingJob.title || 'وظيفة',
+          company: applyingJob.company || 'شركة',
+          applicant_data: applicantDataPayload
+        };
+        window.dispatchEvent(new CustomEvent('prolink_application_sent', { detail: optimisticApp }));
+      } catch (_) {}
       
       try { if (window.refreshApplications) window.refreshApplications(); } catch (_) {}
 

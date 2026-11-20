@@ -4,7 +4,7 @@ import {
   ArrowLeft, ArrowRight, Printer, CheckCircle2, Sparkles, Plus, Trash2,
   Briefcase, GraduationCap, Languages, Wrench, MapPin, Phone, Mail,
   FileText, Download, Eye, Edit3, Building2, Calendar, Award, Share2,
-  Save, Loader2
+  Save, Loader2, MessageCircle
 } from 'lucide-react';
 import { AppUser, WorkExperience } from '../../../types';
 import { profileService } from '../../../lib/services/profileService';
@@ -72,26 +72,30 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
 
   // 4. Languages
   const [languages, setLanguages] = useState<LanguageItem[]>(() => {
+    const parseLangItem = (l: any, i: number) => {
+      if (typeof l === 'object' && l && l.name) return { id: l.id || `lang-${i}`, name: l.name, level: l.level || 'طليق / ممتاز' };
+      const str = String(l || '').trim();
+      const parenMatch = str.match(/^(.+?)\s*\((.+?)\)$/);
+      if (parenMatch) return { id: `lang-${i}`, name: parenMatch[1].trim(), level: parenMatch[2].trim() };
+      const dashMatch = str.split(' - ');
+      if (dashMatch.length > 1) return { id: `lang-${i}`, name: dashMatch[0].trim(), level: dashMatch[1].trim() };
+      return { id: `lang-${i}`, name: str, level: 'طليق / ممتاز' };
+    };
+
     if (Array.isArray(savedCvData?.languages) && savedCvData.languages.length > 0) {
-      return savedCvData.languages.map((l: any, i: number) => {
-        if (typeof l === 'object' && l.name) return l;
-        const parts = String(l).split(' - ');
-        return { id: `lang-${i}`, name: parts[0] || String(l), level: parts[1] || 'طليق / ممتاز' };
-      });
+      return savedCvData.languages.map((l: any, i: number) => parseLangItem(l, i)).filter(Boolean);
     }
     const saved = localStorage.getItem(`prolink_ats_languages_${appUser.id}`);
     if (saved) {
-      try { return JSON.parse(saved); } catch (_) {}
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map((l: any, i: number) => parseLangItem(l, i)).filter(Boolean);
+        }
+      } catch (_) {}
     }
     if (Array.isArray(appUser.languages) && appUser.languages.length > 0) {
-      return appUser.languages.map((l: string, i: number) => {
-        const parts = l.split(' - ');
-        return {
-          id: `lang-${i}`,
-          name: parts[0] || l,
-          level: parts[1] || 'طليق / ممتاز'
-        };
-      });
+      return appUser.languages.map((l: any, i: number) => parseLangItem(l, i)).filter(Boolean);
     }
     return [
       { id: 'l-1', name: 'العربية', level: 'اللغة الأم' },
@@ -221,6 +225,7 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
         education: sanitizeInput(education, 300),
         skills,
         languages: formattedLangStrings,
+        languagesList: languages,
         workExperiences: experiences,
         experienceText: formattedExpText,
         updatedAt: new Date().toISOString(),
@@ -294,6 +299,26 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleShareWhatsApp = () => {
+    const summary = [
+      `📄 *السيرة الذاتية المهنية (ATS) المعتمدة - ProLink*`,
+      `👤 *الاسم:* ${fullName}`,
+      `💼 *المسمى المهني:* ${title}`,
+      location ? `📍 *الموقع:* ${location}` : '',
+      phone ? `📞 *الهاتف:* ${phone}` : '',
+      email ? `✉️ *البريد:* ${email}` : '',
+      bio ? `\n📝 *النبذة:*\n${bio}` : '',
+      experiences.length > 0 ? `\n🏢 *الخبرات:*\n` + experiences.slice(0, 3).map(e => `• ${e.role} لدى ${e.company} (${e.duration})`).join('\n') : '',
+      skills.length > 0 ? `\n🛠️ *المهارات:*\n${skills.slice(0, 6).join(' • ')}` : '',
+      languages.length > 0 ? `\n🌐 *اللغات:*\n` + languages.map(l => `${l.name} (${l.level})`).join(' • ') : '',
+      `\n🔗 *رابط الملف المهني:* ${window.location.origin}`
+    ].filter(Boolean).join('\n');
+
+    const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(summary)}`;
+    window.open(waUrl, '_blank');
+    addToast('تم فتح واتساب لمشاركة سيرتك الذاتية 📲', 'success');
   };
 
   // ── Calculate dynamic content density for responsive 1-page A4 scaling ──
@@ -387,6 +412,16 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={handleShareWhatsApp}
+              title="مشاركة السيرة الذاتية عبر واتساب"
+              className="p-2 sm:px-3 sm:py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-xs"
+            >
+              <MessageCircle size={15} />
+              <span className="hidden sm:inline">واتساب</span>
+            </button>
+
             <button
               type="button"
               onClick={handlePrint}

@@ -1,11 +1,13 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Printer, Share2, MapPin,
-  Phone, Mail, CheckCircle2, Sparkles, Building2
+  Phone, Mail, CheckCircle2, Sparkles, Building2, Download, MessageCircle
 } from 'lucide-react';
 import { AppUser } from '../../../types';
+import { Share } from '@capacitor/share';
+import { Capacitor } from '@capacitor/core';
 
 export interface GeneratedCVModalProps {
   isOpen: boolean;
@@ -13,6 +15,8 @@ export interface GeneratedCVModalProps {
   user: AppUser | any;
   applicantData?: any;
   coverLetter?: string;
+  employerPhone?: string;
+  jobTitle?: string;
 }
 
 export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
@@ -21,8 +25,11 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
   user,
   applicantData,
   coverLetter,
+  employerPhone,
+  jobTitle,
 }) => {
   const printAreaRef = useRef<HTMLDivElement>(null);
+  const [copiedNotice, setCopiedNotice] = useState(false);
 
   // 🔒 Lock background scroll and isolate print layout to this modal only
   useEffect(() => {
@@ -48,15 +55,15 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
 
   // Resolve merged profile fields
   // 0. Resolve saved CV data from database or props
-  const savedCvData = (applicantData as any)?.cv_data || (user as any)?.cv_data || (applicantData as any)?.cvData || (user as any)?.cvData;
+  const savedCvData = (applicantData as any)?.cv_data || (user as any)?.cv_data || (applicantData as any)?.cvData || (user as any)?.cvData || (applicantData as any)?.atsCV || (user as any)?.atsCV;
 
-  const fullName = applicantData?.name || savedCvData?.name || user?.name || user?.fullName || 'محترف ProLink';
+  const fullName = applicantData?.name || savedCvData?.name || savedCvData?.fullName || user?.name || user?.fullName || 'محترف ProLink';
   const title = applicantData?.title || savedCvData?.title || user?.title || user?.displayTitle || user?.display_title || user?.specialty || user?.headline || 'متخصص مهني';
   const location = applicantData?.location || savedCvData?.location || user?.location || 'العراق';
   const phone = applicantData?.phone || savedCvData?.phone || user?.phone || '';
   const email = applicantData?.email || savedCvData?.email || user?.email || '';
-  const bio = applicantData?.bio || savedCvData?.bio || user?.bio || '';
-  const education = applicantData?.education || savedCvData?.education || user?.education || '';
+  const bio = applicantData?.bio || savedCvData?.bio || savedCvData?.summary || user?.bio || '';
+  const education = applicantData?.education || savedCvData?.education || savedCvData?.educationText || user?.education || '';
 
   // Resolve skills
   const skills: string[] = useMemo(() => {
@@ -66,39 +73,45 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
     return [];
   }, [applicantData?.skills, user?.skills, savedCvData?.skills]);
 
+  // Helper to normalize any language representation
+  const parseLanguageItem = (l: any, i: number) => {
+    if (typeof l === 'object' && l && l.name) {
+      return { id: l.id || `lang-${i}`, name: l.name, level: l.level || 'طليق / ممتاز' };
+    }
+    const str = String(l || '').trim();
+    if (!str) return null;
+    const parenMatch = str.match(/^(.+?)\s*\((.+?)\)$/);
+    if (parenMatch) {
+      return { id: `lang-${i}`, name: parenMatch[1].trim(), level: parenMatch[2].trim() };
+    }
+    const dashMatch = str.split(' - ');
+    if (dashMatch.length > 1) {
+      return { id: `lang-${i}`, name: dashMatch[0].trim(), level: dashMatch[1].trim() };
+    }
+    return { id: `lang-${i}`, name: str, level: 'طليق / ممتاز' };
+  };
+
   // Resolve languages
   const languages = useMemo(() => {
-    if (Array.isArray(savedCvData?.languages) && savedCvData.languages.length > 0) {
-      return savedCvData.languages.map((l: any, i: number) => {
-        if (typeof l === 'object' && l.name) return l;
-        const parts = String(l).split(' - ');
-        return { id: `lang-${i}`, name: parts[0] || String(l), level: parts[1] || 'طليق / ممتاز' };
-      });
+    const rawLangs = savedCvData?.languages || applicantData?.languages || user?.languages;
+    if (Array.isArray(rawLangs) && rawLangs.length > 0) {
+      const parsed = rawLangs.map((l: any, i: number) => parseLanguageItem(l, i)).filter(Boolean);
+      if (parsed.length > 0) return parsed;
     }
-    if (Array.isArray(applicantData?.languages) && applicantData.languages.length > 0) {
-      return applicantData.languages.map((l: any, i: number) => {
-        if (typeof l === 'object' && l.name) return l;
-        const parts = String(l).split(' - ');
-        return { id: `lang-${i}`, name: parts[0] || l, level: parts[1] || 'طليق / ممتاز' };
-      });
-    }
+
     const userId = user?.id || applicantData?.userId;
     if (userId) {
       try {
         const saved = localStorage.getItem(`prolink_ats_languages_${userId}`);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map((l: any, i: number) => parseLanguageItem(l, i)).filter(Boolean);
+          }
         }
       } catch (_) {}
     }
-    if (Array.isArray(user?.languages) && user.languages.length > 0) {
-      return user.languages.map((l: any, i: number) => {
-        if (typeof l === 'object' && l.name) return l;
-        const parts = String(l).split(' - ');
-        return { id: `lang-${i}`, name: parts[0] || l, level: parts[1] || 'طليق / ممتاز' };
-      });
-    }
+
     return [
       { id: 'l-1', name: 'العربية', level: 'اللغة الأم' },
       { id: 'l-2', name: 'الإنجليزية', level: 'متقدم' }
@@ -107,15 +120,20 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
 
   // Resolve experiences
   const experiences = useMemo(() => {
-    if (Array.isArray(savedCvData?.workExperiences) && savedCvData.workExperiences.length > 0) {
-      return savedCvData.workExperiences;
+    // 1. Direct structured workExperiences
+    const directExps = savedCvData?.workExperiences || applicantData?.workExperiences || applicantData?.experiences || user?.workExperiences || user?.work_experiences;
+    if (Array.isArray(directExps) && directExps.length > 0) {
+      return directExps.map((e: any, idx: number) => ({
+        id: e.id || `exp-${idx}`,
+        role: e.role || e.title || title || 'أخصائي مهني',
+        company: e.company || e.companyName || 'منشأة معتمدة',
+        duration: e.duration || e.period || 'سجل الخبرات',
+        tasks: e.tasks || e.description || '',
+        skills: e.skills || ''
+      }));
     }
-    if (Array.isArray(applicantData?.workExperiences) && applicantData.workExperiences.length > 0) {
-      return applicantData.workExperiences;
-    }
-    if (Array.isArray(applicantData?.experiences) && applicantData.experiences.length > 0) {
-      return applicantData.experiences;
-    }
+
+    // 2. Fallback to localStorage for user
     const userId = user?.id || applicantData?.userId;
     if (userId) {
       try {
@@ -126,22 +144,34 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
         }
       } catch (_) {}
     }
-    if (Array.isArray(user?.workExperiences) && user.workExperiences.length > 0) {
-      return user.workExperiences;
+
+    // 3. Check prevWorks (from application modal)
+    const prevWorks = applicantData?.prevWorks || (user as any)?.prevWorks;
+    if (Array.isArray(prevWorks) && prevWorks.length > 0) {
+      return prevWorks.map((pw: any, idx: number) => ({
+        id: pw.id || `pw-${idx}`,
+        role: pw.role || title || 'أخصائي مهني',
+        company: pw.company || 'منشأة معتمدة',
+        duration: pw.hours ? `ساعات العمل: ${pw.hours}` : 'خبرة سابقة',
+        tasks: pw.tasks || '',
+        skills: pw.skills || (pw.salary ? `الراتب: ${pw.salary}` : '')
+      }));
     }
-    // If experience is a raw text string, split and structure it
-    const expText = applicantData?.experience || user?.experience;
+
+    // 4. Raw text string fallback
+    const expText = applicantData?.experience || user?.experience || savedCvData?.experienceText;
     if (typeof expText === 'string' && expText.trim().length > 0) {
-      const lines = expText.split('\n').map(l => l.trim()).filter(Boolean);
-      return [{
-        id: 'exp-text-1',
+      const blocks = expText.split(/\n\s*•\s*|\n\s*---\s*|\n{2,}/).map(l => l.trim()).filter(Boolean);
+      return blocks.map((blk, idx) => ({
+        id: `exp-text-${idx}`,
         role: title || 'أخصائي مهني',
         company: user?.companyName || 'منشأة معتمدة',
         duration: 'سجل الخبرات المعتمد',
-        tasks: lines.join('\n'),
+        tasks: blk,
         skills: skills.slice(0, 3).join(', ')
-      }];
+      }));
     }
+
     return [
       {
         id: 'exp-default-1',
@@ -152,7 +182,7 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
         skills: skills.slice(0, 3).join(', ') || 'التخطيط، إدارة المهام، حل المشكلات'
       }
     ];
-  }, [applicantData, user, title, skills, savedCvData?.workExperiences]);
+  }, [applicantData, user, title, skills, savedCvData]);
 
   // ── Calculate dynamic content density for responsive 1-page A4 scaling ──
   const contentDensity = useMemo<'compact' | 'normal' | 'spacious'>(() => {
@@ -223,16 +253,79 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
     window.print();
   };
 
+  const generateWhatsAppMessage = () => {
+    const summary = [
+      `📄 *السيرة الذاتية المهنية (ATS) المعتمدة - ProLink*`,
+      `👤 *الاسم:* ${fullName}`,
+      `💼 *المسمى المهني:* ${title}`,
+      location ? `📍 *الموقع:* ${location}` : '',
+      phone ? `📞 *الهاتف:* ${phone}` : '',
+      email ? `✉️ *البريد:* ${email}` : '',
+      bio ? `\n📝 *نبذة موجزة:*\n${bio}` : '',
+      experiences.length > 0 ? `\n🏢 *أبرز الخبرات:*\n` + experiences.slice(0, 3).map(e => `• ${e.role} لدى ${e.company} (${e.duration})`).join('\n') : '',
+      skills.length > 0 ? `\n🛠️ *المهارات الأساسية:*\n${skills.slice(0, 6).join(' • ')}` : '',
+      languages.length > 0 ? `\n🌐 *اللغات:*\n` + languages.map((l: any) => `${l.name} (${l.level})`).join(' • ') : '',
+      `\n🔗 *رابط الملف المهني الموثق:* ${window.location.origin}`
+    ].filter(Boolean).join('\n');
+    return summary;
+  };
+
+  const handleSendWhatsApp = async () => {
+    const text = generateWhatsAppMessage();
+    const cleanPhone = (employerPhone || '').replace(/[^0-9]/g, '');
+    
+    // If native Capacitor
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await Share.share({
+          title: `السيرة الذاتية - ${fullName}`,
+          text: text,
+          dialogTitle: 'إرسال السيرة الذاتية عبر واتساب',
+        });
+        return;
+      } catch (_) {}
+    }
+
+    // Direct WhatsApp Web / App Link
+    const waUrl = cleanPhone 
+      ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`
+      : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    
+    window.open(waUrl, '_blank');
+    setCopiedNotice(true);
+    setTimeout(() => setCopiedNotice(false), 4000);
+  };
+
   const handleShare = async () => {
+    const text = generateWhatsAppMessage();
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await Share.share({
+          title: `السيرة الذاتية - ${fullName}`,
+          text: text,
+          url: window.location.href,
+        });
+        return;
+      } catch (_) {}
+    }
+
     if (typeof navigator !== 'undefined' && navigator.share) {
       try {
         await navigator.share({
           title: `السيرة الذاتية - ${fullName}`,
-          text: `السيرة الذاتية الرسمية للمحترف ${fullName} بنظام ATS من منصة ProLink`,
+          text: text,
           url: window.location.href,
         });
+        return;
       } catch (_) {}
     }
+
+    // Fallback: copy to clipboard
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedNotice(true);
+      setTimeout(() => setCopiedNotice(false), 3000);
+    } catch (_) {}
   };
 
   if (!isOpen || !user) return null;
@@ -254,7 +347,7 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
           onClick={(e) => e.stopPropagation()}
         >
           {/* Top Bar Controls (Not printed) */}
-          <div className="shrink-0 px-4 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-[#0a66c2] text-white flex items-center justify-between shadow-md print:hidden">
+          <div className="shrink-0 px-4 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-[#0a66c2] text-white flex items-center justify-between shadow-md print:hidden flex-wrap gap-2">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-white/20 backdrop-blur-md flex items-center justify-center border border-white/30 shadow-inner">
                 <Sparkles size={16} className="text-white" />
@@ -264,32 +357,42 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
                   معاينة السيرة الذاتية القياسية (ATS)
                 </h3>
                 <p className="text-[10px] text-blue-100 font-bold">
-                  تنسيق صفحة واحدة موثقة • جاهزة للطباعة والتقديم المباشر 🛡️
+                  تنسيق معتمد • قابل للتصدير كـ PDF ومشاركته للواتساب مباشرة 🛡️
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {/* WhatsApp Share Button */}
+              <button
+                type="button"
+                onClick={handleSendWhatsApp}
+                className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                title="إرسال عبر واتساب إلى الناشر"
+              >
+                <MessageCircle size={14} className="text-white fill-white/20" />
+                <span className="hidden sm:inline">واتساب</span>
+              </button>
+
+              {/* PDF Print / Export Button */}
               <button
                 type="button"
                 onClick={handlePrint}
                 className="px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-black text-xs flex items-center gap-1.5 backdrop-blur-md border border-white/25 transition-all active:scale-95 cursor-pointer shadow-xs"
-                title="طباعة أو تصدير PDF"
+                title="تصدير كـ PDF أو طباعة"
               >
-                <Printer size={14} />
-                <span className="hidden sm:inline">طباعة / PDF</span>
+                <Download size={14} />
+                <span>حفظ PDF</span>
               </button>
 
-              {typeof navigator !== 'undefined' && 'share' in navigator && (
-                <button
-                  type="button"
-                  onClick={handleShare}
-                  className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all active:scale-95 cursor-pointer"
-                  title="مشاركة"
-                >
-                  <Share2 size={15} />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleShare}
+                className="p-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-all active:scale-95 cursor-pointer"
+                title="مشاركة السيرة"
+              >
+                <Share2 size={15} />
+              </button>
 
               <button
                 type="button"
@@ -301,6 +404,13 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
               </button>
             </div>
           </div>
+
+          {/* Feedback Banner if copied */}
+          {copiedNotice && (
+            <div className="px-4 py-2 bg-emerald-500 text-white text-[11px] font-bold text-center animate-fade-in print:hidden">
+              ✅ تم تجهيز السيرة الذاتية ورابطها المباشر لمشاركتها عبر واتساب!
+            </div>
+          )}
 
           {/* 📄 Paper ATS Document Container ── Adaptive Content Density for single-page A4 fit ── */}
           <div className="flex-1 overflow-y-auto p-3 sm:p-6 bg-slate-100/60 dark:bg-slate-950 text-slate-900 print:bg-white print:text-black print:p-0 print:overflow-visible">

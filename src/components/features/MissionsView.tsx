@@ -236,7 +236,26 @@ export function MissionsView({
 
   useEffect(() => {
     (window as any).refreshApplications = fetchApplications;
-    return () => { delete (window as any).refreshApplications; };
+
+    const onAppSent = (e: any) => {
+      const appData = e.detail;
+      if (appData) {
+        setSentApplications(prev => {
+          const exists = prev.some(a => a.id === appData.id || (a.job_id === appData.job_id && a.applicant_id === appData.applicant_id));
+          if (exists) {
+            return prev.map(a => (a.id === appData.id || a.job_id === appData.job_id) ? { ...a, ...appData } : a);
+          }
+          return [appData, ...prev];
+        });
+      }
+      setTimeout(() => fetchApplications(), 300);
+    };
+    window.addEventListener('prolink_application_sent', onAppSent);
+
+    return () => { 
+      delete (window as any).refreshApplications;
+      window.removeEventListener('prolink_application_sent', onAppSent);
+    };
   }, [fetchApplications]);
 
   const myPostedJobs = React.useMemo(() => jobs.filter(j => j.employer_id === appUser?.id), [jobs, appUser?.id]);

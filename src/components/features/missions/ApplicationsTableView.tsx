@@ -4,7 +4,8 @@ import {
   FileText, Download, CheckCircle, XCircle, Clock, Search, ExternalLink,
   User, Briefcase, FileSpreadsheet, Calendar, MessageCircle, Mail,
   RotateCcw, Trash2, MapPin, Globe, Sparkles, DollarSign, MessageSquare,
-  Loader2, Star, StickyNote, ArrowRight, ChevronUp, ChevronDown, Phone, Eye
+  Loader2, Star, StickyNote, ArrowRight, ChevronUp, ChevronDown, Phone, Eye,
+  Edit2, X
 } from 'lucide-react';
 import { supabase } from '../../../lib/supabase';
 import { AppUser } from '../../../types';
@@ -232,6 +233,9 @@ function ApplicationsListViewContent({
   const detailContainerRef = React.useRef<HTMLDivElement>(null);
   const [ratingFilter, setRatingFilter] = useState<number>(0); // 0 = all
   const [previewApplicantCV, setPreviewApplicantCV] = useState<any>(null);
+  const [editingApp, setEditingApp] = useState<any>(null);
+  const [editCoverLetter, setEditCoverLetter] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   // 🛡️ Keep-Alive guard: close the fixed z-[300] overlay when user navigates away.
   // Because MissionsView uses CSS `hidden` (not unmount), this component stays in
@@ -567,7 +571,12 @@ function ApplicationsListViewContent({
                 layout
                 className="scroll-mt-24 transition-all duration-300"
               >
-                <GlassCard className={`p-5 rounded-[2.2rem] transition-all duration-300 group relative overflow-hidden ${isHighlighted
+                <GlassCard 
+                  onClick={() => {
+                    const idx = filteredApps.findIndex(a => a.id === app.id);
+                    setSelectedAppIndex(idx >= 0 ? idx : 0);
+                  }}
+                  className={`p-5 rounded-[2.2rem] transition-all duration-300 group relative overflow-hidden cursor-pointer ${isHighlighted
                   ? 'ring-4 ring-blue-500/80 border-blue-500 shadow-2xl shadow-blue-500/30 scale-[1.01] bg-blue-50/70 dark:bg-blue-950/50'
                   : 'border border-white dark:border-slate-700 shadow-sm hover:shadow-xl hover:translate-y-[-4px] bg-white/90 dark:bg-slate-800/90'
                   }`}>
@@ -684,7 +693,32 @@ function ApplicationsListViewContent({
                           </div>
 
                           {isSentView ? (
-                            <div className="flex items-center gap-2 mt-3">
+                            <div className="flex items-center gap-2 mt-3 flex-wrap">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const idx = filteredApps.findIndex(a => a.id === app.id);
+                                  setSelectedAppIndex(idx >= 0 ? idx : 0);
+                                }}
+                                className="flex-1 min-w-[90px] py-2.5 px-3 bg-slate-900 dark:bg-slate-800 text-white rounded-xl text-[10px] font-black hover:bg-slate-800 transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                              >
+                                <User size={13} />
+                                <span>عرض طلبي</span>
+                              </button>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingApp(app);
+                                  setEditCoverLetter(app.cover_letter || '');
+                                }}
+                                className="py-2.5 px-3 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 active:scale-95 border border-blue-200/50 dark:border-blue-800/50 cursor-pointer"
+                                title="تعديل خطاب التقديم والبيانات"
+                              >
+                                <Edit2 size={13} />
+                                <span>تعديل</span>
+                              </button>
+
                               {app.status === 'approved' && canUseMessaging && (
                                 <button
                                   onClick={(e) => {
@@ -697,11 +731,13 @@ function ApplicationsListViewContent({
                                       addToast('يمكنك التواصل مع الشركة عبر صفحة الوظيفة أو الرسائل', 'info');
                                     }
                                   }}
-                                  className="flex-1 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 shadow-md shadow-blue-500/20 active:scale-95"
+                                  className="py-2.5 px-3 bg-emerald-600 text-white rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer"
                                 >
-                                  <MessageSquare size={13} /> محادثة صاحب العمل
+                                  <MessageSquare size={13} />
+                                  <span>محادثة</span>
                                 </button>
                               )}
+
                               {app.status === 'approved' && !canUseMessaging && (
                                 <button
                                   onClick={(e) => {
@@ -709,21 +745,25 @@ function ApplicationsListViewContent({
                                     const targetEmployer = allUsers.find(u => u.id === (app as any).employer_id);
                                     openContactMenu({ phone: targetEmployer?.phone, name: targetEmployer?.name, website: (targetEmployer as any)?.website });
                                   }}
-                                  className="flex-1 py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95"
+                                  className="py-2.5 px-3 bg-emerald-600 text-white rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer"
                                 >
-                                  <Phone size={13} /> تواصل مع صاحب العمل
+                                  <Phone size={13} />
+                                  <span>تواصل</span>
                                 </button>
                               )}
+
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (window.confirm('هل أنت متأكد من سحب هذا الطلب؟')) {
+                                  if (window.confirm('هل أنت متأكد من رغبتك في سحب / مسح هذا الطلب نهائياً؟')) {
                                     onDeleteApplication(app.id);
                                   }
                                 }}
-                                className="py-2.5 px-4 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded-xl text-[10px] font-black hover:bg-red-100 transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                                className="py-2.5 px-3 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded-xl text-[10px] font-black hover:bg-red-100 transition-all flex items-center justify-center gap-1.5 active:scale-95 border border-red-200/50 dark:border-red-800/40 cursor-pointer"
+                                title="سحب أو مسح الطلب نهائياً"
                               >
-                                <Trash2 size={13} /> سحب الطلب
+                                <Trash2 size={13} />
+                                <span>سحب</span>
                               </button>
                             </div>
                           ) : (
@@ -1396,6 +1436,90 @@ function ApplicationsListViewContent({
         applicantData={previewApplicantCV?.applicantData}
         coverLetter={previewApplicantCV?.coverLetter}
       />
+
+      {/* ── Edit Application Modal for Job Seeker ── */}
+      <AnimatePresence>
+        {editingApp && (
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md" dir="rtl">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
+                    <Edit2 size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-800 dark:text-white">
+                      تعديل طلب التقديم
+                    </h3>
+                    <p className="text-[11px] text-slate-400 font-bold">
+                      {editingApp.jobTitle || 'طلب وظيفة'} • {editingApp.company || 'الشركة المعلنة'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingApp(null)}
+                  className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-all cursor-pointer"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-700 dark:text-slate-300">
+                  خطاب التقديم والرسالة للشركة (Cover Letter):
+                </label>
+                <textarea
+                  value={editCoverLetter}
+                  onChange={(e) => setEditCoverLetter(e.target.value)}
+                  rows={5}
+                  className="w-full p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium resize-none leading-relaxed"
+                  placeholder="اكتب هنا خطاب التقديم أو أي تفاصيل إضافية تريد إيصالها لصاحب العمل..."
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingApp(null)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-black text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingEdit}
+                  onClick={async () => {
+                    setIsSavingEdit(true);
+                    try {
+                      const { error } = await supabase.from('job_applications').update({
+                        cover_letter: editCoverLetter,
+                      }).eq('id', editingApp.id);
+                      if (error) throw error;
+                      addToast('تم تحديث طلب التقديم بنجاح! 🚀', 'success');
+                      setEditingApp(null);
+                      if ((window as any).refreshApplications) (window as any).refreshApplications();
+                    } catch (err: any) {
+                      addToast('فشل التحديث: ' + err.message, 'error');
+                    } finally {
+                      setIsSavingEdit(false);
+                    }
+                  }}
+                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black transition-all shadow-md active:scale-95 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {isSavingEdit ? 'جاري الحفظ...' : 'حفظ التعديلات'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

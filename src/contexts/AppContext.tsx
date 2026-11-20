@@ -1862,26 +1862,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (url) cvUrl = url;
       }
       
-      const { error } = await jobService.applyToJob(appUser.id, job.employer_id || '', {
+      const applicantDataPayload = {
+        name: appUser.name || (appUser as any).fullName || 'متقدم',
+        avatar: appUser.avatar || '',
+        title: (appUser as any).title || (appUser as any).specialty || '',
+        industry: (appUser as any).industry || (appUser as any).specialty || '',
+        location: (appUser as any).location || '',
+        phone: (appUser as any).phone || '',
+        bio: (appUser as any).bio || '',
+        email: appUser.email || '',
+        cvUrl: cvUrl,
+        cv_data: (appUser as any).cv_data || (appUser as any).cvData || null,
+        workExperiences: (appUser as any).workExperiences || (appUser as any).work_experiences || [],
+        languages: (appUser as any).languages || [],
+      };
+
+      const { data: applyData, error } = await jobService.applyToJob(appUser.id, job.employer_id || '', {
         jobId: job.id,
         coverLetter: text,
         cvUrl: cvUrl,
         skills: appUser.skills || [],
-        applicantData: {
-          name: appUser.name || (appUser as any).fullName || 'متقدم',
-          avatar: appUser.avatar || '',
-          title: (appUser as any).title || (appUser as any).specialty || '',
-          industry: (appUser as any).industry || (appUser as any).specialty || '',
-          location: (appUser as any).location || '',
-          phone: (appUser as any).phone || '',
-          bio: (appUser as any).bio || '',
-          email: appUser.email || '',
-          cvUrl: cvUrl,
-        },
+        applicantData: applicantDataPayload,
         experience: (appUser as any).experience || '',
         education: (appUser as any).education || ''
       });
       if (error) throw error;
+
+      // ⚡ Optimistic broadcast to instant-sync sentApplications
+      try {
+        const optimisticApp = {
+          id: (applyData as any)?.id || `sent-${Date.now()}`,
+          job_id: job.id,
+          applicant_id: appUser.id,
+          employer_id: job.employer_id,
+          cover_letter: text,
+          cv_url: cvUrl,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          jobTitle: job.title || 'وظيفة',
+          company: job.company || 'شركة',
+          applicant_data: applicantDataPayload
+        };
+        window.dispatchEvent(new CustomEvent('prolink_application_sent', { detail: optimisticApp }));
+      } catch (_) {}
+
+      try { if ((window as any).refreshApplications) (window as any).refreshApplications(); } catch (_) {}
       addToast("تم إرسال طلب التقديم بنجاح! 🚀");
     } catch (e: any) {
       addToast("فشل التقديم: " + e.message, "error");

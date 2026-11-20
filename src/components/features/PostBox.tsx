@@ -18,6 +18,7 @@ import { jobService } from '../../lib/services/jobService';
 import { postService } from '../../lib/services/postService';
 import { supabase } from '../../lib/supabase';
 import { imageService } from '../../lib/services/imageService';
+import { mobileUploadService } from '../../lib/services/mobileUploadService';
 import { GlassButton } from '../ui';
 import { useAppContext } from '../../contexts/AppContext';
 import { withTimeout } from '../../lib/utils/withTimeout';
@@ -198,11 +199,22 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       let finalVideoUrl: string | null = null;
 
       // Handle Image Upload
-      if ((postType === 'photo' || postType === 'article') && postAttachment && postAttachment.startsWith('data:')) {
-        const res = await fetch(postAttachment);
-        const blob = await res.blob();
-        const file = new File([blob], 'post-image.jpg', { type: 'image/jpeg' });
-        finalImageUrl = await imageService.processAndUpload(file, appUser.id, 'images');
+      if ((postType === 'photo' || postType === 'article') && (postSelectedFile || postAttachment)) {
+        try {
+          if (postSelectedFile) {
+            const uploadRes = await mobileUploadService.uploadFile(postSelectedFile, 'post-image', appUser.id);
+            finalImageUrl = await uploadRes.uploadPromise;
+          } else if (postAttachment && postAttachment.startsWith('data:')) {
+            const res = await fetch(postAttachment);
+            const blob = await res.blob();
+            const file = new File([blob], 'post-image.jpg', { type: 'image/jpeg' });
+            const uploadRes = await mobileUploadService.uploadFile(file, 'post-image', appUser.id);
+            finalImageUrl = await uploadRes.uploadPromise;
+          }
+        } catch (uploadErr) {
+          console.warn('[PostBox] Image upload fallback to attachment:', uploadErr);
+          finalImageUrl = postAttachment;
+        }
       }
 
       // Handle Video Upload
@@ -227,7 +239,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
                              ? (finalVideoUrl || null)
                              : (postVideoUrl || null),
             likes_count:   0,
-          }]).select('id').single(),
+          }]).select('id, image_url').single(),
           15000,
           'postBox.insert'
         );
@@ -238,7 +250,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       postService.invalidateCache();
 
       if (newPost?.id) {
-        setPosts(prev => prev.map(p => p.id === tempId ? { ...p, id: newPost.id } : p));
+        setPosts(prev => prev.map(p => p.id === tempId ? { ...p, id: newPost.id, imageUrl: finalImageUrl || postAttachment || p.imageUrl } : p));
       }
 
       addToast('تم النشر بنجاح! 🚀');

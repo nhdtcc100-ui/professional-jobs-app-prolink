@@ -60,8 +60,8 @@ const UPLOAD_TIMEOUT = 4_000;  // ⚡ 4s max per bucket attempt — fast fallbac
 const IMAGE_BUCKETS: Record<string, string[]> = {
   avatar: ['profiles', 'images'],
   cover: ['profiles', 'images'],
-  'post-image': ['posts', 'images'],
-  'post-video': ['posts'],
+  'post-image': ['images', 'profiles'],
+  'post-video': ['images', 'profiles'],
 };
 
 // ── Internal helpers ─────────────────────────────────────────────────────────

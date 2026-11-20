@@ -14,7 +14,7 @@ import {
   loadSettingsPage,
   preloadTab
 } from './lib/lazyPreload';
-import { Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare, Shield } from 'lucide-react';
+import { Briefcase, Phone, PhoneOff, RefreshCw, MessageSquare, Shield, ChevronDown } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { Post, Job, AppUser } from './types';
 import { SkeletonPostCard } from './components/ui';
@@ -194,6 +194,30 @@ function App() {
       return dateB.getTime() - dateA.getTime();
     });
   }, [jobs, posts, selectedJobCategory]);
+
+  // 🚀 تقطيع شرائحي ذكي (Feed Windowing): رسم أول 10 عناصر ثم زيادة تدريجية 8 عناصر أثناء التمرير
+  const [feedVisibleCount, setFeedVisibleCount] = useState<number>(10);
+  const feedObserverRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setFeedVisibleCount(10);
+  }, [selectedJobCategory]);
+
+  useEffect(() => {
+    const el = feedObserverRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0]?.isIntersecting) {
+        setFeedVisibleCount(prev => Math.min(prev + 8, memoizedCombinedFeed.length));
+      }
+    }, { rootMargin: '350px' });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [memoizedCombinedFeed.length]);
+
+  const visibleFeedItems = useMemo(() => {
+    return memoizedCombinedFeed.slice(0, feedVisibleCount);
+  }, [memoizedCombinedFeed, feedVisibleCount]);
 
   const handlePostJobFromPage = async () => {
     if (!appUser) return;
@@ -1083,8 +1107,8 @@ function App() {
                       </span>
                       <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
                         {selectedJobCategory === 'الكل' 
-                          ? `(${posts.length + jobs.length} عنصر)` 
-                          : `(${selectedJobCategory}: ${(selectedJobCategory === 'أخبار' ? posts.length : 0) + jobs.filter(j => isJobInCategory(j, selectedJobCategory)).length} عنصر)`}
+                          ? `(${memoizedCombinedFeed.length} عنصر • يعرض ${Math.min(feedVisibleCount, memoizedCombinedFeed.length)})` 
+                          : `(${selectedJobCategory}: ${memoizedCombinedFeed.length} عنصر • يعرض ${Math.min(feedVisibleCount, memoizedCombinedFeed.length)})`}
                       </span>
                     </div>
 
@@ -1127,55 +1151,70 @@ function App() {
                         </button>
                       </div>
                     ) : (
-                      memoizedCombinedFeed.map((item: any, idx) => (
-                        <RecedeCard key={item.id}>
-                          {item.feedType === 'post' ? (
-                            <PostNewsCard
-                              post={item}
-                              delay={Math.min(idx * 0.03, 0.3)}
-                              onClick={() => {
-                                const feedPosts = memoizedCombinedFeed.filter((it: any) => it.feedType === 'post');
-                                const targetList = feedPosts.length > 0 ? feedPosts : [item];
-                                const postIdx = Math.max(0, targetList.findIndex((p: any) => p.id === item.id));
-                                setDetailFeed({
-                                  type: 'post',
-                                  items: targetList,
-                                  initialIndex: postIdx
-                                });
-                              }}
-                              onAuthorClick={() => {
-                                const found = allUsers.find(au => au.id === item.authorId);
-                                if (found) setSelectedProfile(found);
-                              }}
-                              allUsers={allUsers}
-                              onEditPost={(p) => setEditingFeedPost(p)}
-                              onDeletePost={handleDeletePost}
-                            />
-                          ) : (
-                            <div className="px-1">
-                              <JobCard 
-                                job={item} 
+                      <>
+                        {visibleFeedItems.map((item: any, idx) => (
+                          <RecedeCard key={item.id}>
+                            {item.feedType === 'post' ? (
+                              <PostNewsCard
+                                post={item}
+                                delay={Math.min(idx * 0.03, 0.3)}
                                 onClick={() => {
-                                  const feedJobs = memoizedCombinedFeed.filter((it: any) => it.feedType !== 'post');
-                                  const jobIdx = Math.max(0, feedJobs.findIndex((j: any) => j.id === item.id));
+                                  const feedPosts = memoizedCombinedFeed.filter((it: any) => it.feedType === 'post');
+                                  const targetList = feedPosts.length > 0 ? feedPosts : [item];
+                                  const postIdx = Math.max(0, targetList.findIndex((p: any) => p.id === item.id));
                                   setDetailFeed({
-                                    type: 'job',
-                                    items: feedJobs,
-                                    initialIndex: jobIdx
+                                    type: 'post',
+                                    items: targetList,
+                                    initialIndex: postIdx
                                   });
                                 }}
-                                delay={Math.min(idx * 0.03, 0.3)}
-                                onEditJob={(job) => setEditingFeedJob(job)}
-                                onPublisherClick={(emp) => {
-                                  setSelectedProfile(emp);
-                                  setActiveTab('profile');
+                                onAuthorClick={() => {
+                                  const found = allUsers.find(au => au.id === item.authorId);
+                                  if (found) setSelectedProfile(found);
                                 }}
-                                onDeleteJob={handleDeleteJob}
+                                allUsers={allUsers}
+                                onEditPost={(p) => setEditingFeedPost(p)}
+                                onDeletePost={handleDeletePost}
                               />
-                            </div>
-                          )}
-                        </RecedeCard>
-                      ))
+                            ) : (
+                              <div className="px-1">
+                                <JobCard 
+                                  job={item} 
+                                  onClick={() => {
+                                    const feedJobs = memoizedCombinedFeed.filter((it: any) => it.feedType !== 'post');
+                                    const jobIdx = Math.max(0, feedJobs.findIndex((j: any) => j.id === item.id));
+                                    setDetailFeed({
+                                      type: 'job',
+                                      items: feedJobs,
+                                      initialIndex: jobIdx
+                                    });
+                                  }}
+                                  delay={Math.min(idx * 0.03, 0.3)}
+                                  onEditJob={(job) => setEditingFeedJob(job)}
+                                  onPublisherClick={(emp) => {
+                                    setSelectedProfile(emp);
+                                    setActiveTab('profile');
+                                  }}
+                                  onDeleteJob={handleDeleteJob}
+                                />
+                              </div>
+                            )}
+                          </RecedeCard>
+                        ))}
+
+                        {/* ⚡ Sentinel & Show More for Lazy-loaded Feed Windowing */}
+                        {feedVisibleCount < memoizedCombinedFeed.length && (
+                          <div ref={feedObserverRef} className="py-4 flex flex-col items-center justify-center gap-2">
+                            <button
+                              onClick={() => setFeedVisibleCount(prev => Math.min(prev + 10, memoizedCombinedFeed.length))}
+                              className="px-5 py-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-xs font-black text-slate-700 dark:text-slate-300 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-all flex items-center gap-2 cursor-pointer active:scale-95"
+                            >
+                              <span>عرض المزيد ({memoizedCombinedFeed.length - feedVisibleCount} متبقي)</span>
+                              <ChevronDown size={14} className="animate-bounce" />
+                            </button>
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                     </>

@@ -12,7 +12,7 @@ import { safeTimeAgo } from '../../lib/utils/formatDate';
 import { BilingualSmartText } from '../../lib/utils/bilingualText';
 import { useAppContext } from '../../contexts/AppContext';
 import { getJobCategory, cleanJobDescription } from '../../lib/utils/jobCategoryUtils';
-import { DEFAULT_NEWS_PLACEHOLDER, handleImageError } from '../../lib/utils/placeholders';
+import { DEFAULT_NEWS_PLACEHOLDER, handleImageError, AMAL_NEWS_IMAGE } from '../../lib/utils/placeholders';
 import { newsService } from '../../lib/services/newsService';
 
 interface DetailFeedPageProps {
@@ -179,13 +179,13 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
   }, [pubUser, currentItem]);
 
   const heroCover = useMemo(() => {
-    if (!currentItem) return DEFAULT_NEWS_PLACEHOLDER;
-    let cover = currentItem.image_url || currentItem.imageUrl || currentItem.thumbnail || pubUser?.coverUrl || (pubUser as any)?.cover_url || DEFAULT_NEWS_PLACEHOLDER;
-    if (cover && pubAvatar && cover === pubAvatar) {
-      cover = pubUser?.coverUrl || (pubUser as any)?.cover_url || DEFAULT_NEWS_PLACEHOLDER;
+    if (!currentItem) return AMAL_NEWS_IMAGE;
+    let cover = currentItem.image_url || currentItem.imageUrl || currentItem.thumbnail || pubUser?.coverUrl || (pubUser as any)?.cover_url;
+    if (!cover || (pubAvatar && cover === pubAvatar)) {
+      cover = pubUser?.coverUrl || (pubUser as any)?.cover_url || AMAL_NEWS_IMAGE;
     }
     return newsService.proxyImage(cover);
-  }, [currentItem?.id, pubUser, pubAvatar]);
+  }, [currentItem?.id, currentItem?.image_url, currentItem?.imageUrl, currentItem?.thumbnail, pubUser, pubAvatar]);
 
   // ── Scroll Progress & Visual Indicator State (مؤشر التمرير ونسبة التقدم) ──
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -592,67 +592,91 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   document.body
                 )}
 
-                {/* Fixed Post Author Bar */}
-                <div className="shrink-0 flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10">
+                {/* ── Fixed Post Hero Header: رأس كارد المنشور مع الصورة والخلفية ── */}
+                <div className="shrink-0 relative overflow-hidden rounded-t-3xl border-b border-slate-200/80 dark:border-slate-800 z-10 bg-slate-950">
                   <div 
-                    className="flex items-center gap-3 cursor-pointer group/author transition-all hover:opacity-90 active:scale-98"
                     onClick={handleOpenPublisher}
-                    title="عرض الملف الشخصي للناشر"
+                    className="relative overflow-hidden h-44 sm:h-52 shrink-0 cursor-pointer group/hero"
+                    title="النقر هنا يفتح الملف المهني للناشر"
                   >
-                    <img
-                      src={currentItem.authorAvatar || 'https://ui-avatars.com/api/?background=random'}
-                      alt={currentItem.authorName}
-                      className="w-11 h-11 rounded-2xl object-cover border-2 border-slate-200 dark:border-slate-700 shadow-sm group-hover/author:border-blue-500 transition-colors"
+                    <img 
+                      src={heroCover} 
+                      alt={currentItem.authorName || 'صورة المنشور'} 
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover/hero:scale-105" 
+                      onError={(e) => handleImageError(e, AMAL_NEWS_IMAGE)}
                     />
-                    <div>
-                      <h3 className="font-black text-slate-800 dark:text-white text-sm leading-tight group-hover/author:text-blue-600 transition-colors">
-                        {currentItem.authorName || 'مستخدم'}
-                      </h3>
-                      <p className="text-[11px] text-slate-400 font-bold mt-0.5">
-                        {currentItem.authorTitle || 'عضو في ProLink'}
-                      </p>
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/45 to-transparent" />
+                    
+                    <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/45 backdrop-blur-md text-white text-[10px] font-black border border-white/20 shadow-md">
+                      <Briefcase size={12} className="text-blue-400" />
+                      <span>{currentItem.feedType === 'post' ? 'منشور مهني' : 'مقال وتجربة'}</span>
+                    </div>
+
+                    <div className="absolute bottom-3 right-4 left-4 z-10 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <img
+                          src={currentItem.authorAvatar || 'https://ui-avatars.com/api/?background=random'}
+                          alt={currentItem.authorName}
+                          className="w-10 h-10 rounded-xl object-cover border-2 border-white/40 shadow-md"
+                        />
+                        <div>
+                          <h3 className="font-black text-white text-sm leading-tight drop-shadow-md">
+                            {currentItem.authorName || 'مستخدم'}
+                          </h3>
+                          <p className="text-[10px] text-white/80 font-bold">
+                            {currentItem.authorTitle || 'عضو في ProLink'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-white/80 flex items-center gap-1 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10">
+                          <Clock size={11} />
+                          {timeAgo(currentItem.timestamp || currentItem.created_at)}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {(() => {
-                      const isPostOwner = !!(appUser && (currentItem.authorId === appUser.id || currentItem.author_id === appUser.id));
-                      const isPostAdmin = !!((appUser as any)?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
-                      if (!isPostOwner && !isPostAdmin) return null;
-                      return (
-                        <div className="flex items-center gap-1.5 ml-1">
-                          {onEditPost && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onEditPost(currentItem);
-                              }}
-                              className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-xs active:scale-95 border border-blue-200/60 dark:border-blue-800/50 cursor-pointer"
-                              title="تعديل المنشور"
-                            >
-                              <Edit2 size={13} />
-                            </button>
-                          )}
-                          {onDeletePost && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setShowPostDeleteConfirm(true);
-                              }}
-                              className="p-1.5 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-xs active:scale-95 border border-red-200/60 dark:border-red-800/50 cursor-pointer"
-                              title="حذف المنشور"
-                            >
-                              <Trash2 size={13} />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })()}
-                    <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 bg-slate-100 dark:bg-slate-800/60 px-2.5 py-1 rounded-full">
-                      <Clock size={11} />
-                      {timeAgo(currentItem.timestamp || currentItem.created_at)}
-                    </span>
-                  </div>
                 </div>
+
+                {/* Post Author Action Bar (if owner or admin) */}
+                {(() => {
+                  const isPostOwner = !!(appUser && (currentItem.authorId === appUser.id || currentItem.author_id === appUser.id));
+                  const isPostAdmin = !!((appUser as any)?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
+                  if (!isPostOwner && !isPostAdmin) return null;
+                  return (
+                    <div className="shrink-0 flex items-center justify-between px-5 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10">
+                      <span className="text-[11px] font-bold text-slate-400">إدارة المنشور:</span>
+                      <div className="flex items-center gap-2">
+                        {onEditPost && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEditPost(currentItem);
+                            }}
+                            className="px-3 py-1 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-xs active:scale-95 border border-blue-200/60 dark:border-blue-800/50 cursor-pointer text-xs font-bold flex items-center gap-1"
+                            title="تعديل المنشور"
+                          >
+                            <Edit2 size={13} />
+                            <span>تعديل</span>
+                          </button>
+                        )}
+                        {onDeletePost && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowPostDeleteConfirm(true);
+                            }}
+                            className="px-3 py-1 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-xs active:scale-95 border border-red-200/60 dark:border-red-800/50 cursor-pointer text-xs font-bold flex items-center gap-1"
+                            title="حذف المنشور"
+                          >
+                            <Trash2 size={13} />
+                            <span>حذف</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Scrollable Post Content */}
                 <div 
@@ -711,7 +735,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
               <div className="flex flex-col h-full w-full overflow-hidden">
                 {/* Fixed News Hero: رأس الكارد ثابت 100% */}
                 <div className="shrink-0 relative overflow-hidden rounded-t-3xl border-b border-slate-200/80 dark:border-slate-800 z-10 bg-slate-950">
-                  <div className={`relative overflow-hidden ${heroCover ? 'h-48 sm:h-56' : 'h-40 sm:h-48'} shrink-0`}>
+                  <div className={`relative overflow-hidden ${heroCover ? 'h-56 sm:h-64 md:h-72' : 'h-48 sm:h-56'} shrink-0`}>
                     <img
                       src={newsService.proxyImage(currentItem.thumbnail || currentItem.imageUrl || currentItem.image_url || currentItem.image || currentItem.urlToImage || heroCover)}
                       alt={currentItem.title}
@@ -767,24 +791,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     touchAction: 'pan-y',
                   }}
                 >
-                  {/* 📷 صورة الخبر واضحة وكاملة في صلب المقال التفصيلي */}
-                  {(currentItem.thumbnail || currentItem.imageUrl || currentItem.image_url || currentItem.image || currentItem.urlToImage || heroCover) && (
-                    <div className="relative rounded-2xl overflow-hidden shadow-md border border-slate-200/80 dark:border-slate-800 group bg-slate-950">
-                      <img
-                        src={newsService.proxyImage(currentItem.thumbnail || currentItem.imageUrl || currentItem.image_url || currentItem.image || currentItem.urlToImage || heroCover)}
-                        alt={currentItem.title || 'صورة الخبر'}
-                        className="w-full h-auto max-h-72 sm:max-h-96 object-cover object-center transition-transform duration-500 group-hover:scale-105"
-                        onError={(e) => handleImageError(e, DEFAULT_NEWS_PLACEHOLDER)}
-                        loading="lazy"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent pointer-events-none" />
-                      <div className="absolute bottom-2.5 right-3 text-[10px] font-bold text-white/95 bg-black/60 px-2.5 py-1 rounded-lg backdrop-blur-md flex items-center gap-1.5 shadow-xs">
-                        <Newspaper size={11} className="text-emerald-400" />
-                        <span>{currentItem.source || currentItem.category || 'صورة الخبر المعتمدة'}</span>
-                      </div>
-                    </div>
-                  )}
-
                   <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
                     <BilingualSmartText text={currentItem.content || currentItem.description || ''} className="space-y-3" paragraphClassName="!text-black dark:!text-slate-100 font-medium" />
                   </div>
