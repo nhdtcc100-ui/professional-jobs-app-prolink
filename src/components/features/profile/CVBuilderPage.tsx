@@ -247,6 +247,7 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
         education: fullCVBundle.education,
         skills: fullCVBundle.skills,
         experience: fullCVBundle.experienceText,
+        work_experiences: experiences,
         cv_data: fullCVBundle,
         cv_template: 'standard_ats',
         cv_updated_at: new Date().toISOString(),

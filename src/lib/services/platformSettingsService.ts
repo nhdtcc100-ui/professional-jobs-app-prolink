@@ -10,6 +10,8 @@ export interface PlatformPublicSettings {
   navStyle: string;
   supportWhatsapp: string;
   supportTelegram: string;
+  postExpiryDays: number;
+  postExpiryActivatedAt: string;
 }
 
 const KEY_MESSAGING = 'messaging_enabled';
@@ -21,7 +23,14 @@ const KEY_KHAKI_THEME = 'khaki_theme_enabled';
 const KEY_NAV_STYLE = 'nav_style';
 const KEY_WHATSAPP = 'support_whatsapp_number';
 const KEY_TELEGRAM = 'telegram_support_handle';
-const KEYS = [KEY_MESSAGING, KEY_SUPPORT_CHAT, KEY_GROUPS, KEY_NETWORK, KEY_ACCOUNT_SWITCH, KEY_KHAKI_THEME, KEY_NAV_STYLE, KEY_WHATSAPP, KEY_TELEGRAM];
+const KEY_POST_EXPIRY_DAYS = 'post_expiry_days';
+const KEY_POST_EXPIRY_ACTIVATED_AT = 'post_expiry_activated_at';
+
+const KEYS = [
+  KEY_MESSAGING, KEY_SUPPORT_CHAT, KEY_GROUPS, KEY_NETWORK, 
+  KEY_ACCOUNT_SWITCH, KEY_KHAKI_THEME, KEY_NAV_STYLE, KEY_WHATSAPP, 
+  KEY_TELEGRAM, KEY_POST_EXPIRY_DAYS, KEY_POST_EXPIRY_ACTIVATED_AT
+];
 const CACHE_KEY = 'prolink_platform_public_settings';
 
 export const DEFAULT_PUBLIC_SETTINGS: PlatformPublicSettings = {
@@ -34,6 +43,8 @@ export const DEFAULT_PUBLIC_SETTINGS: PlatformPublicSettings = {
   navStyle: 'dock',
   supportWhatsapp: '',
   supportTelegram: '',
+  postExpiryDays: 0,
+  postExpiryActivatedAt: '',
 };
 
 const parseRows = (rows: { key: string; value: string }[]): PlatformPublicSettings => {
@@ -49,6 +60,8 @@ const parseRows = (rows: { key: string; value: string }[]): PlatformPublicSettin
     else if (row.key === KEY_NAV_STYLE) next.navStyle = value || 'dock';
     else if (row.key === KEY_WHATSAPP) next.supportWhatsapp = value;
     else if (row.key === KEY_TELEGRAM) next.supportTelegram = value;
+    else if (row.key === KEY_POST_EXPIRY_DAYS) next.postExpiryDays = Number(value) || 0;
+    else if (row.key === KEY_POST_EXPIRY_ACTIVATED_AT) next.postExpiryActivatedAt = value;
   }
   return next;
 };
@@ -98,6 +111,14 @@ export const platformSettingsService = {
     if (patch.navStyle !== undefined) rows.push({ key: KEY_NAV_STYLE, value: patch.navStyle.trim() || 'dock', updated_at: now });
     if (patch.supportWhatsapp !== undefined) rows.push({ key: KEY_WHATSAPP, value: patch.supportWhatsapp.trim(), updated_at: now });
     if (patch.supportTelegram !== undefined) rows.push({ key: KEY_TELEGRAM, value: patch.supportTelegram.trim(), updated_at: now });
+    if (patch.postExpiryDays !== undefined) {
+      rows.push({ key: KEY_POST_EXPIRY_DAYS, value: String(patch.postExpiryDays), updated_at: now });
+      const currentActivatedAt = this.getCached().postExpiryActivatedAt;
+      const newActivatedAt = patch.postExpiryActivatedAt || (patch.postExpiryDays > 0 ? (currentActivatedAt || now) : '');
+      rows.push({ key: KEY_POST_EXPIRY_ACTIVATED_AT, value: newActivatedAt, updated_at: now });
+    } else if (patch.postExpiryActivatedAt !== undefined) {
+      rows.push({ key: KEY_POST_EXPIRY_ACTIVATED_AT, value: patch.postExpiryActivatedAt, updated_at: now });
+    }
     if (rows.length === 0) return { success: true };
 
     const { error } = await supabase

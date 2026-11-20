@@ -177,6 +177,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
   const [accountSwitchOpen, setAccountSwitchOpen] = useState(false);
   const [khakiThemeOpen, setKhakiThemeOpen] = useState(false);
   const [navStyleSel, setNavStyleSel] = useState('dock');
+  const [postExpiryDaysSel, setPostExpiryDaysSel] = useState<number>(0);
   const [savingPublicSettings, setSavingPublicSettings] = useState(false);
   const [gateMigrationMissing, setGateMigrationMissing] = useState(false);
 
@@ -189,6 +190,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
     setAccountSwitchOpen(platformSettings.accountSwitchEnabled);
     setKhakiThemeOpen(platformSettings.khakiThemeEnabled);
     setNavStyleSel(platformSettings.navStyle || 'dock');
+    setPostExpiryDaysSel(platformSettings.postExpiryDays || 0);
   }, [platformSettings]);
 
   useEffect(() => {
@@ -207,6 +209,7 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
         accountSwitchEnabled: accountSwitchOpen,
         khakiThemeEnabled: khakiThemeOpen,
         navStyle: navStyleSel,
+        postExpiryDays: postExpiryDaysSel,
       });
       if (res.success) {
         addToast('✅ تم حفظ إعدادات التواصل والميزات', 'success');
@@ -2460,6 +2463,30 @@ export function AdminDashboard({ reports, onClose, addToast }: AdminDashboardPro
                                 </button>
                               ))}
                             </div>
+                          </div>
+
+                          {/* ⏱️ Post Expiration Duration Setting */}
+                          <div className="p-4 bg-slate-800/50 border border-slate-700/50 rounded-2xl space-y-2">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-black text-slate-200">صلاحية بقاء المنشورات في الفيد العام</p>
+                              <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                {postExpiryDaysSel === 0 ? 'دائم' : `${postExpiryDaysSel} يوم`}
+                              </span>
+                            </div>
+                            <p className="text-[10px] text-slate-400 font-medium">
+                              تختفي المنشورات من الفيد العام بعد انقضاء هذه المدة من تاريخ تفعيل الخاصية، وتظل محفوظة في صفحة "منشوراتي" لدى الناشر. الوظائف لا تنتهي وتبقى حتى يحذفها صاحبها.
+                            </p>
+                            <select
+                              value={postExpiryDaysSel}
+                              onChange={(e) => setPostExpiryDaysSel(Number(e.target.value))}
+                              className="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-bold text-white outline-none focus:border-emerald-500"
+                            >
+                              <option value={0}>دائم (بدون انتهاء صلاحية)</option>
+                              <option value={7}>أسبوع واحد (7 أيام)</option>
+                              <option value={14}>أسبوعان (14 يوماً)</option>
+                              <option value={30}>شهر واحد (30 يوماً)</option>
+                              <option value={60}>شهران (60 يوماً)</option>
+                            </select>
                           </div>
 
                           {gateMigrationMissing && (

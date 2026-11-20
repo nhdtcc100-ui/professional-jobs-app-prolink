@@ -596,7 +596,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                 <div className="shrink-0 relative overflow-hidden rounded-t-3xl border-b border-slate-200/80 dark:border-slate-800 z-10 bg-slate-950">
                   <div 
                     onClick={handleOpenPublisher}
-                    className="relative overflow-hidden h-44 sm:h-52 shrink-0 cursor-pointer group/hero"
+                    className="relative overflow-hidden h-56 sm:h-64 md:h-72 shrink-0 cursor-pointer group/hero"
                     title="النقر هنا يفتح الملف المهني للناشر"
                   >
                     <img 
@@ -605,7 +605,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                       className="w-full h-full object-cover transition-transform duration-700 group-hover/hero:scale-105" 
                       onError={(e) => handleImageError(e, AMAL_NEWS_IMAGE)}
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/45 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-transparent" />
                     
                     <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/45 backdrop-blur-md text-white text-[10px] font-black border border-white/20 shadow-md">
                       <Briefcase size={12} className="text-blue-400" />
@@ -688,12 +688,6 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     touchAction: 'pan-y',
                   }}
                 >
-                  {currentItem.imageUrl && (
-                    <div className="rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-100 dark:border-slate-800">
-                      <img src={currentItem.imageUrl} alt="" className="w-full max-h-96 object-contain" />
-                    </div>
-                  )}
-
                   <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
                     {currentItem.content ? (
                       <BilingualSmartText text={currentItem.content} className="space-y-3" paragraphClassName="!text-black dark:!text-slate-100 font-medium" />
@@ -735,14 +729,14 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
               <div className="flex flex-col h-full w-full overflow-hidden">
                 {/* Fixed News Hero: رأس الكارد ثابت 100% */}
                 <div className="shrink-0 relative overflow-hidden rounded-t-3xl border-b border-slate-200/80 dark:border-slate-800 z-10 bg-slate-950">
-                  <div className={`relative overflow-hidden ${heroCover ? 'h-56 sm:h-64 md:h-72' : 'h-48 sm:h-56'} shrink-0`}>
+                  <div className={`relative overflow-hidden ${heroCover ? 'h-64 sm:h-72 md:h-80' : 'h-52 sm:h-60'} shrink-0`}>
                     <img
                       src={newsService.proxyImage(currentItem.thumbnail || currentItem.imageUrl || currentItem.image_url || currentItem.image || currentItem.urlToImage || heroCover)}
                       alt={currentItem.title}
                       className="w-full h-full object-cover"
                       onError={(e) => handleImageError(e, DEFAULT_NEWS_PLACEHOLDER)}
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/45 to-transparent" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/75 to-transparent" />
                     
                     {/* Source shortcut pill */}
                     <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/45 backdrop-blur-md text-white text-[10px] font-black border border-white/20 shadow-md">
@@ -758,7 +752,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                         </div>
                       </div>
                       
-                      <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md line-clamp-2">
+                      <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md">
                         {currentItem.title}
                       </h1>
                       

@@ -8,6 +8,7 @@ import {
 import { AppUser } from '../../../types';
 import { Share } from '@capacitor/share';
 import { Capacitor } from '@capacitor/core';
+import { useAppContext } from '../../../contexts/AppContext';
 
 export interface GeneratedCVModalProps {
   isOpen: boolean;
@@ -30,6 +31,16 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
 }) => {
   const printAreaRef = useRef<HTMLDivElement>(null);
   const [copiedNotice, setCopiedNotice] = useState(false);
+  const { appUser } = useAppContext();
+
+  // 🛡️ Owner verification: only the actual owner of the CV can see the WhatsApp share action
+  const isOwner = Boolean(
+    appUser && (
+      (user?.id && appUser.id === user.id) ||
+      ((applicantData as any)?.user_id && appUser.id === (applicantData as any).user_id) ||
+      ((applicantData as any)?.applicant_id && appUser.id === (applicantData as any).applicant_id)
+    )
+  );
 
   // 🔒 Lock background scroll and isolate print layout to this modal only
   useEffect(() => {
@@ -120,56 +131,114 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
 
   // Resolve experiences
   const experiences = useMemo(() => {
-    // 1. Direct structured workExperiences
-    const directExps = savedCvData?.workExperiences || applicantData?.workExperiences || applicantData?.experiences || user?.workExperiences || user?.work_experiences;
-    if (Array.isArray(directExps) && directExps.length > 0) {
-      return directExps.map((e: any, idx: number) => ({
-        id: e.id || `exp-${idx}`,
-        role: e.role || e.title || title || 'أخصائي مهني',
-        company: e.company || e.companyName || 'منشأة معتمدة',
-        duration: e.duration || e.period || 'سجل الخبرات',
-        tasks: e.tasks || e.description || '',
-        skills: e.skills || ''
-      }));
+    // 1. Helper to find first non-empty array across all candidate paths
+    const findArray = (...candidates: any[]) => {
+      for (const c of candidates) {
+        if (Array.isArray(c) && c.length > 0) return c;
+        if (typeof c === 'string' && c.trim().startsWith('[')) {
+          try {
+            const parsed = JSON.parse(c);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          } catch (_) {}
+        }
+      }
+      return null;
+    };
+
+    const directExps = findArray(
+      savedCvData?.workExperiences,
+      savedCvData?.work_experiences,
+      applicantData?.workExperiences,
+      applicantData?.work_experiences,
+      (applicantData as any)?.experiences,
+      (applicantData as any)?.cv_data?.workExperiences,
+      (applicantData as any)?.cv_data?.work_experiences,
+      (user as any)?.workExperiences,
+      (user as any)?.work_experiences,
+      (user as any)?.cv_data?.workExperiences,
+      (user as any)?.cv_data?.work_experiences,
+      (user as any)?.cvData?.workExperiences,
+      (applicantData as any)?.prevWorks,
+      (user as any)?.prevWorks
+    );
+
+    if (directExps && directExps.length > 0) {
+      return directExps.map((e: any, idx: number) => {
+        const expRole = e.role || e.title || e.job_title || e.jobTitle || title || 'أخصائي مهني';
+        const expCompany = e.company || e.companyName || e.company_name || 'منشأة معتمدة';
+        const expDuration = e.duration || e.period || e.time || (e.hours ? `ساعات العمل: ${e.hours}` : 'سجل الخبرات');
+        const expTasks = e.tasks || e.description || e.desc || '';
+        const expSkills = e.skills || (e.salary ? `الراتب: ${e.salary}` : '');
+        return {
+          id: e.id || `exp-${idx}`,
+          role: expRole,
+          company: expCompany,
+          duration: expDuration,
+          tasks: expTasks,
+          skills: expSkills
+        };
+      });
     }
 
-    // 2. Fallback to localStorage for user
+    // 2. Fallback to localStorage for the user if viewing own CV
     const userId = user?.id || applicantData?.userId;
     if (userId) {
       try {
         const saved = localStorage.getItem(`prolink_ats_experiences_${userId}`);
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map((e: any, idx: number) => ({
+              id: e.id || `exp-local-${idx}`,
+              role: e.role || e.title || title || 'أخصائي مهني',
+              company: e.company || e.companyName || 'منشأة معتمدة',
+              duration: e.duration || e.period || 'سجل الخبرات',
+              tasks: e.tasks || e.description || '',
+              skills: e.skills || ''
+            }));
+          }
         }
       } catch (_) {}
     }
 
-    // 3. Check prevWorks (from application modal)
-    const prevWorks = applicantData?.prevWorks || (user as any)?.prevWorks;
-    if (Array.isArray(prevWorks) && prevWorks.length > 0) {
-      return prevWorks.map((pw: any, idx: number) => ({
-        id: pw.id || `pw-${idx}`,
-        role: pw.role || title || 'أخصائي مهني',
-        company: pw.company || 'منشأة معتمدة',
-        duration: pw.hours ? `ساعات العمل: ${pw.hours}` : 'خبرة سابقة',
-        tasks: pw.tasks || '',
-        skills: pw.skills || (pw.salary ? `الراتب: ${pw.salary}` : '')
-      }));
-    }
-
-    // 4. Raw text string fallback
-    const expText = applicantData?.experience || user?.experience || savedCvData?.experienceText;
+    // 3. Raw text string fallback with intelligent pattern parsing
+    const expText = applicantData?.experience || (applicantData as any)?.applicant_data?.experience || user?.experience || savedCvData?.experienceText || savedCvData?.experience;
     if (typeof expText === 'string' && expText.trim().length > 0) {
-      const blocks = expText.split(/\n\s*•\s*|\n\s*---\s*|\n{2,}/).map(l => l.trim()).filter(Boolean);
-      return blocks.map((blk, idx) => ({
-        id: `exp-text-${idx}`,
-        role: title || 'أخصائي مهني',
-        company: user?.companyName || 'منشأة معتمدة',
-        duration: 'سجل الخبرات المعتمد',
-        tasks: blk,
-        skills: skills.slice(0, 3).join(', ')
-      }));
+      const rawBlocks = expText.split(/(?:^|\n)\s*[•\-\*]\s+/).map(l => l.trim()).filter(Boolean);
+      const blocks = rawBlocks.length > 0 ? rawBlocks : [expText.trim()];
+      return blocks.map((blk, idx) => {
+        // Pattern: <role> لدى <company> (<duration>): <tasks> [المهارات: <skills>]
+        const pattern = /^(.+?)\s+لدى\s+([^(\n:]+)(?:\s*\(([^)]+)\))?\s*:\s*([\s\S]*)$/;
+        const match = blk.match(pattern);
+        if (match) {
+          const parsedRole = match[1].trim();
+          const parsedCompany = match[2].trim();
+          const parsedDuration = (match[3] || 'سجل الخبرات المعتمد').trim();
+          let parsedTasks = match[4].trim();
+          let parsedSkills = '';
+          const skillsMatch = parsedTasks.match(/\[(?:المهارات|مهارات):\s*([^\]]+)\]/);
+          if (skillsMatch) {
+            parsedSkills = skillsMatch[1].trim();
+            parsedTasks = parsedTasks.replace(/\[(?:المهارات|مهارات):\s*[^\]]+\]/, '').trim();
+          }
+          return {
+            id: `exp-text-${idx}`,
+            role: parsedRole,
+            company: parsedCompany,
+            duration: parsedDuration,
+            tasks: parsedTasks,
+            skills: parsedSkills || skills.slice(0, 3).join(', ')
+          };
+        }
+        return {
+          id: `exp-text-${idx}`,
+          role: title || 'أخصائي مهني',
+          company: user?.companyName || 'منشأة معتمدة',
+          duration: 'سجل الخبرات المعتمد',
+          tasks: blk,
+          skills: skills.slice(0, 3).join(', ')
+        };
+      });
     }
 
     return [
@@ -363,16 +432,18 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
             </div>
 
             <div className="flex items-center gap-1.5 flex-wrap">
-              {/* WhatsApp Share Button */}
-              <button
-                type="button"
-                onClick={handleSendWhatsApp}
-                className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
-                title="إرسال عبر واتساب إلى الناشر"
-              >
-                <MessageCircle size={14} className="text-white fill-white/20" />
-                <span className="hidden sm:inline">واتساب</span>
-              </button>
+              {/* WhatsApp Share Button - حصرياً لصاحب السيرة الذاتية فقط */}
+              {isOwner && (
+                <button
+                  type="button"
+                  onClick={handleSendWhatsApp}
+                  className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                  title="إرسال السيرة عبر واتساب"
+                >
+                  <MessageCircle size={14} className="text-white fill-white/20" />
+                  <span className="hidden sm:inline">واتساب</span>
+                </button>
+              )}
 
               {/* PDF Print / Export Button */}
               <button

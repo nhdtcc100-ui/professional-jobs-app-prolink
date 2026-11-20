@@ -195,7 +195,7 @@ function App() {
     });
   }, [jobs, posts, selectedJobCategory]);
 
-  // 🚀 تقطيع شرائحي ذكي (Feed Windowing): رسم أول 10 عناصر ثم زيادة تدريجية 8 عناصر أثناء التمرير
+  // 🚀 تقطيع شرائحي ذكي (Feed Windowing): رسم أول 10 عناصر ثم زيادة تدريجية 10 عناصر أثناء التمرير
   const [feedVisibleCount, setFeedVisibleCount] = useState<number>(10);
   const feedObserverRef = useRef<HTMLDivElement>(null);
 
@@ -203,17 +203,33 @@ function App() {
     setFeedVisibleCount(10);
   }, [selectedJobCategory]);
 
+  // ⚡ Automatic scroll-based infinite loading for the feed
   useEffect(() => {
+    if (activeTab !== 'home') return;
+    const handleScroll = () => {
+      if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 600) {
+        setFeedVisibleCount(prev => {
+          if (prev >= memoizedCombinedFeed.length) return prev;
+          return Math.min(prev + 10, memoizedCombinedFeed.length);
+        });
+      }
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [activeTab, memoizedCombinedFeed.length]);
+
+  useEffect(() => {
+    if (activeTab !== 'home') return;
     const el = feedObserverRef.current;
     if (!el) return;
     const observer = new IntersectionObserver((entries) => {
       if (entries[0]?.isIntersecting) {
-        setFeedVisibleCount(prev => Math.min(prev + 8, memoizedCombinedFeed.length));
+        setFeedVisibleCount(prev => Math.min(prev + 10, memoizedCombinedFeed.length));
       }
-    }, { rootMargin: '350px' });
+    }, { rootMargin: '400px' });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [memoizedCombinedFeed.length]);
+  }, [activeTab, feedVisibleCount, memoizedCombinedFeed.length]);
 
   const visibleFeedItems = useMemo(() => {
     return memoizedCombinedFeed.slice(0, feedVisibleCount);
@@ -332,9 +348,24 @@ function App() {
 
   const callTimeoutRef = useRef<any>(null);
 
-  // ── Global Scroll to Top on Tab Change & Overflow Safety ─────────────────
+  // ── Global Scroll Position Restoration on Tab Change ─────────────────
+  const tabScrollPositions = useRef<Record<string, number>>({});
+  const previousTabRef = useRef<string>(activeTab);
+
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'instant' });
+    // 1. Save scroll position of previous tab
+    const prevTab = previousTabRef.current;
+    if (prevTab) {
+      tabScrollPositions.current[prevTab] = window.scrollY || document.documentElement.scrollTop || 0;
+    }
+    previousTabRef.current = activeTab;
+
+    // 2. Restore scroll position of current tab
+    const savedPos = tabScrollPositions.current[activeTab] ?? 0;
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: savedPos, behavior: 'instant' });
+    });
+
     try {
       document.body.style.overflow = '';
     } catch (_) {}
@@ -1515,18 +1546,18 @@ function App() {
                   transition={{ duration: 0.13, ease: 'easeOut' }}
                   className="pb-safe-bottom px-1 md:px-0"
                 >
-                  {appUser?.isAdmin ? (
+                  {(appUser && (appUser.isAdmin || isJobPoster(appUser))) ? (
                     <Suspense fallback={<TabSkeleton />}>
                       <ERPView appUser={appUser} addToast={addToast} />
                     </Suspense>
                   ) : (
-                    // 🚫 منع وصول غير الأدمن للـ ERP بشكل صريح — الحماية على مستوى UI
+                    // 🚫 مخصص لأصحاب العمل والإدارة فقط
                     <div className="p-8 text-center bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 my-8 max-w-lg mx-auto shadow-xl" dir="rtl">
                       <div className="w-14 h-14 bg-red-500/10 text-red-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
                         <Briefcase size={28} />
                       </div>
-                      <h3 className="text-base font-black text-slate-800 dark:text-white">نظام الموارد البشرية (ERP) — مخصص للإدارة فقط 🔒</h3>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">حسابك الحالي ليس لديه صلاحية الوصول لهذا النظام. هذا النظام مخصص فقط للإدارة العليا.</p>
+                      <h3 className="text-base font-black text-slate-800 dark:text-white">نظام الموارد البشرية (ERP) — مخصص لأصحاب العمل والإدارة 🔒</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-2 leading-relaxed">حسابك الحالي ليس لديه صلاحية الوصول لهذا النظام. هذا النظام مخصص للشركات وأصحاب العمل والإدارة العليا.</p>
                       <button onClick={() => setActiveTab('home')} className="mt-5 px-6 py-3 bg-blue-600 text-white font-black text-xs rounded-xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all">الرجوع للرئيسية</button>
                     </div>
                   )}

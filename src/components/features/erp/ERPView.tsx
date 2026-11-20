@@ -5,6 +5,7 @@ import { ERPDashboard } from './ERPDashboard';
 import { EmployeeWorkspace } from './EmployeeWorkspace';
 import { biometricService } from '../../../lib/services/biometricService';
 import { Building2, Monitor, ChevronRight } from 'lucide-react';
+import { isJobPoster, isUserAdmin } from '../../../lib/utils/roleUtils';
 
 interface ERPViewProps {
   appUser: AppUser;
@@ -15,9 +16,11 @@ export const ERPView: React.FC<ERPViewProps> = ({ appUser, addToast }) => {
   const [isKiosk, setIsKiosk] = useState(false);
   const [kioskChecked, setKioskChecked] = useState(false);
 
+  const hasAccess = appUser.isAdmin || isUserAdmin(appUser) || isJobPoster(appUser);
+
   useEffect(() => {
-    // Only Admin can access ERP — check kiosk status for admin
-    if (appUser.isAdmin) {
+    // Check kiosk status for admin/employer
+    if (hasAccess) {
       biometricService.isRegisteredKiosk(appUser.id).then(({ isKiosk: k }) => {
         setIsKiosk(k);
         setKioskChecked(true);
@@ -25,10 +28,10 @@ export const ERPView: React.FC<ERPViewProps> = ({ appUser, addToast }) => {
     } else {
       setKioskChecked(true);
     }
-  }, [appUser.id, appUser.isAdmin]);
+  }, [appUser.id, hasAccess]);
 
-  // ✅ Only Super Admin can access the ERP system — Employers & Seekers are blocked
-  if (!appUser.isAdmin) {
+  // ✅ Admin & Employers can access the full ERP system
+  if (!hasAccess) {
     return (
       <div className="py-20 text-center space-y-3" dir="rtl">
         <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto">
@@ -36,7 +39,7 @@ export const ERPView: React.FC<ERPViewProps> = ({ appUser, addToast }) => {
         </div>
         <p className="font-black text-slate-700 dark:text-slate-300">نظام الموارد البشرية</p>
         <p className="text-sm text-slate-400 font-bold max-w-xs mx-auto">
-          هذا النظام مخصص للإدارة العليا فقط. حسابك الحالي ليس لديه صلاحية الوصول.
+          هذا النظام مخصص لأصحاب العمل والإدارة فقط. حسابك الحالي ليس لديه صلاحية الوصول.
         </p>
       </div>
     );

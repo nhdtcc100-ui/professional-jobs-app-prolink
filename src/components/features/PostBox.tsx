@@ -23,6 +23,7 @@ import { GlassButton } from '../ui';
 import { useAppContext } from '../../contexts/AppContext';
 import { withTimeout } from '../../lib/utils/withTimeout';
 import { withSessionRecovery } from '../../lib/services/sessionRecovery';
+import { Capacitor } from '@capacitor/core';
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -95,8 +96,35 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const isEmployer = isJobPoster(currentUser);
   const isSeeker = isJobSeeker(currentUser);
 
-  const triggerUpload = () => {
-    fileInputRef.current?.click();
+  const triggerUpload = async () => {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const { preview, uploadPromise } = await mobileUploadService.pickAndUpload('post-image', {
+          userId: appUser?.id || 'anon',
+        });
+        if (preview) {
+          setAttachment(preview);
+          setUploadType(uploadType === 'article' ? 'article' : 'photo');
+        }
+        // Background resolve persistent URL
+        uploadPromise.then((finalUrl) => {
+          if (finalUrl) {
+            setAttachment(finalUrl);
+            setSelectedFile(null); // persistently stored in images bucket
+          }
+        }).catch((err: any) => {
+          if (!err?.message?.includes('cancel') && !err?.message?.includes('User cancel')) {
+            console.warn('[PostBox] Native upload fallback warning:', err);
+          }
+        });
+      } catch (err: any) {
+        if (!err?.message?.includes('cancel') && !err?.message?.includes('User cancel')) {
+          fileInputRef.current?.click();
+        }
+      }
+    } else {
+      fileInputRef.current?.click();
+    }
   };
 
   const handlePostJob = async () => {
@@ -201,7 +229,9 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       // Handle Image Upload
       if ((postType === 'photo' || postType === 'article') && (postSelectedFile || postAttachment)) {
         try {
-          if (postSelectedFile) {
+          if (postAttachment && (postAttachment.startsWith('http://') || postAttachment.startsWith('https://'))) {
+            finalImageUrl = postAttachment;
+          } else if (postSelectedFile) {
             const uploadRes = await mobileUploadService.uploadFile(postSelectedFile, 'post-image', appUser.id);
             finalImageUrl = await uploadRes.uploadPromise;
           } else if (postAttachment && postAttachment.startsWith('data:')) {

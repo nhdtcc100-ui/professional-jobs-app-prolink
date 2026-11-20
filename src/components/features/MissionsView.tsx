@@ -148,6 +148,18 @@ export function MissionsView({
     }
   }, [activeSubTab, incomingApplications.length, markAllIncomingAsSeen]);
 
+  // 🔔 Listen for deep link events to switch Job sub-tabs (e.g. from Notifications)
+  useEffect(() => {
+    const handleOpenJobsTab = (e: any) => {
+      const tab = e?.detail;
+      if (tab && ['discover', 'my-posts', 'requests', 'analytics'].includes(tab)) {
+        setActiveSubTab(tab as JobSubTab);
+      }
+    };
+    window.addEventListener('openJobsTab', handleOpenJobsTab);
+    return () => window.removeEventListener('openJobsTab', handleOpenJobsTab);
+  }, []);
+
   // ── Applications ─────────────────────────────────────────────────────────────
   const fetchApplications = React.useCallback(async () => {
     if (!appUser?.id) { setAppsLoading(false); return; }
@@ -453,6 +465,40 @@ export function MissionsView({
         if (!updatedRows || updatedRows.length === 0) throw new Error('لا تملك صلاحية تعديل هذا الطلب');
         return updatedRows;
       });
+
+      // 🔔 Send immediate notification to applicant
+      const targetApp = incomingApplications.find((a: any) => a.id === appId);
+      const applicantId = targetApp?.applicant_id || (targetApp as any)?.applicantId;
+      if (applicantId) {
+        try {
+          const notifType = status === 'approved' ? 'application_approved' : status === 'rejected' ? 'application_rejected' : 'application_pending';
+          const employerName = appUser.name || 'صاحب العمل';
+          const message = status === 'approved'
+            ? `وافق ${employerName} على طلب تقديمك لوظيفة "${jobTitle}".`
+            : status === 'rejected'
+              ? `اعتذر ${employerName} عن قبول طلب تقديمك لوظيفة "${jobTitle}".`
+              : `قام ${employerName} بإعادة طلبك لوظيفة "${jobTitle}" إلى قيد المراجعة.`;
+          await (supabase.from('notifications') as any).insert([{
+            user_id: applicantId,
+            to_id: applicantId,
+            from_id: appUser.id,
+            type: notifType,
+            title: status === 'approved' ? 'قبول طلب التوظيف 🎉' : 'تحديث طلب التوظيف',
+            message,
+            data: {
+              application_id: appId,
+              job_title: jobTitle,
+              employer_id: appUser.id,
+              target_tab: 'jobs',
+              sub_tab: 'requests'
+            },
+            read: false,
+            created_at: new Date().toISOString()
+          }]);
+        } catch (notifErr) {
+          console.warn('Applicant notification warning:', notifErr);
+        }
+      }
 
       setIncomingApplications(prev => prev.map((a: any) => a.id === appId ? { ...a, status } : a));
       addToast(status === 'approved' ? '✅ تم قبول الطلب بنجاح' : status === 'rejected' ? 'تم الرفض' : '🔄 تمت الإعادة للمراجعة');

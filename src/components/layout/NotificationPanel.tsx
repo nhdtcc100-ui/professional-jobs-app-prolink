@@ -5,7 +5,7 @@ import {
   Bell, X, CheckCheck, Briefcase, Heart, MessageSquare, 
   UserPlus, Check, UserCheck, Clock, Phone,
   Eye, EyeOff, Trash2, Flame, ArrowLeftRight, CheckCircle2,
-  ExternalLink, Sparkles, User, ShieldAlert, Send
+  ExternalLink, Sparkles, User, ShieldAlert, Send, FileText
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { AppNotification, AppUser } from '../../types';
@@ -74,6 +74,34 @@ const NOTIF_CONFIG: Record<string, { icon: any; color: string; bg: string; badge
     bg: 'bg-amber-50 dark:bg-amber-950/60', 
     badgeCls: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
     label: 'تقديم وظيفي' 
+  },
+  application_approved: { 
+    icon: CheckCircle2, 
+    color: 'text-emerald-600 dark:text-emerald-400', 
+    bg: 'bg-emerald-50 dark:bg-emerald-950/60', 
+    badgeCls: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
+    label: 'قبول طلب التوظيف' 
+  },
+  application_rejected: { 
+    icon: X, 
+    color: 'text-rose-600 dark:text-rose-400', 
+    bg: 'bg-rose-50 dark:bg-rose-950/60', 
+    badgeCls: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20',
+    label: 'رفض طلب التوظيف' 
+  },
+  application_updated: { 
+    icon: FileText, 
+    color: 'text-blue-600 dark:text-blue-400', 
+    bg: 'bg-blue-50 dark:bg-blue-950/60', 
+    badgeCls: 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20',
+    label: 'تعديل طلب التقديم' 
+  },
+  application_pending: { 
+    icon: Clock, 
+    color: 'text-amber-600 dark:text-amber-400', 
+    bg: 'bg-amber-50 dark:bg-amber-950/60', 
+    badgeCls: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20',
+    label: 'مراجعة طلب التوظيف' 
   },
   message: { 
     icon: MessageSquare, 
@@ -165,6 +193,26 @@ function getNotificationDisplay(n: AppNotification, sender: AppUser | null) {
       bodyText = n.message && n.message !== 'خبر' && n.message !== 'إشعار جديد'
         ? n.message
         : `قدّم ${senderName} سيرة ذاتية وطلباً جديداً على الوظيفة المعلنة.`;
+      break;
+
+    case 'application_approved':
+      headline = 'تم قبول طلب التوظيف بنجاح! 🎉';
+      bodyText = n.message || `وافق ${senderName} على طلب تقديمك للوظيفة. تفقد تفاصيل القبول وتواصل معه الآن.`;
+      break;
+
+    case 'application_rejected':
+      headline = 'تحديث بخصوص طلب التوظيف ℹ️';
+      bodyText = n.message || `اعتذر ${senderName} عن قبول طلب تقديمك في الوقت الحالي.`;
+      break;
+
+    case 'application_updated':
+      headline = 'تحديث وتعديل في طلب تقديم 📝';
+      bodyText = n.message || `قام المتقدم ${senderName} بتحديث وتعديل بيانات طلبه للوظيفة.`;
+      break;
+
+    case 'application_pending':
+      headline = 'إعادة طلب التوظيف لقيد المراجعة 🔄';
+      bodyText = n.message || `قام ${senderName} بإعادة طلبك إلى قيد المراجعة والتدقيق.`;
       break;
 
     case 'like':
@@ -634,8 +682,9 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
       if (sender && setSelectedChat) setSelectedChat(sender);
       setActiveTab('messages'); 
       handleClosePanel(); 
-    } else if (n.type === 'job_application') { 
+    } else if (n.type === 'job_application' || n.type === 'application_approved' || n.type === 'application_rejected' || n.type === 'application_updated' || n.type === 'application_pending') { 
       setActiveTab('jobs'); 
+      window.dispatchEvent(new CustomEvent('openJobsTab', { detail: 'requests' }));
       handleClosePanel(); 
     } else if (n.type === 'like' || n.type === 'comment') {
       setActiveTab('home');

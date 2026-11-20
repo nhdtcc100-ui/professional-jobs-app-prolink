@@ -165,7 +165,17 @@ export const mapProfile = (p: any): any => {
     phone: p.phone || '',
     skills: p.skills || [],
     languages: p.languages || [],
-    workExperiences: p.work_experiences || p.workExperiences || [],
+    workExperiences: (Array.isArray(p.work_experiences) && p.work_experiences.length > 0)
+      ? p.work_experiences
+      : (Array.isArray(p.workExperiences) && p.workExperiences.length > 0)
+        ? p.workExperiences
+        : (Array.isArray(p.cv_data?.workExperiences) && p.cv_data.workExperiences.length > 0)
+          ? p.cv_data.workExperiences
+          : (Array.isArray(p.cv_data?.work_experiences) && p.cv_data.work_experiences.length > 0)
+            ? p.cv_data.work_experiences
+            : [],
+    cv_data: p.cv_data || null,
+    cvData: p.cv_data || null,
     experience: p.experience || '',
     education: p.education || '',
     isPro: p.is_pro || false,
@@ -1116,7 +1126,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
 
         const delPostIds = getDeletedPostIds();
-        const filteredPosts = (sorted as any[]).filter(p => !delPostIds.has(p.id));
+        let filteredPosts = (sorted as any[]).filter(p => !delPostIds.has(p.id));
+
+        // ⏱️ Post Expiration Filter (Admin Controlled):
+        // If postExpiryDays > 0 and postExpiryActivatedAt is set, posts created AFTER
+        // the activation timestamp that exceed the expiry threshold are hidden from public feed.
+        // Posts created BEFORE the activation timestamp remain visible to all.
+        const expiryDays = platformSettings?.postExpiryDays || 0;
+        const activatedAt = platformSettings?.postExpiryActivatedAt;
+        if (expiryDays > 0 && activatedAt) {
+          const activatedMs = new Date(activatedAt).getTime();
+          const maxAgeMs = expiryDays * 24 * 60 * 60 * 1000;
+          const currentTime = Date.now();
+          filteredPosts = filteredPosts.filter(p => {
+            const pTime = new Date(p.created_at || p.timestamp?.toDate?.() || p.timestamp).getTime();
+            if (isNaN(pTime)) return true;
+            if (pTime < activatedMs) return true; // Created before activation -> KEEP
+            return (currentTime - pTime) <= maxAgeMs;
+          });
+        }
+
         setPosts(filteredPosts as any);
         // ✅ Cache posts in localStorage for instant load next time
         try { localStorage.setItem('prolink_cached_posts', JSON.stringify(filteredPosts.slice(0, 60))); } catch {}
