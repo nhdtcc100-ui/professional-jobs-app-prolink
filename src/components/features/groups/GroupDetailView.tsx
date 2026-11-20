@@ -684,7 +684,7 @@ export const GroupDetailView: React.FC<GroupDetailViewProps> = ({
         ref={groupAvatarInputRef}
         onChange={handleGroupAvatarChange}
         className="hidden"
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/*,image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
       />
 
       {/* Input Area */}

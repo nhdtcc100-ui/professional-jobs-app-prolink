@@ -143,7 +143,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
               ref={coverInputRef}
               id="cover-file-input-header"
               type="file"
-              accept="image/*"
+              accept="image/*,image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
               style={{
                 position: 'absolute',
                 width: '1px',
@@ -198,7 +198,7 @@ export const ProfileHeader: React.FC<ProfileHeaderProps> = ({
                   ref={avatarInputRef}
                   id="avatar-file-input-header"
                   type="file"
-                  accept="image/*"
+                  accept="image/*,image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
                   style={{
                     position: 'absolute',
                     width: '1px',

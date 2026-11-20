@@ -39,76 +39,6 @@ interface ModernProfileViewProps {
   returnToServiceUser?: any | null;
 }
 
-// ─── Fast Client-Side Image Resizer (Canvas-based, RAM efficient) ───────────
-const resizeImageToCanvas = async (
-  file: File,
-  maxWidth: number,
-  maxHeight: number,
-  quality = 0.85
-): Promise<{ file: File; buffer: ArrayBuffer }> => {
-  return new Promise((resolve, reject) => {
-    if (!file.type.startsWith('image/')) {
-      file.arrayBuffer().then((buf) => resolve({ file, buffer: buf })).catch(reject);
-      return;
-    }
-
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let { width, height } = img;
-      if (width > maxWidth || height > maxHeight) {
-        const ratio = Math.min(maxWidth / width, maxHeight / height);
-        width = Math.round(width * ratio);
-        height = Math.round(height * ratio);
-      }
-
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        file.arrayBuffer().then((buf) => resolve({ file, buffer: buf })).catch(reject);
-        return;
-      }
-
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(img, 0, 0, width, height);
-
-      canvas.toBlob(
-        async (blob) => {
-          if (!blob) {
-            const buf = await file.arrayBuffer();
-            resolve({ file, buffer: buf });
-            return;
-          }
-          const buffer = await blob.arrayBuffer();
-          const cleanName = `${file.name.replace(/\.[^/.]+$/, '')}.jpg`;
-          const resizedFile = new File([blob], cleanName, { type: 'image/jpeg' });
-          (resizedFile as any)._ab = buffer;
-          resolve({ file: resizedFile, buffer });
-        },
-        'image/jpeg',
-        quality
-      );
-    };
-
-    img.onerror = async () => {
-      URL.revokeObjectURL(url);
-      try {
-        const buf = await file.arrayBuffer();
-        resolve({ file, buffer: buf });
-      } catch (e) {
-        reject(e);
-      }
-    };
-
-    img.src = url;
-  });
-};
-
 export function ModernProfileView({
   profile,
   isMe,
@@ -619,6 +549,51 @@ export function ModernProfileView({
     }
   };
 
+  // ─── Apply Image Update to State, DB, and Context (Atomic Sync) ────────────
+  const applyImageUpdate = async (kind: 'avatar' | 'cover', finalUrl: string) => {
+    const isAvatar = kind === 'avatar';
+    // 1. Update local component state
+    if (isAvatar) setAvatar(finalUrl);
+    else setCoverUrl(finalUrl);
+
+    // 2. Direct REST Update to Database (100ms) with fallback to profileService
+    try {
+      await updateProfileDbFieldDirect(effectiveUserId, kind, finalUrl);
+    } catch (dbErr) {
+      console.warn(`[${kind}Upload] Direct REST DB update failed, falling back to profileService:`, dbErr);
+      const updates = isAvatar
+        ? { avatar: finalUrl, avatar_url: finalUrl }
+        : { cover_url: finalUrl, coverUrl: finalUrl };
+      await profileService.updateProfile(effectiveUserId, updates as any);
+    }
+
+    // 3. Update global AppUser context
+    if (setAppUser) {
+      setAppUser((prev: any) => ({
+        ...prev,
+        ...(isAvatar
+          ? { avatar: finalUrl, avatar_url: finalUrl }
+          : { cover_url: finalUrl, coverUrl: finalUrl }),
+      }));
+    }
+
+    // 4. Update cached user in LocalStorage
+    try {
+      const cached = localStorage.getItem('prolink_cached_user');
+      if (cached) {
+        const u = JSON.parse(cached);
+        if (isAvatar) { u.avatar = finalUrl; u.avatar_url = finalUrl; }
+        else { u.coverUrl = finalUrl; u.cover_url = finalUrl; }
+        localStorage.setItem('prolink_cached_user', JSON.stringify(u));
+      }
+    } catch (_) {}
+
+    addToast(
+      isAvatar ? '✅ تم تحديث الصورة الشخصية بنجاح!' : '✅ تم تحديث صورة الغلاف بنجاح!',
+      'success'
+    );
+  };
+
   // ─── Unified Image Upload Handler (Avatar & Cover) ───────────────────────────
   const handleImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -635,73 +610,41 @@ export function ModernProfileView({
     }
 
     const isAvatar = kind === 'avatar';
+    const prevAvatar = avatar;
+    const prevCover = coverUrl;
+
     if (isAvatar) setIsUploadingAvatar(true);
     else setIsUploadingCover(true);
 
     try {
-      // 1. Fast Canvas Resize & RAM snapshot (400x400 for avatar, 1200x600 for cover)
-      const maxWidth = isAvatar ? 400 : 1200;
-      const maxHeight = isAvatar ? 400 : 600;
-
-      let workingFile = rawFile;
-      try {
-        const { file: resized, buffer } = await withTimeout(
-          resizeImageToCanvas(rawFile, maxWidth, maxHeight, 0.85),
-          7000,
-          `معالجة وتصغير ${isAvatar ? 'الصورة الشخصية' : 'صورة الغلاف'}`
-        );
-        workingFile = resized;
-        (workingFile as any)._ab = buffer;
-      } catch (resizeErr) {
-        console.warn(`[${kind}Upload] Client resize warning, using raw file:`, resizeErr);
-        workingFile = rawFile;
-      }
-
-      // 2. Direct upload to Supabase with unique timestamped path
-      const publicUrl = await withTimeout(
-        handleMobileDirectUpload(workingFile, kind, effectiveUserId),
-        25000,
-        `رفع ${isAvatar ? 'الصورة الشخصية' : 'صورة الغلاف'} عبر الشبكة`
+      // 1. Instant local preview (<16ms) & background upload pipeline (Telegram/WhatsApp style)
+      const { preview, uploadPromise } = await mobileUploadService.uploadFile(
+        rawFile,
+        kind,
+        effectiveUserId
       );
 
-      // 3. Immediate local state update for instantaneous UI feedback
-      if (isAvatar) {
-        setAvatar(publicUrl);
-      } else {
-        setCoverUrl(publicUrl);
+      // 2. Show optimistic preview immediately!
+      if (preview) {
+        if (isAvatar) setAvatar(preview);
+        else setCoverUrl(preview);
       }
 
-      // 4. Update Database via direct REST with return=representation verification
-      await withTimeout(
-        updateProfileDbFieldDirect(effectiveUserId, kind, publicUrl),
-        8000,
-        'تحديث قاعدة البيانات REST'
-      );
+      // 3. Wait for background upload (HEIC conversion -> Smart Canvas compression -> Storage / Base64 fallback)
+      const finalUrl = await uploadPromise;
 
-      // 5. Update global app user
-      if (setAppUser) {
-        setAppUser((prev: any) => ({
-          ...prev,
-          ...(isAvatar
-            ? { avatar: publicUrl, avatar_url: publicUrl }
-            : { cover_url: publicUrl, coverUrl: publicUrl }),
-        }));
-      }
-
-      addToast(
-        isAvatar ? '✅ تم تحديث الصورة الشخصية بنجاح!' : '✅ تم تحديث صورة الغلاف بنجاح!',
-        'success'
-      );
+      // 4. Apply atomic sync across state, DB, and context
+      await applyImageUpdate(kind, finalUrl);
     } catch (err: any) {
       console.error(`[${kind}Upload] Upload error:`, err);
+      // Revert optimistic preview on error
+      if (isAvatar) setAvatar(prevAvatar);
+      else setCoverUrl(prevCover);
+
       const errMsg = err?.message || JSON.stringify(err);
-      const isTimeout = errMsg?.includes('TIMEOUT');
-      addToast(
-        isTimeout
-          ? 'انتهت المهلة، يرجى المحاولة مجدداً أو التحقق من الاتصال.'
-          : `تعذر تحديث ${isAvatar ? 'الصورة الشخصية' : 'صورة الغلاف'}: ${errMsg}`,
-        'error'
-      );
+      if (!errMsg.includes('cancel') && !errMsg.includes('User cancel')) {
+        addToast(`تعذر تحديث ${isAvatar ? 'الصورة الشخصية' : 'صورة الغلاف'}: ${errMsg}`, 'error');
+      }
     } finally {
       if (isAvatar) setIsUploadingAvatar(false);
       else setIsUploadingCover(false);
@@ -715,18 +658,17 @@ export function ModernProfileView({
   // ─── Native Platform Handlers (Capacitor vs Web Input) ──────────────────────
   const handleAvatarButtonClick = async () => {
     if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
+      const prevAvatar = avatar;
       try {
         setIsUploadingAvatar(true);
         const { preview, uploadPromise } = await mobileUploadService.pickAndUpload('avatar', { userId: effectiveUserId });
         if (preview) setAvatar(preview);
         const finalUrl = await uploadPromise;
-        setAvatar(finalUrl);
-        await profileService.updateProfile(effectiveUserId, { avatar: finalUrl, avatar_url: finalUrl });
-        if (setAppUser) setAppUser((prev: any) => ({ ...prev, avatar: finalUrl, avatar_url: finalUrl }));
-        addToast('✅ تم تحديث الصورة الشخصية بنجاح!', 'success');
+        await applyImageUpdate('avatar', finalUrl);
       } catch (err: any) {
+        setAvatar(prevAvatar);
         if (!err?.message?.includes('cancel') && !err?.message?.includes('User cancel')) {
-          addToast('تعذر تغيير الصورة: ' + (err?.message || ''), 'error');
+          addToast('تعذر تغيير الصورة الشخصية: ' + (err?.message || ''), 'error');
         }
       } finally {
         setIsUploadingAvatar(false);
@@ -738,16 +680,15 @@ export function ModernProfileView({
 
   const handleCoverButtonClick = async () => {
     if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
+      const prevCover = coverUrl;
       try {
         setIsUploadingCover(true);
         const { preview, uploadPromise } = await mobileUploadService.pickAndUpload('cover', { userId: effectiveUserId });
         if (preview) setCoverUrl(preview);
         const finalUrl = await uploadPromise;
-        setCoverUrl(finalUrl);
-        await profileService.updateProfile(effectiveUserId, { cover_url: finalUrl, coverUrl: finalUrl } as any);
-        if (setAppUser) setAppUser((prev: any) => ({ ...prev, cover_url: finalUrl, coverUrl: finalUrl }));
-        addToast('✅ تم تحديث صورة الغلاف بنجاح!', 'success');
+        await applyImageUpdate('cover', finalUrl);
       } catch (err: any) {
+        setCoverUrl(prevCover);
         if (!err?.message?.includes('cancel') && !err?.message?.includes('User cancel')) {
           addToast('تعذر تغيير صورة الغلاف: ' + (err?.message || ''), 'error');
         }
@@ -1162,7 +1103,7 @@ export function ModernProfileView({
                 id="cover-file-input"
                 ref={coverInputRef}
                 type="file"
-                accept="image/*,image/jpeg,image/png,image/webp,image/gif"
+                accept="image/*,image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
                 className="hidden"
                 onChange={handleCoverChange}
               />
@@ -1205,7 +1146,7 @@ export function ModernProfileView({
                     id="avatar-file-input"
                     ref={avatarInputRef}
                     type="file"
-                    accept="image/*,image/jpeg,image/png,image/webp,image/gif"
+                    accept="image/*,image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,.heic,.heif"
                     className="hidden"
                     onChange={handleAvatarChange}
                   />

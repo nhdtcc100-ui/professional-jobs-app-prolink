@@ -51,16 +51,16 @@ export interface PickAndUploadResult {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const IMAGE_MAX_DIM  = 1000;   // px
-const IMAGE_QUALITY  = 0.82;
-const THUMB_MAX_DIM  = 200;    // px – compact Base64 thumbnail
-const THUMB_QUALITY  = 0.55;
+const IMAGE_MAX_DIM = 1000;   // px
+const IMAGE_QUALITY = 0.82;
+const THUMB_MAX_DIM = 400;    // px – compact Base64 thumbnail (crisp on mobile retina)
+const THUMB_QUALITY = 0.75;
 const UPLOAD_TIMEOUT = 30_000; // 30 s per bucket attempt
 
 const IMAGE_BUCKETS: Record<string, string[]> = {
-  avatar:       ['profiles', 'images'],
-  cover:        ['profiles', 'images'],
-  'post-image': ['posts', 'images'],
+  avatar: ['profiles', 'images', 'avatars', 'public'],
+  cover: ['profiles', 'images', 'covers', 'public'],
+  'post-image': ['posts', 'images', 'public'],
   'post-video': ['posts'],
 };
 
@@ -69,7 +69,7 @@ const IMAGE_BUCKETS: Record<string, string[]> = {
 /** Convert HEIC/HEIF to JPEG if needed (iOS Safari / Camera) */
 async function convertHeicIfNeeded(file: File): Promise<File> {
   const isHeic = (file.type && (file.type.includes('heic') || file.type.includes('heif'))) ||
-                 (file.name && /\.(heic|heif)$/i.test(file.name));
+    (file.name && /\.(heic|heif)$/i.test(file.name));
   if (!isHeic) return file;
   try {
     const heic2anyModule = await import('heic2any');
@@ -115,7 +115,7 @@ async function compressImageFile(
       if (bmp && bmp.width > 0) {
         let w = bmp.width, h = bmp.height;
         if (w >= h && w > maxDim) { h = Math.max(1, Math.round(h * maxDim / w)); w = maxDim; }
-        else if (h > maxDim)      { w = Math.max(1, Math.round(w * maxDim / h)); h = maxDim; }
+        else if (h > maxDim) { w = Math.max(1, Math.round(w * maxDim / h)); h = maxDim; }
 
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
@@ -136,7 +136,7 @@ async function compressImageFile(
           return out;
         }
       }
-    } catch {/* fall through */}
+    } catch {/* fall through */ }
   }
 
   // Slow path: Image + Canvas
@@ -149,7 +149,7 @@ async function compressImageFile(
       URL.revokeObjectURL(url);
       let w = img.naturalWidth, h = img.naturalHeight;
       if (w >= h && w > maxDim) { h = Math.max(1, Math.round(h * maxDim / w)); w = maxDim; }
-      else if (h > maxDim)      { w = Math.max(1, Math.round(w * maxDim / h)); h = maxDim; }
+      else if (h > maxDim) { w = Math.max(1, Math.round(w * maxDim / h)); h = maxDim; }
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
@@ -212,7 +212,7 @@ async function uploadToStorage(
       supabase.auth.getSession(),
       new Promise((_, rej) => setTimeout(() => rej(new Error('getSession timeout')), 4000)),
     ]);
-  } catch {}
+  } catch { }
 
   for (const bucket of buckets) {
     try {
@@ -245,71 +245,116 @@ async function uploadToStorage(
 
 // ── Native / Web file picker ─────────────────────────────────────────────────
 
+/**
+ * Detect if we are running inside a WebView (Android Chrome Custom Tab / iOS WKWebView).
+ * On these hosts the `window.focus` event fires BEFORE the picker closes,
+ * which caused a false "cancelled" detection after only 800ms.
+ */
+function isWebView(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  // Android WebView signature
+  if (/wv\b/i.test(ua) || /; ?wv\)/i.test(ua)) return true;
+  // iOS WKWebView / UIWebView (no "Safari" in UA)
+  if (/iphone|ipad|ipod/i.test(ua) && !/safari/i.test(ua)) return true;
+  // Capacitor bridge present but not fully native
+  if (typeof (window as any)?.Capacitor !== 'undefined') return true;
+  return false;
+}
+
 async function pickFile(type: UploadType): Promise<File | null> {
   const isImage = type !== 'cv';
-  const accept  = isImage ? 'image/*' : '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  // Accept all common image formats including HEIC/HEIF from iPhone
+  const imageAccept = 'image/*,image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif';
+  const docAccept = '.pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  const accept = isImage ? imageAccept : docAccept;
 
-  // 1. Native Capacitor Camera / Gallery for images
+  // ── 1. Native Capacitor Camera / Gallery (تطبيق هجين) ─────────────────────
   if (isImage && typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
     try {
       const { Camera, CameraSource, CameraResultType } = await import('@capacitor/camera');
+      // CameraSource.Prompt → يعطي المستخدم خيار الكاميرا أو المعرض كما في تلكرام
       const photo = await Camera.getPhoto({
-        quality: 80,
+        quality: 85,
         allowEditing: false,
-        resultType: CameraResultType.Base64,
+        resultType: CameraResultType.Base64,  // قراءة فورية في الذاكرة — يتفادى انتهاء صلاحية URI أندرويد
         source: CameraSource.Prompt,
       });
-      if (photo?.base64String) {
-        const byteCharacters = atob(photo.base64String);
-        const byteNumbers = new Uint8Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-          byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const ext = photo.format || 'jpg';
-        const mime = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
-        const blob = new Blob([byteNumbers], { type: mime });
-        const f = new File([blob], `photo_${Date.now()}.${ext}`, {
-          type: mime,
-          lastModified: Date.now(),
-        });
-        (f as any).__isSnapshot = true;
-        return f;
+      if (!photo?.base64String) return null; // ألغى المستخدم
+
+      // تحويل Base64 → Blob في الذاكرة فوراً
+      const byteCharacters = atob(photo.base64String);
+      const byteNumbers = new Uint8Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i++) {
+        byteNumbers[i] = byteCharacters.charCodeAt(i);
       }
-      return null;
+      const ext = (photo.format || 'jpg').replace('jpeg', 'jpg');
+      const mime = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+      const blob = new Blob([byteNumbers], { type: mime });
+      const f = new File([blob], `photo_${Date.now()}.${ext}`, {
+        type: mime,
+        lastModified: Date.now(),
+      });
+      (f as any).__isSnapshot = true;  // علّم الملف: تم حفظه في الذاكرة بالفعل
+      return f;
     } catch (e: any) {
-      if (e?.message?.includes('cancel') || e?.message?.includes('User cancel')) return null;
-      console.warn('[mobileUpload] Native picker error, fallback to web:', e);
+      // "User cancelled" ليس خطأً حقيقياً
+      const msg = e?.message?.toLowerCase() ?? '';
+      if (msg.includes('cancel') || msg.includes('dismissed') || msg.includes('no image')) return null;
+      console.warn('[mobileUpload] Native picker failed, falling back to web <input>:', e);
+      // تابع إلى مسار الويب كبديل
     }
   }
 
-  // 2. Web <input type="file"> – opens native photo picker on Android 11+
+  // ── 2. Web <input type="file"> — أندرويد 11+ يفتح منتقي الصور الأصلي ─────
   return new Promise<File | null>(resolve => {
     const input = document.createElement('input');
-    input.type  = 'file';
+    input.type = 'file';
     input.accept = accept;
-    // capture="" removed intentionally so Android shows Gallery, not Camera
-    input.style.cssText = 'position:fixed;opacity:0;pointer-events:none;top:0;left:0;width:1px;height:1px;';
+    // لا نضع capture="" لأن أندرويد يعرض المعرض كخيار افتراضي
+    input.style.cssText = 'position:fixed;opacity:0;pointer-events:none;top:-9999px;left:-9999px;width:1px;height:1px;';
     document.body.appendChild(input);
 
     let handled = false;
     const finish = (f: File | null) => {
       if (handled) return;
       handled = true;
-      try { document.body.removeChild(input); } catch {}
+      window.removeEventListener('focus', onWindowFocus);
+      try { document.body.removeChild(input); } catch { }
       resolve(f);
     };
 
-    input.onchange = () => finish(input.files?.[0] ?? null);
-    // User cancelled (focus returns without selection)
-    const onFocus = () => {
-      setTimeout(() => {
-        if (!handled && (!input.files || input.files.length === 0)) finish(null);
-      }, 800);
-      window.removeEventListener('focus', onFocus);
+    // onChange: المستخدم اختار ملفاً — النجاح الحقيقي الوحيد
+    input.onchange = () => {
+      const file = input.files?.[0] ?? null;
+      finish(file);
     };
-    window.addEventListener('focus', onFocus);
 
-    setTimeout(() => finish(null), 120_000);
+    // ── كاشف الإلغاء الذكي ───────────────────────────────────────────────────
+    // المشكلة: في أندرويد WebView يصل حدث focus قبل أن يُغلق الـ picker بثوانٍ،
+    // لذا نستخدم تأخيراً طويلاً (1500ms) فقط خارج WebView؛ وداخل WebView نعتمد
+    // فقط على onChange لأن focus لا يُعبّر عن الإلغاء بشكل موثوق.
+    const CANCEL_DELAY = isWebView() ? 60_000 : 1500; // WebView → لا نستخدم focus كمؤشر إلغاء
+
+    let focusTimer: ReturnType<typeof setTimeout> | null = null;
+    const onWindowFocus = () => {
+      if (handled) return;
+      // ننتظر قبل الحكم بالإلغاء — منتقي المعرض قد يستغرق ثوانٍ قبل إغلاقه
+      focusTimer = setTimeout(() => {
+        if (!handled && (!input.files || input.files.length === 0)) {
+          finish(null); // المستخدم أغلق المنتقي فعلاً دون اختيار
+        }
+      }, CANCEL_DELAY);
+    };
+
+    // لا نسجّل مستمع focus داخل WebView — onChange وحده كافٍ هناك
+    if (!isWebView()) {
+      window.addEventListener('focus', onWindowFocus);
+    }
+
+    // مهلة أمان نهائية: 3 دقائق — إذا لم يحدث شيء نعامله كإلغاء
+    setTimeout(() => finish(null), 180_000);
+
     input.click();
   });
 }
@@ -362,7 +407,7 @@ export const mobileUploadService = {
     // 3. Create instant ObjectURL preview for immediate UI feedback (Telegram UX)
     let preview: string | null = null;
     if (type !== 'cv') {
-      try { preview = URL.createObjectURL(workingFile); } catch {}
+      try { preview = URL.createObjectURL(workingFile); } catch { }
     }
     emit({ type, phase: 'compressing', percent: 20, preview: preview ?? undefined });
 
@@ -380,14 +425,20 @@ export const mobileUploadService = {
 
         // 4b. Images (avatar / cover / post-image)
         const isImageType = type !== 'post-video';
-        const contentType = resolveMimeType(workingFile);
+        const targetDim = type === 'avatar' ? 400 : (type === 'cover' ? 1200 : IMAGE_MAX_DIM);
+        const targetQuality = type === 'avatar' ? 0.85 : (type === 'cover' ? 0.82 : IMAGE_QUALITY);
 
-        // Compress if needed (skip if already small snapshot ≤ 300 KB)
+        // Compress and normalize to JPEG
         let uploadFile = workingFile;
-        if (isImageType && !(workingFile as any).__isCompressed && workingFile.size > 300 * 1024) {
-          emit({ type, phase: 'compressing', percent: 30 });
-          uploadFile = await compressImageFile(workingFile);
+        if (isImageType) {
+          const isHeic = (workingFile.type && (workingFile.type.includes('heic') || workingFile.type.includes('heif'))) ||
+                         (workingFile.name && /\.(heic|heif)$/i.test(workingFile.name));
+          if (!(workingFile as any).__isCompressed || isHeic || type === 'avatar' || type === 'cover' || workingFile.size > 300 * 1024) {
+            emit({ type, phase: 'compressing', percent: 30 });
+            uploadFile = await compressImageFile(workingFile, targetDim, targetQuality);
+          }
         }
+        const contentType = uploadFile.type || resolveMimeType(uploadFile) || 'image/jpeg';
 
         emit({ type, phase: 'uploading', percent: 50 });
 
@@ -397,7 +448,7 @@ export const mobileUploadService = {
 
         if (storageUrl) {
           // Revoke the temporary ObjectURL now that we have a permanent URL
-          if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
+          if (preview) { try { URL.revokeObjectURL(preview); } catch { } }
           emit({ type, phase: 'done', percent: 100, url: storageUrl });
           return storageUrl;
         }
@@ -407,14 +458,14 @@ export const mobileUploadService = {
         emit({ type, phase: 'uploading', percent: 75 });
         const b64 = await toCompactBase64(uploadFile, type);
         if (b64) {
-          if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
+          if (preview) { try { URL.revokeObjectURL(preview); } catch { } }
           emit({ type, phase: 'done', percent: 100, url: b64 });
           return b64;
         }
 
         throw new Error('All upload strategies failed');
       } catch (err: any) {
-        if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
+        if (preview) { try { URL.revokeObjectURL(preview); } catch { } }
         emit({ type, phase: 'error', percent: 0, error: err?.message });
         throw err;
       }
@@ -449,7 +500,7 @@ export const mobileUploadService = {
     // Instant preview
     let preview: string | null = null;
     if (type !== 'cv') {
-      try { preview = URL.createObjectURL(workingFile); } catch {}
+      try { preview = URL.createObjectURL(workingFile); } catch { }
     }
 
     emit({ type, phase: 'compressing', percent: 20, preview: preview ?? undefined });
@@ -464,19 +515,27 @@ export const mobileUploadService = {
           return url;
         }
 
-        const contentType = resolveMimeType(workingFile);
+        const isImageType = type !== 'post-video';
+        const targetDim = type === 'avatar' ? 400 : (type === 'cover' ? 1200 : IMAGE_MAX_DIM);
+        const targetQuality = type === 'avatar' ? 0.85 : (type === 'cover' ? 0.82 : IMAGE_QUALITY);
+
         let uploadFile = workingFile;
-        if (!(workingFile as any).__isCompressed && workingFile.size > 300 * 1024) {
-          emit({ type, phase: 'compressing', percent: 30 });
-          uploadFile = await compressImageFile(workingFile);
+        if (isImageType) {
+          const isHeic = (workingFile.type && (workingFile.type.includes('heic') || workingFile.type.includes('heif'))) ||
+                         (workingFile.name && /\.(heic|heif)$/i.test(workingFile.name));
+          if (!(workingFile as any).__isCompressed || isHeic || type === 'avatar' || type === 'cover' || workingFile.size > 300 * 1024) {
+            emit({ type, phase: 'compressing', percent: 30 });
+            uploadFile = await compressImageFile(workingFile, targetDim, targetQuality);
+          }
         }
+        const contentType = uploadFile.type || resolveMimeType(uploadFile) || 'image/jpeg';
 
         emit({ type, phase: 'uploading', percent: 50 });
         const buckets = IMAGE_BUCKETS[type] ?? ['profiles'];
         const storageUrl = await uploadToStorage(uploadFile, userId, buckets, contentType);
 
         if (storageUrl) {
-          if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
+          if (preview) { try { URL.revokeObjectURL(preview); } catch { } }
           emit({ type, phase: 'done', percent: 100, url: storageUrl });
           return storageUrl;
         }
@@ -484,14 +543,14 @@ export const mobileUploadService = {
         emit({ type, phase: 'uploading', percent: 75 });
         const b64 = await toCompactBase64(uploadFile, type);
         if (b64) {
-          if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
+          if (preview) { try { URL.revokeObjectURL(preview); } catch { } }
           emit({ type, phase: 'done', percent: 100, url: b64 });
           return b64;
         }
 
         throw new Error('All upload strategies exhausted');
       } catch (err: any) {
-        if (preview) { try { URL.revokeObjectURL(preview); } catch {} }
+        if (preview) { try { URL.revokeObjectURL(preview); } catch { } }
         emit({ type, phase: 'error', percent: 0, error: err?.message });
         throw err;
       }
