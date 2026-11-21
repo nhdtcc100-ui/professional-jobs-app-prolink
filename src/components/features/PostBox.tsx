@@ -101,53 +101,38 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const isEmployer = isJobPoster(currentUser);
   const isSeeker = isJobSeeker(currentUser);
 
-  // 📸 تجهيز الصورة فور اختيارها (تجميد فوري بالذاكرة RAM مع بدء الرفع في الخلفية طبق الأصل للملف الشخصي)
+  // 📸 تجهيز الصورة فور اختيارها — مخطط الملف الشخصي والغلاف تماماً:
+  //   1. معاينة 0ms فورية عبر URL.createObjectURL (بدون FileReader ثقيل)
+  //   2. رفع فوري في الخلفية بدون أي تأخير على UI thread
+  //   3. بدون snapshotFile الثقيل الذي يستغرق 30 ثانية على الموبايل
   const prepareImageFile = async (file: File) => {
     if (!file || file.size === 0) {
       addToast("الملف فارغ، يرجى اختيار صورة صالحة", "error");
       return;
     }
-    try {
-      // 🔒 تجميد فوري في RAM لمنع تلف ملفات أندرويد المعرض (Scoped Storage)
-      const snap = await snapshotFile(file);
-      setSelectedFile(snap);
-      setUploadType(uploadType === 'article' ? 'article' : 'photo');
-      uploadedImageUrlRef.current = null;
 
-      // معاينة فورية بدون أي تأخير 0ms
-      try {
-        const objUrl = URL.createObjectURL(snap);
-        setAttachment(objUrl);
-      } catch {
-        const reader = new FileReader();
-        reader.onload = () => setAttachment(reader.result as string);
-        reader.readAsDataURL(snap);
-      }
+    // ✅ خطوة 1: معاينة 0ms فورية (نفس مخطط الملف الشخصي)
+    const preview = URL.createObjectURL(file);
+    setAttachment(preview);
+    setSelectedFile(file);
+    setUploadType(prev => prev === 'article' ? 'article' : 'photo');
+    uploadedImageUrlRef.current = null;
 
-      // ⚡ بدء الرفع فوراً في الخلفية طبق الأصل للغلاف والصورة الشخصية
-      const targetUserId = currentUser?.id || appUser?.id;
-      if (targetUserId) {
-        setIsUploadingMedia(true);
-        mobileUploadService.uploadFile(snap, 'post-image', targetUserId)
-          .then(res => res.uploadPromise)
-          .then(url => {
-            if (url) {
-              uploadedImageUrlRef.current = url;
-            }
-          })
-          .catch(err => {
-            console.warn('[PostBox] Background pre-upload warn:', err);
-          })
-          .finally(() => {
-            setIsUploadingMedia(false);
-          });
-      }
-    } catch {
-      setSelectedFile(file);
-      setUploadType(uploadType === 'article' ? 'article' : 'photo');
-      const reader = new FileReader();
-      reader.onload = () => setAttachment(reader.result as string);
-      reader.readAsDataURL(file);
+    // ✅ خطوة 2: رفع فوري في الخلفية — بدون حجب UI thread
+    const targetUserId = currentUser?.id || appUser?.id;
+    if (targetUserId) {
+      setIsUploadingMedia(true);
+      mobileUploadService.uploadFile(file, 'post-image', targetUserId)
+        .then(res => res.uploadPromise)
+        .then(url => {
+          if (url) uploadedImageUrlRef.current = url;
+        })
+        .catch(err => {
+          console.warn('[PostBox] Background pre-upload warn:', err);
+        })
+        .finally(() => {
+          setIsUploadingMedia(false);
+        });
     }
   };
 

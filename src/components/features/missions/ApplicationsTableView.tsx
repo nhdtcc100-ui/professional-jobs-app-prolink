@@ -239,8 +239,12 @@ function ApplicationsListViewContent({
   const { setActiveTab, setSelectedChat, allUsers = [], activeTab, canUseMessaging, setIsEditingApp, setSelectedProfile } = useAppContext();
   const isAdmin = isUserAdmin(appUser);
 
-  const openUserProfile = (userId?: string, fallbackData?: any) => {
+  const openUserProfile = (userId?: string, fallbackData?: any, currentAppId?: string) => {
     if (!userId && !fallbackData) return;
+    // 🔙 إخبار App.tsx بأن نقطة العودة هي الطلبات
+    window.dispatchEvent(new CustomEvent('prolink_set_return_to_applications', {
+      detail: { subTab: isSentView ? 'sent' : 'requests', appId: currentAppId }
+    }));
     const targetUser = allUsers.find(u => u.id === userId);
     if (targetUser) {
       if (setSelectedProfile) setSelectedProfile(targetUser);
@@ -699,7 +703,7 @@ function ApplicationsListViewContent({
                           <div
                             onClick={(e) => {
                               e.stopPropagation();
-                              openUserProfile(cardParty.id, cardParty);
+                              openUserProfile(cardParty.id, cardParty, app.id);
                             }}
                             className={`relative cursor-pointer group/avatar shrink-0 ${isSentView ? '-mt-7 z-10' : ''}`}
                             title="عرض الملف الشخصي"
@@ -731,7 +735,7 @@ function ApplicationsListViewContent({
                                   onClick={(e) => {
                                     if (isSentView) {
                                       e.stopPropagation();
-                                      openUserProfile(employerInfo.id, employerInfo);
+                                      openUserProfile(employerInfo.id, employerInfo, app.id);
                                     }
                                   }}
                                   className={`text-[10px] text-blue-600 dark:text-blue-400 font-bold mb-1 flex items-center gap-1 ${isSentView ? 'hover:underline cursor-pointer' : ''}`}
@@ -1034,7 +1038,7 @@ function ApplicationsListViewContent({
                   : topMiniInfo.name;
                 return (
                   <div 
-                    onClick={() => openUserProfile(isSentView ? topMiniInfo.id : (resolveApplicant(currentApp).id || currentApp.applicant_id), topMiniInfo)}
+                    onClick={() => openUserProfile(isSentView ? topMiniInfo.id : (resolveApplicant(currentApp).id || currentApp.applicant_id), topMiniInfo, currentApp.id)}
                     className="flex items-center gap-2 min-w-0 cursor-pointer group/top hover:opacity-80 transition-opacity"
                     title="عرض الملف الشخصي"
                   >
@@ -1150,7 +1154,7 @@ function ApplicationsListViewContent({
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 relative z-10">
                           <div className="flex items-center gap-4">
                             <div 
-                              onClick={() => openUserProfile(isSentView ? headerInfo.id : (resolved.id || app.applicant_id), headerInfo)}
+                              onClick={() => openUserProfile(isSentView ? headerInfo.id : (resolved.id || app.applicant_id), headerInfo, app.id)}
                               className="relative group cursor-pointer"
                               title="عرض الملف الشخصي"
                             >
@@ -1168,7 +1172,7 @@ function ApplicationsListViewContent({
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <h3 
-                                  onClick={() => openUserProfile(isSentView ? headerInfo.id : (resolved.id || app.applicant_id), headerInfo)}
+                                  onClick={() => openUserProfile(isSentView ? headerInfo.id : (resolved.id || app.applicant_id), headerInfo, app.id)}
                                   className="text-xl sm:text-2xl font-black text-white hover:underline cursor-pointer"
                                   title="عرض الملف الشخصي"
                                 >

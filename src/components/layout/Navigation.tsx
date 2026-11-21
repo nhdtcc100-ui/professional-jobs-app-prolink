@@ -23,7 +23,7 @@ export function NavbarItem({ icon, label, active, onClick, onPointerDown, onMous
       onMouseEnter={onMouseEnter}
       className={`relative flex flex-col items-center justify-center px-3.5 cursor-pointer h-full transition-all group select-none bg-transparent border-0 outline-none`}
     >
-      {/* Active background pill with smooth layoutId animation */}
+      {/* Active background pill with smooth layoutId animation — slow horizontal glide only */}
       {active && (
         <motion.div
           layoutId="navbar-active-pill"
@@ -34,13 +34,15 @@ export function NavbarItem({ icon, label, active, onClick, onPointerDown, onMous
           }}
           transition={{
             type: 'spring',
-            stiffness: 500,
-            damping: 35,
+            stiffness: 220,
+            damping: 28,
+            mass: 1.1,
+            layout: { type: 'spring', stiffness: 220, damping: 28, mass: 1.1 },
           }}
         />
       )}
 
-      {/* Active bottom accent bar with smooth layoutId animation */}
+      {/* Active bottom accent bar with smooth layoutId animation — slow horizontal glide only */}
       {active && (
         <motion.div
           layoutId="navbar-active-bar"
@@ -48,13 +50,16 @@ export function NavbarItem({ icon, label, active, onClick, onPointerDown, onMous
           style={{ background: 'linear-gradient(90deg, #3b82f6, #6366f1)' }}
           transition={{
             type: 'spring',
-            stiffness: 500,
-            damping: 35,
+            stiffness: 220,
+            damping: 28,
+            mass: 1.1,
+            layout: { type: 'spring', stiffness: 220, damping: 28, mass: 1.1 },
           }}
         />
       )}
 
-      <div className={`relative transition-all duration-200 ${active ? 'scale-110' : 'group-hover:scale-105 opacity-60 group-hover:opacity-100'}`}>
+      {/* NO scale-110 — removing vertical jump, keep only color change */}
+      <div className={`relative transition-all duration-200 ${active ? '' : 'group-hover:scale-105 opacity-60 group-hover:opacity-100'}`}>
         <span className={active ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}>
           {icon}
         </span>

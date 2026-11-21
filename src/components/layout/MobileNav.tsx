@@ -392,12 +392,12 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                   <motion.div
                     layoutId="minimal-luxury-active-bubble"
                     className="relative flex flex-col items-center justify-center"
-                    // انتقال الأيقونات بسبرينغ فائق السلاسة والاستجابة
+                    // انتقال أفقي سلس وأبطأ — بدون قفز عمودي
                     transition={{
                       type: 'spring',
-                      stiffness: 450,
-                      damping: 32,
-                      mass: 1.0,
+                      stiffness: 220,
+                      damping: 28,
+                      mass: 1.1,
                     }}
                   >
                     {/* Glowing warm halo underneath */}

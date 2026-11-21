@@ -254,7 +254,25 @@ export function MissionsView({
     if (!appUser?.id) return;
     fetchApplications();
     const channel = supabase.channel(`apps-sync-${appUser.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'job_applications' }, fetchApplications)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'job_applications' }, (payload: any) => {
+        const row = payload.new || payload.old;
+        const eventType = payload.eventType || payload.type;
+
+        // ⚡ تحديث فوري لحالة الطلبات المرسلة (للباحث عن عمل) بدون الانتظار لـ fetchApplications
+        if (eventType === 'UPDATE' && row?.applicant_id === appUser.id) {
+          setSentApplications(prev => prev.map((a: any) =>
+            a.id === row.id ? { ...a, status: row.status ?? a.status } : a
+          ));
+        }
+        // ⚡ تحديث فوري للطلبات الواردة (لصاحب العمل)
+        if (eventType === 'UPDATE' && row?.employer_id === appUser.id) {
+          setIncomingApplications(prev => prev.map((a: any) =>
+            a.id === row.id ? { ...a, status: row.status ?? a.status } : a
+          ));
+        }
+        // إعادة تحميل كاملة لتحديث البيانات المرتبطة
+        fetchApplications();
+      })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [appUser?.id]);
@@ -277,9 +295,21 @@ export function MissionsView({
     };
     window.addEventListener('prolink_application_sent', onAppSent);
 
+    // ⚡ استقبال تحديث الحالة الفوري من صاحب العمل (نفس الجلسة)
+    const onStatusChanged = (e: any) => {
+      const { appId, status } = e.detail || {};
+      if (appId && status) {
+        setSentApplications(prev => prev.map((a: any) =>
+          a.id === appId ? { ...a, status } : a
+        ));
+      }
+    };
+    window.addEventListener('prolink_application_status_changed', onStatusChanged);
+
     return () => { 
       delete (window as any).refreshApplications;
       window.removeEventListener('prolink_application_sent', onAppSent);
+      window.removeEventListener('prolink_application_status_changed', onStatusChanged);
     };
   }, [fetchApplications]);
 
@@ -563,6 +593,12 @@ export function MissionsView({
 
       setIncomingApplications(prev => prev.map((a: any) => a.id === appId ? { ...a, status } : a));
       addToast(status === 'approved' ? '✅ تم قبول الطلب بنجاح' : status === 'rejected' ? 'تم الرفض' : '🔄 تمت الإعادة للمراجعة');
+
+      // ⚡ بث فوري لتحديث الباحث عن عمل في نفس الجلسة (نفس الجهاز أو التبويب)
+      window.dispatchEvent(new CustomEvent('prolink_application_status_changed', {
+        detail: { appId, status, jobTitle }
+      }));
+
       await fetchApplications();
     } catch (e: any) {
       addToast('خطأ: ' + e.message, 'error');

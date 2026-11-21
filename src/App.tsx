@@ -297,6 +297,11 @@ function App() {
   const [profileReturnTab, setProfileReturnTab] = useState<string>('home');
   const [returnToServiceUser, setReturnToServiceUser] = useState<any | null>(null);
   const [initialJobForMissions, setInitialJobForMissions] = useState<Job | null>(null);
+  // 🔙 العودة لطلبات التوظيف عند الضغط على الرجوع من الملف الشخصي الذي فُتح من طلب توظيف
+  const [returnToApplications, setReturnToApplications] = useState<{
+    subTab: 'requests' | 'sent';
+    appId?: string;
+  } | null>(null);
   const webRTCServiceRef = useRef<WebRTCService | null>(null);
   
   // 💓 Presence Heartbeat: Update 'last_seen_at' every 60 seconds
@@ -344,6 +349,16 @@ function App() {
     window.addEventListener('viewUserProfile', handler);
     return () => window.removeEventListener('viewUserProfile', handler);
   }, [allUsers, setSelectedProfile, setActiveTab]);
+
+  // 🔙 استقبال حدث العودة للطلبات من ApplicationsTableView
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { subTab: 'sent' | 'requests'; appId?: string };
+      if (detail) setReturnToApplications(detail);
+    };
+    window.addEventListener('prolink_set_return_to_applications', handler);
+    return () => window.removeEventListener('prolink_set_return_to_applications', handler);
+  }, []);
 
 
 
@@ -1622,6 +1637,20 @@ function App() {
                           setActiveTab('jobs');
                           setInitialJobForMissions(returnToJob);
                           setReturnToJob(null);
+                        } else if (returnToApplications) {
+                          // 🔙 العودة لطلبات التوظيف (المُرسَلة أو الواردة) بالضبط
+                          const { subTab, appId } = returnToApplications;
+                          setSelectedProfile(null);
+                          setReturnToApplications(null);
+                          setActiveTab('jobs');
+                          setTimeout(() => {
+                            window.dispatchEvent(new CustomEvent('openJobsTab', { detail: 'requests' }));
+                            if (subTab === 'sent') {
+                              window.dispatchEvent(new CustomEvent('prolink_open_sent_applications', { detail: { appId } }));
+                            } else {
+                              window.dispatchEvent(new CustomEvent('prolink_open_incoming_applications', { detail: { appId } }));
+                            }
+                          }, 80);
                         } else if (profileReturnTab === 'services') {
                           // العودة لسوق الخدمات (تبويب مستقل) مع التمرير للشخص
                           const targetId = returnToServiceUser?.id;
