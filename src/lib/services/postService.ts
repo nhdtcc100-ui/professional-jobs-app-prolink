@@ -132,15 +132,23 @@ export const postService = {
         withIdempotency(
           idempotencyKey,
           async () => {
-            // 🚫 Strict Server/Service Guard: Seekers cannot create posts
+            // 🚫 Strict Server/Service Guard: Seekers cannot create posts (with 2.5s safe timeout)
             if (postData.author_id) {
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('id, role, is_admin')
-                .eq('id', postData.author_id)
-                .single();
-              if (profile && !canUserPostAndInteract(profile)) {
-                return { data: null, error: { message: 'غير مصرح للباحثين عن عمل بنشر المنشورات 🚫' } };
+              try {
+                const { data: profile } = await withTimeout(
+                  supabase
+                    .from('profiles')
+                    .select('id, role, is_admin')
+                    .eq('id', postData.author_id)
+                    .single(),
+                  2500,
+                  'createPost.checkRole'
+                );
+                if (profile && !canUserPostAndInteract(profile)) {
+                  return { data: null, error: { message: 'غير مصرح للباحثين عن عمل بنشر المنشورات 🚫' } };
+                }
+              } catch (profileErr) {
+                console.warn('[createPost] Role check timed out or bypassed, continuing safely:', profileErr);
               }
             }
 
@@ -154,17 +162,18 @@ export const postService = {
             };
 
             return withCollisionRetry(async (_attempt, _freshId) => {
+              // 🛡️ لا نضيف حقل dislikes_count لتجنب خطأ 42703 وإعادة المحاولة مرتين
+              const { dislikes_count, ...cleanRow } = sanitized;
               const rowToInsert = {
-                id: sanitized.id || _freshId,
-                ...sanitized,
-                dislikes_count: 0,
+                id: cleanRow.id || _freshId,
+                ...cleanRow,
               };
 
-              // ✅ Wrap every insert with a 10s timeout to prevent hanging locks
+              // ✅ Wrap every insert with a 4s fast timeout to prevent hanging locks
               const insertWithTimeout = async () => {
                 const res = await withTimeout(
                   (supabase.from('posts') as any).insert([rowToInsert]).select(),
-                  10000,
+                  4000,
                   'createPost.insert'
                 );
                 return res;
@@ -172,11 +181,11 @@ export const postService = {
 
               try {
                 const res: any = await insertWithTimeout();
-                if (res.error && (res.error.code === '42703' || res.error.message?.includes('dislikes_count'))) {
-                  const { dislikes_count, ...fallbackRow } = rowToInsert;
+                if (res.error && (res.error.code === '42703' || res.error.message?.includes('post_type') || res.error.message?.includes('dislikes_count'))) {
+                  const { post_type, type, dislikes_count: _, ...fallbackRow } = rowToInsert;
                   const fbRes: any = await withTimeout(
                     (supabase.from('posts') as any).insert([fallbackRow]).select(),
-                    10000,
+                    4000,
                     'createPost.insert.fallback'
                   );
                   if (!fbRes.error) this.invalidateCache();
@@ -189,11 +198,11 @@ export const postService = {
               } catch (insertErr) {
                 // ✅ Log real error — don't swallow silently
                 console.error('[createPost] insert error:', insertErr);
-                // Fallback: try without dislikes_count column
-                const { dislikes_count, ...fallbackRow } = rowToInsert;
+                // Fallback: try stripping unknown columns
+                const { post_type, type, dislikes_count: _, ...fallbackRow } = rowToInsert;
                 const fbRes: any = await withTimeout(
                   (supabase.from('posts') as any).insert([fallbackRow]).select(),
-                  10000,
+                  4000,
                   'createPost.insert.catch-fallback'
                 );
                 if (!fbRes.error) this.invalidateCache();

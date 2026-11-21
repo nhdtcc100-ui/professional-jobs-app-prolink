@@ -33,7 +33,9 @@ export function PostNewsCard({ post, delay = 0, onClick, onAuthorClick, allUsers
   const author = allUsers.find(u => u.id === post.authorId);
   const displayImage = post.imageUrl || author?.coverUrl || author?.avatar || DEFAULT_NEWS_PLACEHOLDER;
   const hasVideo = !!post.videoUrl;
-  const isArticle = (post as any).post_type === 'article' || (post as any).type === 'article' || post.content.startsWith('# ') || post.content.length > 250;
+  // 📸 المنشور الذي يحتوي على صورة هو منشور صورة (وليس مقال)، والمقال فقط إذا كان محدداً صراحة كمقال أو يبدأ بـ # وليس له صورة منشورة
+  const isExplicitArticle = (post as any).post_type === 'article' || (post as any).type === 'article';
+  const isArticle = isExplicitArticle || (!post.imageUrl && post.content.startsWith('# '));
   // 📸 منشور صورة اجتماعي عادي (كامل الصورة والنص أسفلها وليس كشريط وظيفة أو مقال)
   const isImagePost = !isArticle && !!post.imageUrl;
   

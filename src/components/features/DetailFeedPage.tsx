@@ -682,7 +682,8 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
 
                 {/* ── Header: Hero Cover للمنشور أو المقال (إذا وُجدت صورة كالأخبار تماماً، وإذا لم توجد يظهر تصميم أنيق بدون صورة مكسورة) ── */}
                 {(() => {
-                  const isArticle = (currentItem as any).post_type === 'article' || (currentItem as any).type === 'article' || currentItem.content?.startsWith('# ') || (currentItem.content?.length || 0) > 300;
+                  const isExplicitArticle = (currentItem as any).post_type === 'article' || (currentItem as any).type === 'article';
+                  const isArticle = isExplicitArticle || (!currentItem.imageUrl && !currentItem.image_url && currentItem.content?.startsWith('# '));
                   const postDirectImage = currentItem.imageUrl || currentItem.image_url || currentItem.image || currentItem.thumbnail || pubUser?.coverUrl || (pubUser as any)?.cover_url || null;
                   const hasVideo = !!currentItem.videoUrl;
                   const isPostOwner = !!(appUser && (currentItem.authorId === appUser.id || currentItem.author_id === appUser.id));

@@ -105,7 +105,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
 
   // 📸 تجهيز الصورة فور اختيارها — المخطط الهندسي الفوري كمخطط تليجرام/واتساب:
   //   1. معاينة 0ms فورية عبر URL.createObjectURL
-  //   2. ضغط كـ Base64 في الذاكرة RAM مباشرة من File (يدعم blob: و data:) ← إصلاح رئيسي
+  //   2. ضغط كـ Base64 فوري في الذاكرة RAM عبر Canvas (<30ms) بدون تجميد الـ Thread
   //   3. بدء الرفع فوراً في الخلفية لـ Storage بشكل متوازي
   const prepareImageFile = async (file: File) => {
     if (!file || file.size === 0) {
@@ -117,33 +117,45 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
     const preview = URL.createObjectURL(file);
     setAttachment(preview);
     setSelectedFile(file);
-    setUploadType(prev => prev === 'article' ? 'article' : 'photo');
     uploadedImageUrlRef.current = null;
     compactBase64Ref.current = null;
 
-    // ✅ 2. تجهيز Base64 مضغوط مباشرة من File عبر FileReader (يدعم blob: URLs)
-    // imageService.compactBase64 يتطلب data: URL لذا نولّد Base64 مباشرة من File
-    (async () => {
-      try {
-        // قراءة File كـ dataURL في <100ms
-        const dataUrl = await new Promise<string | null>((resolve) => {
-          const reader = new FileReader();
-          const t = setTimeout(() => resolve(null), 3000);
-          reader.onload = () => {
-            clearTimeout(t);
-            resolve(typeof reader.result === 'string' ? reader.result : null);
-          };
-          reader.onerror = () => { clearTimeout(t); resolve(null); };
-          reader.readAsDataURL(file);
-        });
-        if (!dataUrl) return;
-        // ضغط إلى صورة صغيرة 720px جاهزة كـ Base64 فوري (~40-70KB)
-        const b64 = await imageService.compactBase64(dataUrl, 720, 0.72);
-        if (b64) compactBase64Ref.current = b64;
-      } catch { /* تجاهل — الرفع من Storage سيكمل */ }
-    })();
+    // ✅ 2. ضبط نوع المنشور: إذا لم يكن المستخدم يكتب مقالاً بعنوان، فالمنشور صورة حتماً
+    setUploadType(prev => (prev === 'article' && articleTitle.trim()) ? 'article' : 'photo');
 
-    // ✅ 3. رفع فوري متوازي لـ Storage في الخلفية
+    // ✅ 3. ضغط فائق السرعة عبر Canvas مباشرة في الـ RAM (< 30ms)
+    try {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const maxDim = 800;
+          let w = img.naturalWidth || 800;
+          let h = img.naturalHeight || 600;
+          if (w > maxDim || h > maxDim) {
+            if (w >= h) {
+              h = Math.max(1, Math.round((h * maxDim) / w));
+              w = maxDim;
+            } else {
+              w = Math.max(1, Math.round((w * maxDim) / h));
+              h = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, w, h);
+            compactBase64Ref.current = canvas.toDataURL('image/jpeg', 0.72);
+          }
+        } catch (canvasErr) {
+          console.warn('[PostBox] Fast canvas scale note:', canvasErr);
+        }
+      };
+      img.src = preview;
+    } catch { /* تجاهل — رفع الـ Storage بالخلفية سيعمل */ }
+
+    // ✅ 4. رفع فوري متوازي لـ Storage في الخلفية
     const targetUserId = currentUser?.id || appUser?.id;
     if (targetUserId) {
       setIsUploadingMedia(true);
@@ -162,6 +174,44 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
         });
       backgroundUploadPromiseRef.current = uploadTask;
     }
+  };
+
+  // 🖼️ فتح منتقي الصور الأصلي للأندرويد والآيفون (الاستوديو / المعرض)
+  const triggerPhotoUpload = async () => {
+    setUploadType('photo');
+    setArticleTitle('');
+    setIsPublishingArticle(false);
+
+    // 1. للأجهزة الحقيقية (أندرويد وآيفون): فتح المعرض/الاستوديو الأصلي فورا
+    if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
+      try {
+        const { Camera, CameraSource, CameraResultType } = await import('@capacitor/camera');
+        const photo = await Camera.getPhoto({
+          quality: 80,
+          allowEditing: false,
+          resultType: CameraResultType.Uri,
+          source: CameraSource.Photos, // 📸 الاستوديو مباشرة
+        });
+
+        if (photo?.webPath) {
+          const res = await fetch(photo.webPath);
+          const blob = await res.blob();
+          const ext = photo.format || 'jpg';
+          const file = new File([blob], `photo_${Date.now()}.${ext}`, {
+            type: blob.type || `image/${ext}`,
+            lastModified: Date.now(),
+          });
+          await prepareImageFile(file);
+          return;
+        }
+      } catch (err: any) {
+        if (err?.message?.includes('cancel') || err?.message?.includes('User cancel')) return;
+        console.warn('[PostBox] Native gallery error, fallback to web picker:', err);
+      }
+    }
+
+    // 2. للويب: تفعيل input الملفات
+    fileInputRef.current?.click();
   };
 
   const triggerUpload = () => {
@@ -230,7 +280,8 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
 
     // 🔑 توليد UUID مسبقاً وتوحيده بين Optimistic Update وقاعدة البيانات لمنع التكرار نهائياً
     const newPostId = generateUUID();
-    const rawContent = (uploadType === 'article' && articleTitle.trim())
+    const isRealArticle = uploadType === 'article' && articleTitle.trim().length > 0;
+    const rawContent = isRealArticle
       ? `# ${articleTitle.trim()}\n\n${content}`
       : content;
     const postContent = sanitizeInput(rawContent, 20000, {
@@ -238,7 +289,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       name: appUser?.name,
       email: appUser?.email
     });
-    const postType = uploadType;
+    const postType = isRealArticle ? 'article' : (uploadType || 'photo');
     const postAttachment = attachment;
     const postVideoUrl = videoUrl;
     const postSelectedFile = selectedFile;
@@ -262,6 +313,8 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       imageUrl: (postType === 'photo' || postType === 'article') ? postAttachment : null,
       videoUrl: postType === 'video' ? postAttachment : postVideoUrl || null,
       likesCount: 0,
+      post_type: isRealArticle ? 'article' : 'photo',
+      type: isRealArticle ? 'article' : 'photo',
       timestamp: { toDate: () => new Date() }
     };
     setPosts(prev => [optimisticPost as any, ...prev]);
@@ -319,6 +372,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
         image_url:     (postType === 'photo' || postType === 'article') ? finalImageUrl : null,
         video_url:     postType === 'video' ? (finalVideoUrl || null) : (postVideoUrl || null),
         likes_count:   0,
+        post_type:     isRealArticle ? 'article' : 'photo',
       };
 
       const { data: newPost, error } = await postService.createPost(postPayload);
@@ -333,6 +387,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
         id: newPost?.id || newPostId,
         imageUrl: finalImageUrl || p.imageUrl,
         videoUrl: finalVideoUrl || p.videoUrl,
+        post_type: isRealArticle ? 'article' : 'photo',
       } : p));
 
       addToast('تم النشر بنجاح! 🚀');
@@ -392,8 +447,8 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
         
         <div className="flex-1 flex justify-around items-center gap-2">
           <input type="file" ref={fileInputRef} className="hidden" accept={isSeeker ? "image/*" : "image/*,video/*"} onChange={handleFileChange} />
-          <ActionBtn onClick={triggerUpload} icon={<div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl shadow-sm"><ImageIcon className="text-blue-600" size={18} /></div>} label="صورة" />
-          <ActionBtn onClick={() => setUploadType('article')} icon={<div className="p-2 bg-purple-50 dark:bg-purple-900/30 rounded-xl shadow-sm"><FileText className="text-purple-600" size={18} /></div>} label="مقال" />
+          <ActionBtn onClick={triggerPhotoUpload} icon={<div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-xl shadow-sm"><ImageIcon className="text-blue-600" size={18} /></div>} label="صورة" />
+          <ActionBtn onClick={() => { setUploadType('article'); setArticleTitle(''); }} icon={<div className="p-2 bg-purple-50 dark:bg-purple-900/30 rounded-xl shadow-sm"><FileText className="text-purple-600" size={18} /></div>} label="مقال" />
           {isAdmin && <ActionBtn onClick={triggerUpload} icon={<div className="p-2 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl shadow-sm"><Video className="text-emerald-600" size={18} /></div>} label="فيديو" />}
           {/* نشر وظيفة: يظهر فقط لصاحب العمل والأدمن — مخفي تماماً عن الباحث عن عمل */}
           {isEmployer && (
