@@ -132,26 +132,6 @@ export const postService = {
         withIdempotency(
           idempotencyKey,
           async () => {
-            // 🚫 Strict Server/Service Guard: Seekers cannot create posts (with 2.5s safe timeout)
-            if (postData.author_id) {
-              try {
-                const { data: profile } = await withTimeout(
-                  supabase
-                    .from('profiles')
-                    .select('id, role, is_admin')
-                    .eq('id', postData.author_id)
-                    .single(),
-                  2500,
-                  'createPost.checkRole'
-                );
-                if (profile && !canUserPostAndInteract(profile)) {
-                  return { data: null, error: { message: 'غير مصرح للباحثين عن عمل بنشر المنشورات 🚫' } };
-                }
-              } catch (profileErr) {
-                console.warn('[createPost] Role check timed out or bypassed, continuing safely:', profileErr);
-              }
-            }
-
             // ✅ Sanitize all text fields & scan for threat injections before inserting
             const user = { id: postData.author_id, name: postData.author_name };
             const sanitized = {
@@ -162,18 +142,18 @@ export const postService = {
             };
 
             return withCollisionRetry(async (_attempt, _freshId) => {
-              // 🛡️ لا نضيف حقل dislikes_count لتجنب خطأ 42703 وإعادة المحاولة مرتين
-              const { dislikes_count, ...cleanRow } = sanitized;
+              // 🛡️ استبعاد الحقول غير الموجودة بقاعدة البيانات لتنفيذ الإدراج في خطوة واحدة سريعة
+              const { dislikes_count, post_type, type, ...cleanRow } = sanitized;
               const rowToInsert = {
                 id: cleanRow.id || _freshId,
                 ...cleanRow,
               };
 
-              // ✅ Wrap every insert with a 4s fast timeout to prevent hanging locks
+              // ✅ مهلة إدراج واقعية 15 ثانية لتناسب شبكات الهاتف المحمول
               const insertWithTimeout = async () => {
                 const res = await withTimeout(
                   (supabase.from('posts') as any).insert([rowToInsert]).select(),
-                  4000,
+                  15000,
                   'createPost.insert'
                 );
                 return res;
@@ -182,10 +162,10 @@ export const postService = {
               try {
                 const res: any = await insertWithTimeout();
                 if (res.error && (res.error.code === '42703' || res.error.message?.includes('post_type') || res.error.message?.includes('dislikes_count'))) {
-                  const { post_type, type, dislikes_count: _, ...fallbackRow } = rowToInsert;
+                  const { post_type: _pt, type: _t, dislikes_count: _, ...fallbackRow } = rowToInsert;
                   const fbRes: any = await withTimeout(
                     (supabase.from('posts') as any).insert([fallbackRow]).select(),
-                    4000,
+                    15000,
                     'createPost.insert.fallback'
                   );
                   if (!fbRes.error) this.invalidateCache();
@@ -199,10 +179,10 @@ export const postService = {
                 // ✅ Log real error — don't swallow silently
                 console.error('[createPost] insert error:', insertErr);
                 // Fallback: try stripping unknown columns
-                const { post_type, type, dislikes_count: _, ...fallbackRow } = rowToInsert;
+                const { post_type: _pt, type: _t, dislikes_count: _, ...fallbackRow } = rowToInsert;
                 const fbRes: any = await withTimeout(
                   (supabase.from('posts') as any).insert([fallbackRow]).select(),
-                  4000,
+                  15000,
                   'createPost.insert.catch-fallback'
                 );
                 if (!fbRes.error) this.invalidateCache();

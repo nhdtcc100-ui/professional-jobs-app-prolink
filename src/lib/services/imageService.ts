@@ -581,7 +581,7 @@ export const imageService = {
             .upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' });
 
           const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-            setTimeout(() => reject(new Error(`Storage upload timeout (2.5s) for bucket '${b}'`)), 2500)
+            setTimeout(() => reject(new Error(`Storage upload timeout (15s) for bucket '${b}'`)), 15_000)
           );
 
           const { error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);

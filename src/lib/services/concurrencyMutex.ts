@@ -91,7 +91,7 @@ class KeyedAsyncMutex {
    * Executes an asynchronous task inside a critical section locked by key.
    * Guarantees the lock is released even if the task throws.
    */
-  async runExclusive<T>(key: string, task: MutexTask<T>, timeoutMs = 4000): Promise<T> {
+  async runExclusive<T>(key: string, task: MutexTask<T>, timeoutMs = 15000): Promise<T> {
     try {
       const release = await this.acquire(key, timeoutMs);
       try {
@@ -113,6 +113,6 @@ export const concurrencyMutex = new KeyedAsyncMutex();
 /**
  * Convenient wrapper function to run a task within a mutex lock.
  */
-export async function withMutex<T>(key: string, task: () => Promise<T>, timeoutMs = 4000): Promise<T> {
+export async function withMutex<T>(key: string, task: () => Promise<T>, timeoutMs = 15000): Promise<T> {
   return concurrencyMutex.runExclusive(key, task, timeoutMs);
 }

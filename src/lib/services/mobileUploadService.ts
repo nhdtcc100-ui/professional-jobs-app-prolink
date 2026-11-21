@@ -55,7 +55,7 @@ const IMAGE_MAX_DIM = 1000;   // px
 const IMAGE_QUALITY = 0.82;
 const THUMB_MAX_DIM = 400;    // px – compact Base64 thumbnail (crisp on mobile retina)
 const THUMB_QUALITY = 0.75;
-const UPLOAD_TIMEOUT = 4_000;  // ⚡ 4s max per bucket attempt — استجابة سريعة جداً بدون تعليق دقيقة أو دقيقتين
+const UPLOAD_TIMEOUT = 15_000; // ⚡ 15s max per bucket attempt — واقعي ومناسب لشبكات الهاتف المحمول بدون انقطاع مبكر
 
 const IMAGE_BUCKETS: Record<string, string[]> = {
   avatar: ['profiles', 'images'],
@@ -216,7 +216,7 @@ async function uploadToStorage(
   try {
     await Promise.race([
       supabase.auth.getSession(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 1000)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000)),
     ]);
   } catch { }
 

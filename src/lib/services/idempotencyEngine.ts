@@ -125,9 +125,12 @@ class IdempotencyEngine {
     // 4. Start execution and register in inFlightMap
     const execPromise = (async () => {
       try {
-        // Hard ceiling so a hung network call can't hold the mutex / in-flight slot forever
+        // Hard ceiling so a hung network call can't hold the mutex / in-flight slot forever (20s)
         const result = await new Promise<T>((resolve, reject) => {
-          const t = setTimeout(() => reject(new Error('[Idempotency] انتهت مهلة تنفيذ العملية.')), 45_000);
+          const t = setTimeout(() => {
+            this.inFlightMap.delete(key);
+            reject(new Error('[Idempotency] انتهت مهلة تنفيذ العملية.'));
+          }, 20_000);
           operation().then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
         });
 
