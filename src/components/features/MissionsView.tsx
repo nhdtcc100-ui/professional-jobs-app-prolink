@@ -221,8 +221,19 @@ export function MissionsView({
 
       if (sent) {
         setSentApplications((sent as any[]).map((app: any) => {
-          const job = jobs.find(j => j.id === app.job_id);
-          return { ...app, jobTitle: job?.title || 'وظيفة', company: job?.company || 'شركة' };
+          const job = jobs.find(j => j.id === app.job_id) || app.jobs;
+          const empId = app.employer_id || job?.employer_id || job?.user_id;
+          const empUser = allUsers.find(u => u.id === empId);
+          const companyName = job?.company || app.jobs?.company || empUser?.companyName || (empUser?.name ? `${empUser.name}` : 'شركة معتمدة');
+          const employerName = empUser?.name || companyName;
+          return {
+            ...app,
+            jobTitle: job?.title || app.jobs?.title || 'وظيفة مهنية',
+            company: companyName,
+            employer_id: empId,
+            employer_name: employerName,
+            employer_avatar: empUser?.avatar || (empUser as any)?.avatar_url || null,
+          };
         }));
       } else {
         setSentApplications([]);
@@ -503,31 +514,29 @@ export function MissionsView({
       if (applicantId) {
         try {
           const notifType = status === 'approved' ? 'application_approved' : status === 'rejected' ? 'application_rejected' : 'application_pending';
-          const employerName = (extraMeta?.companyName && extraMeta.companyName !== 'صاحب العمل')
-            ? extraMeta.companyName
-            : (extraMeta?.employerName && extraMeta.employerName !== 'صاحب العمل')
-              ? extraMeta.employerName
-              : appUser.name
-                ? (appUser.companyName && appUser.companyName !== appUser.name ? `${appUser.name} (${appUser.companyName})` : appUser.name)
-                : (appUser.companyName || (targetApp as any)?.company || 'مستخدم المنصة');
+          const companyName = extraMeta?.companyName || appUser.companyName || (targetApp as any)?.company || '';
+          const userAccountName = extraMeta?.employerName || appUser.name || 'حساب التوظيف';
+          const fullDisplayName = companyName && companyName !== userAccountName
+            ? `${userAccountName} (${companyName})`
+            : (companyName || userAccountName);
 
           const notifTitle = status === 'approved'
-            ? `وافق ${employerName} على طلبك 🎉`
+            ? `وافق ${fullDisplayName} على طلبك لوظيفة "${jobTitle}" 🎉`
             : status === 'rejected'
-              ? `اعتذر ${employerName} عن طلب التقديم ℹ️`
-              : `طلبك قيد المراجعة لدى ${employerName} 🔄`;
+              ? `اعتذر ${fullDisplayName} عن طلب التقديم لوظيفة "${jobTitle}" ℹ️`
+              : `طلبك لوظيفة "${jobTitle}" قيد المراجعة لدى ${fullDisplayName} 🔄`;
 
           const notifMessage = status === 'approved'
-            ? `وافق ${employerName} على طلب تقديمك لوظيفة "${jobTitle}". يمكنك الآن بدء المحادثة وتنسيق المقابلة 🎉`
+            ? `وافق ${userAccountName}${companyName ? ` من شركة ${companyName}` : ''} على طلب تقديمك لوظيفة "${jobTitle}". يمكنك الآن بدء المحادثة وتنسيق المقابلة 🎉`
             : status === 'rejected'
-              ? `اعتذر ${employerName} عن قبول طلب تقديمك لوظيفة "${jobTitle}". نتمنى لك التوفيق في الفرص القادمة ℹ️`
-              : `قام ${employerName} بإعادة طلبك لوظيفة "${jobTitle}" إلى قيد المراجعة والتدقيق 🔄`;
+              ? `اعتذر ${userAccountName}${companyName ? ` من شركة ${companyName}` : ''} عن قبول طلب تقديمك لوظيفة "${jobTitle}". نتمنى لك التوفيق في الفرص القادمة ℹ️`
+              : `قام ${userAccountName}${companyName ? ` من شركة ${companyName}` : ''} بإعادة طلبك لوظيفة "${jobTitle}" إلى قيد المراجعة والتدقيق 🔄`;
 
           await (supabase.from('notifications') as any).insert([{
             user_id: applicantId,
             to_id: applicantId,
             from_id: appUser.id,
-            from_name: employerName,
+            from_name: fullDisplayName,
             from_avatar: appUser.avatar || null,
             type: notifType,
             title: notifTitle,
@@ -536,8 +545,9 @@ export function MissionsView({
               application_id: appId,
               job_title: jobTitle,
               employer_id: appUser.id,
-              employer_name: employerName,
-              company: employerName,
+              employer_name: userAccountName,
+              company: companyName || userAccountName,
+              company_name: companyName,
               target_tab: 'jobs',
               sub_tab: 'requests'
             },

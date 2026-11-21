@@ -207,15 +207,21 @@ function getNotificationDisplay(n: AppNotification, sender: AppUser | null) {
         : `قدّم ${senderName} سيرة ذاتية وطلباً جديداً على الوظيفة المعلنة.`;
       break;
 
-    case 'application_approved':
-      headline = n.title || `وافق ${senderName} على طلبك 🎉`;
-      bodyText = n.message || `وافق ${senderName} على طلب تقديمك للوظيفة. تفقد تفاصيل القبول وتواصل معه الآن.`;
+    case 'application_approved': {
+      const job = (n as any).data?.job_title;
+      const comp = (n as any).data?.company || (n as any).data?.company_name;
+      headline = n.title || `وافق ${senderName}${comp && comp !== senderName ? ` (${comp})` : ''} على طلبك ${job ? `لوظيفة "${job}"` : ''} 🎉`;
+      bodyText = n.message || `وافق ${senderName} على طلب تقديمك ${job ? `لوظيفة "${job}"` : 'للوظيفة'}. تفقد تفاصيل القبول وتواصل معه الآن.`;
       break;
+    }
 
-    case 'application_rejected':
-      headline = n.title || `اعتذر ${senderName} عن طلب التقديم ℹ️`;
-      bodyText = n.message || `اعتذر ${senderName} عن قبول طلب تقديمك في الوقت الحالي.`;
+    case 'application_rejected': {
+      const job = (n as any).data?.job_title;
+      const comp = (n as any).data?.company || (n as any).data?.company_name;
+      headline = n.title || `اعتذر ${senderName}${comp && comp !== senderName ? ` (${comp})` : ''} عن طلب التقديم ${job ? `لوظيفة "${job}"` : ''} ℹ️`;
+      bodyText = n.message || `اعتذر ${senderName} عن قبول طلب تقديمك ${job ? `لوظيفة "${job}"` : ''} في الوقت الحالي.`;
       break;
+    }
 
     case 'application_updated':
       headline = n.title || 'تحديث وتعديل في طلب تقديم 📝';
@@ -462,6 +468,23 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
           <p className="text-xs text-slate-600 dark:text-slate-400 font-medium leading-relaxed line-clamp-2">
             {bodyText}
           </p>
+
+          {/* 💼 وسوم الوظيفة والشركة لإشعارات التوظيف */}
+          {(n.type?.startsWith('application_') || n.type === 'job_application') && ((n as any).data?.job_title || (n as any).data?.company) && (
+            <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+              {(n as any).data?.job_title && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-800/40">
+                  <Briefcase size={10} />
+                  <span>{(n as any).data.job_title}</span>
+                </span>
+              )}
+              {((n as any).data?.company || (n as any).data?.company_name) && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200/50 dark:border-slate-700/40">
+                  <span>{(n as any).data.company || (n as any).data.company_name}</span>
+                </span>
+              )}
+            </div>
+          )}
 
           {/* ⚡ Quick Actions (أزرار تفاعلية مباشرة داخل كارد الإشعار) */}
           {n.type === 'follow_request' && !isRead && (

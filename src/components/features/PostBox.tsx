@@ -18,7 +18,7 @@ import {
 import { jobService } from '../../lib/services/jobService';
 import { postService } from '../../lib/services/postService';
 import { supabase } from '../../lib/supabase';
-import { imageService } from '../../lib/services/imageService';
+import { imageService, snapshotFile } from '../../lib/services/imageService';
 import { mobileUploadService } from '../../lib/services/mobileUploadService';
 import { GlassButton } from '../ui';
 import { useAppContext } from '../../contexts/AppContext';
@@ -97,20 +97,33 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const isEmployer = isJobPoster(currentUser);
   const isSeeker = isJobSeeker(currentUser);
 
-  // 📸 تجهيز الصورة فور اختيارها (عرض المعاينة الفورية وحفظ الملف بالذاكرة دون رفع شبكي قبل النقر على مشاركة)
-  const prepareImageFile = (file: File) => {
+  // 📸 تجهيز الصورة فور اختيارها (تجميد فوري بالذاكرة RAM مع عرض المعاينة الفورية طبق الأصل للغلاف)
+  const prepareImageFile = async (file: File) => {
     if (file.size === 0) {
       addToast("الملف فارغ، يرجى اختيار صورة صالحة", "error");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      setAttachment(dataUrl);
-      setSelectedFile(file);
-      setUploadType(uploadType === 'article' ? 'article' : 'photo');
-    };
-    reader.readAsDataURL(file);
+    try {
+      // 🔒 تجميد فوري في RAM لمنع تلف ملفات أندرويد المعرض (Scoped Storage)
+      const snap = await snapshotFile(file);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setAttachment(dataUrl);
+        setSelectedFile(snap);
+        setUploadType(uploadType === 'article' ? 'article' : 'photo');
+      };
+      reader.readAsDataURL(snap);
+    } catch {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        setAttachment(dataUrl);
+        setSelectedFile(file);
+        setUploadType(uploadType === 'article' ? 'article' : 'photo');
+      };
+      reader.readAsDataURL(file);
+    }
   };
 
   const triggerUpload = async () => {
@@ -229,30 +242,26 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       let finalImageUrl: string | null = null;
       let finalVideoUrl: string | null = null;
 
-      // 🚀 Handle Image Upload on Share (مخطط رفع صورة المنشور — نفس Dual-Transport بالملف الشخصي والغلاف)
+      // 🚀 Handle Image Upload on Share (مخطط رفع صورة المنشور — طبق الأصل لمخطط الغلاف والصورة الشخصية)
       if ((postType === 'photo' || postType === 'article') && (postSelectedFile || postAttachment)) {
         try {
           if (postSelectedFile) {
-            // ⬆️ ابدأ الرفع للتخزين فوراً (لا race قصير — ننتظر حتى 15 ثانية كما في Avatar/Cover)
+            // ⬆️ رفع مباشر إلى Supabase Storage بنفس المحرك المستخدم بالملف الشخصي
             const uploadRes = await mobileUploadService.uploadFile(postSelectedFile, 'post-image', appUser.id);
-            const timeoutPromise = new Promise<string | null>((r) => setTimeout(() => r(null), 15_000));
-            const storageUrl = await Promise.race([uploadRes.uploadPromise, timeoutPromise]);
-            if (storageUrl && !storageUrl.startsWith('data:')) {
-              // ✅ رابط تخزين حقيقي من Supabase Storage
+            const storageUrl = await uploadRes.uploadPromise;
+            if (storageUrl) {
               finalImageUrl = storageUrl;
-            } else if (storageUrl && storageUrl.startsWith('data:')) {
-              // ✅ Base64 fallback (compact thumbnail من mobileUploadService)
-              finalImageUrl = storageUrl;
-            } else {
-              // ⚠️ انتهت المهلة — استخدم Data URL كـ fallback مؤقت (سيُخزَّن في DB)
+            } else if (postAttachment && !postAttachment.startsWith('blob:') && postAttachment.length <= 250_000) {
               finalImageUrl = postAttachment;
             }
-          } else if (postAttachment) {
+          } else if (postAttachment && !postAttachment.startsWith('blob:') && postAttachment.length <= 250_000) {
             finalImageUrl = postAttachment;
           }
         } catch (uploadErr) {
-          console.warn('[PostBox] Image upload fallback to attachment:', uploadErr);
-          finalImageUrl = postAttachment;
+          console.warn('[PostBox] Image upload fallback:', uploadErr);
+          if (postAttachment && !postAttachment.startsWith('blob:') && postAttachment.length <= 250_000) {
+            finalImageUrl = postAttachment;
+          }
         }
       }
 

@@ -350,10 +350,11 @@ function ApplicationsListViewContent({
     const empId = app.employer_id || (app as any).employerId || app.jobs?.employer_id || app.jobs?.user_id || app.job?.employer_id;
     const empProfile = empId ? allUsers.find(u => u.id === empId) : null;
     const jobCompany = (app as any).company || app.jobs?.company || app.job?.company || (app as any).companyName;
+    const candidateName = empProfile?.name || (app as any).employer_name || (app as any).employerName || jobCompany;
     return {
       id: empId || '',
-      name: empProfile?.name || (app as any).employer_name || (app as any).employerName || jobCompany || 'صاحب العمل',
-      avatar: empProfile?.avatar || (empProfile as any)?.avatar_url || '',
+      name: candidateName && candidateName !== 'صاحب العمل' ? candidateName : (jobCompany || 'جهة التوظيف'),
+      avatar: empProfile?.avatar || (empProfile as any)?.avatar_url || (app as any).employer_avatar || '',
       companyName: empProfile?.companyName || jobCompany || '',
       title: empProfile?.title || empProfile?.displayTitle || (empProfile as any)?.job_title || '',
     };
@@ -952,17 +953,34 @@ function ApplicationsListViewContent({
                 </span>
               </div>
 
-              {/* Current applicant mini info */}
-              <div className="flex items-center gap-2 min-w-0">
-                <img
-                  src={filteredApps[selectedAppIndex]?.applicant_data?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(filteredApps[selectedAppIndex]?.applicant_data?.name || 'U')}&background=random`}
-                  className="w-7 h-7 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0"
-                  alt=""
-                />
-                <span className="text-xs font-black text-slate-800 dark:text-white truncate max-w-[130px] md:max-w-[200px]">
-                  {filteredApps[selectedAppIndex]?.applicant_data?.name}
-                </span>
-              </div>
+              {/* Current party mini info (صاحب العمل للباحث، والمتقدم لصاحب العمل) */}
+              {(() => {
+                const currentApp = filteredApps[selectedAppIndex];
+                if (!currentApp) return null;
+                const topMiniInfo = isSentView ? resolveEmployer(currentApp) : resolveApplicant(currentApp);
+                const titleOrJob = isSentView
+                  ? (currentApp.job?.title || currentApp.jobs?.title || (currentApp as any).jobTitle || 'وظيفة مهنية')
+                  : topMiniInfo.name;
+                return (
+                  <div className="flex items-center gap-2 min-w-0">
+                    <img
+                      src={topMiniInfo.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(topMiniInfo.name || 'U')}&background=random`}
+                      className="w-7 h-7 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                      alt=""
+                    />
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-black text-slate-800 dark:text-white truncate max-w-[130px] md:max-w-[200px]">
+                        {topMiniInfo.name}
+                      </span>
+                      {isSentView && (
+                        <span className="text-[9px] font-bold text-blue-600 dark:text-blue-400 truncate max-w-[130px] md:max-w-[200px]">
+                          {titleOrJob}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Prev / Next Controls */}
               <div className="flex items-center gap-1.5">
