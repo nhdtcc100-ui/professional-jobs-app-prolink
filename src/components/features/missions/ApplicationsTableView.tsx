@@ -17,6 +17,7 @@ import { openCv, downloadCv } from '../../../lib/utils/cv';
 import { EmployeeOnboardingModal } from '../erp/EmployeeOnboardingModal';
 import { GeneratedCVModal } from '../profile/GeneratedCVModal';
 import { isUserAdmin } from '../../../lib/utils/roleUtils';
+import { ApplyJobModal } from '../ApplyJobModal';
 interface ApplicantData {
   name?: string;
   email?: string;
@@ -307,6 +308,7 @@ function ApplicationsListViewContent({
     return {
       ...(profile || {}),
       ...data,
+      id: app.applicant_id || profile?.id || data.id,
       name: data.name || (app as any).applicantName || profile?.name || (profile as any)?.full_name || 'متقدم',
       avatar: data.avatar || profile?.avatar || (profile as any)?.avatar_url || '',
       phone: data.phone || profile?.phone || '',
@@ -1205,9 +1207,16 @@ function ApplicationsListViewContent({
                       {(() => {
                         const cvTargetUrl = app.cv_url || app.applicant_data?.cvUrl || (app.applicant_data as any)?.cv_url || resolved.cvUrl;
                         const openPlatformCV = () => {
+                          const applicantUserId = app.applicant_id || resolved.id || (app.applicant_data as any)?.user_id;
                           setPreviewApplicantCV({
-                            user: resolved,
-                            applicantData: app.applicant_data || {
+                            user: {
+                              ...resolved,
+                              id: applicantUserId,
+                            },
+                            applicantData: {
+                              ...(app.applicant_data || {}),
+                              userId: applicantUserId,
+                              applicant_id: applicantUserId,
                               name: resolved.name,
                               avatar: resolved.avatar,
                               title: resolved.title,
@@ -1564,173 +1573,44 @@ function ApplicationsListViewContent({
         coverLetter={previewApplicantCV?.coverLetter}
       />
 
-      {/* ── Edit Application Modal for Job Seeker ── */}
+      {/* ── Edit Application Modal for Job Seeker (Opens exact same full application form) ── */}
       <AnimatePresence>
-        {editingApp && (
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md" dir="rtl">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-                <div className="flex items-center gap-2.5">
-                  <div className="p-2.5 rounded-2xl bg-blue-50 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400">
-                    <Edit2 size={18} />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-slate-800 dark:text-white">
-                      تعديل طلب التقديم
-                    </h3>
-                    <p className="text-[11px] text-slate-400 font-bold">
-                      {editingApp.jobTitle || 'طلب وظيفة'} • {editingApp.company || 'الشركة المعلنة'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setEditingApp(null)}
-                  className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-all cursor-pointer"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <div className="space-y-3.5 max-h-[68vh] overflow-y-auto pro-scrollbar px-1">
-                {/* Phone number */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Phone size={13} className="text-blue-500" />
-                    <span>رقم الهاتف المعتمد للتواصل:</span>
-                  </label>
-                  <input
-                    type="tel"
-                    value={editPhone}
-                    onChange={(e) => setEditPhone(e.target.value)}
-                    dir="ltr"
-                    className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
-                    placeholder="مثال: 07701234567"
-                  />
-                </div>
-
-                {/* Cover letter */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <MessageSquare size={13} className="text-indigo-500" />
-                    <span>خطاب التقديم والرسالة للشركة (Cover Letter):</span>
-                  </label>
-                  <textarea
-                    value={editCoverLetter}
-                    onChange={(e) => setEditCoverLetter(e.target.value)}
-                    rows={4}
-                    className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium resize-none leading-relaxed"
-                    placeholder="اكتب هنا خطاب التقديم أو أي تفاصيل إضافية تريد إيصالها لصاحب العمل..."
-                  />
-                </div>
-
-                {/* Experience summary */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Briefcase size={13} className="text-emerald-500" />
-                    <span>خلاصة وسجل الخبرات المهنية:</span>
-                  </label>
-                  <textarea
-                    value={editExperience}
-                    onChange={(e) => setEditExperience(e.target.value)}
-                    rows={3}
-                    className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium resize-none leading-relaxed"
-                    placeholder="أبرز الخبرات والشركات التي عملت بها وسنوات العمل..."
-                  />
-                </div>
-
-                {/* Education */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-black text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Sparkles size={13} className="text-amber-500" />
-                    <span>المؤهل العلمي والشهادات:</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={editEducation}
-                    onChange={(e) => setEditEducation(e.target.value)}
-                    className="w-full p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="مثال: بكالوريوس هندسة برمجيات - جامعة بغداد"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setEditingApp(null)}
-                  className="px-4 py-2.5 rounded-xl text-xs font-black text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
-                >
-                  إلغاء
-                </button>
-                <button
-                  type="button"
-                  disabled={isSavingEdit}
-                  onClick={async () => {
-                    setIsSavingEdit(true);
-                    try {
-                      const updatedApplicantData = {
-                        ...(editingApp.applicant_data || {}),
-                        phone: editPhone.trim() || editingApp.applicant_data?.phone,
-                        experience: editExperience.trim() || editingApp.applicant_data?.experience,
-                        education: editEducation.trim() || editingApp.applicant_data?.education,
-                      };
-
-                      const { error } = await supabase.from('job_applications').update({
-                        cover_letter: editCoverLetter,
-                        applicant_data: updatedApplicantData,
-                      }).eq('id', editingApp.id);
-                      if (error) throw error;
-
-                      // 🔔 Send immediate notification to employer that applicant updated their application!
-                      const employerId = (editingApp as any).employer_id || (editingApp as any).employerId || editingApp.jobs?.user_id;
-                      if (employerId) {
-                        try {
-                          const seekerName = updatedApplicantData.name || appUser?.name || 'متقدم للوظيفة';
-                          const jobTitle = editingApp.jobTitle || editingApp.jobs?.title || 'الوظيفة';
-                          await (supabase.from('notifications') as any).insert([{
-                            user_id: employerId,
-                            to_id: employerId,
-                            from_id: appUser?.id,
-                            type: 'application_updated',
-                            title: 'تحديث في طلب تقديم 📝',
-                            message: `قام المتقدم ${seekerName} بتحديث بيانات طلبه لوظيفة "${jobTitle}".`,
-                            data: {
-                              application_id: editingApp.id,
-                              job_id: editingApp.job_id,
-                              target_tab: 'jobs',
-                              sub_tab: 'requests'
-                            },
-                            read: false,
-                            created_at: new Date().toISOString()
-                          }]);
-                        } catch (notifErr) {
-                          console.warn('Employer notification warning:', notifErr);
-                        }
-                      }
-
-                      addToast('تم حفظ التعديلات وإشعار صاحب العمل بنجاح! 🚀', 'success');
-                      setEditingApp(null);
-                      if ((window as any).refreshApplications) (window as any).refreshApplications();
-                    } catch (err: any) {
-                      addToast('فشل التحديث: ' + err.message, 'error');
-                    } finally {
-                      setIsSavingEdit(false);
-                    }
-                  }}
-                  className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-black transition-all shadow-md active:scale-95 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
-                >
-                  {isSavingEdit ? 'جاري الحفظ...' : 'حفظ التعديلات'}
-                </button>
-              </div>
-            </motion.div>
-          </div>
+        {editingApp && appUser && (
+          <ApplyJobModal
+            applyingJob={{
+              id: editingApp.job_id || editingApp.jobs?.id || editingApp.job?.id || 'job-edit',
+              title: editingApp.jobTitle || editingApp.jobs?.title || editingApp.job?.title || 'فرصة عمل',
+              company: editingApp.company || editingApp.jobs?.company || editingApp.job?.company || 'الشركة المعلنة',
+              employer_id: editingApp.employer_id || editingApp.jobs?.user_id || editingApp.jobs?.employer_id,
+              location: editingApp.jobs?.location || 'العراق',
+              salary: editingApp.jobs?.salary || '',
+              jobType: editingApp.jobs?.jobType || 'دوام كامل',
+              image_url: editingApp.jobs?.image_url || null,
+            } as any}
+            appUser={appUser}
+            allUsers={allUsers}
+            applySuccess={false}
+            setApplySuccess={() => {}}
+            setApplyingJob={(j) => { if (!j) setEditingApp(null); }}
+            cvCoverLetter={editCoverLetter}
+            setCvCoverLetter={setEditCoverLetter}
+            cvFileObj={null}
+            setCvFileObj={() => {}}
+            cvExperience={editExperience}
+            setCvExperience={setEditExperience}
+            cvEducation={editEducation}
+            setCvEducation={setEditEducation}
+            isApplying={isSavingEdit}
+            setIsApplying={setIsSavingEdit}
+            isUploadingCv={false}
+            setIsUploadingCv={() => {}}
+            addToast={addToast}
+            editingApplication={editingApp}
+            onEditSaved={() => {
+              setEditingApp(null);
+              if ((window as any).refreshApplications) (window as any).refreshApplications();
+            }}
+          />
         )}
       </AnimatePresence>
 

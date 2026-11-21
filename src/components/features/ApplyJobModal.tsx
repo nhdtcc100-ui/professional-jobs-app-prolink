@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Job, AppUser } from '../../types';
 import { jobService } from '../../lib/services/jobService';
+import { supabase } from '../../lib/supabase';
 
 interface ApplyJobModalProps {
   applyingJob: Job | null;
@@ -27,6 +28,8 @@ interface ApplyJobModalProps {
   isUploadingCv: boolean;
   setIsUploadingCv: (b: boolean) => void;
   addToast: (msg: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
+  editingApplication?: any;
+  onEditSaved?: (updatedApp: any) => void;
 }
 
 interface PrevWork {
@@ -43,10 +46,36 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
   setApplyingJob, cvCoverLetter, setCvCoverLetter,
   cvFileObj, setCvFileObj, cvExperience, setCvExperience,
   cvEducation, setCvEducation, isApplying, setIsApplying,
-  isUploadingCv, setIsUploadingCv, addToast
+  isUploadingCv, setIsUploadingCv, addToast,
+  editingApplication, onEditSaved
 }) => {
   const [prevWorks, setPrevWorks] = useState<PrevWork[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (editingApplication) {
+      if (editingApplication.cover_letter) setCvCoverLetter(editingApplication.cover_letter);
+      if (editingApplication.experience || editingApplication.applicant_data?.experience) {
+        setCvExperience(editingApplication.experience || editingApplication.applicant_data?.experience || '');
+      }
+      if (editingApplication.education || editingApplication.applicant_data?.education) {
+        setCvEducation(editingApplication.education || editingApplication.applicant_data?.education || '');
+      }
+      const existingPrevWorks = editingApplication.applicant_data?.prevWorks || 
+        editingApplication.applicant_data?.workExperiences || 
+        editingApplication.applicant_data?.cv_data?.workExperiences || [];
+      if (Array.isArray(existingPrevWorks) && existingPrevWorks.length > 0) {
+        setPrevWorks(existingPrevWorks.map((pw: any) => ({
+          company: pw.company || pw.companyName || '',
+          role: pw.role || pw.title || '',
+          tasks: pw.tasks || pw.description || '',
+          skills: pw.skills || '',
+          hours: pw.hours || '',
+          salary: pw.salary || '',
+        })));
+      }
+    }
+  }, [editingApplication]);
 
   const atsCV = React.useMemo(() => {
     try {
@@ -83,10 +112,12 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
 
   const handleSubmit = async () => {
     if (!appUser || !applyingJob) return;
-    const isJobPub = !appUser.isAdmin && (appUser.id === applyingJob.employer_id || appUser.id === (applyingJob as any).employerId);
-    if (isJobPub) {
-      addToast('أنت ناشر هذه الوظيفة، لا يمكنك التقديم عليها 🏢', 'error');
-      return;
+    if (!editingApplication) {
+      const isJobPub = !appUser.isAdmin && (appUser.id === applyingJob.employer_id || appUser.id === (applyingJob as any).employerId);
+      if (isJobPub) {
+        addToast('أنت ناشر هذه الوظيفة، لا يمكنك التقديم عليها 🏢', 'error');
+        return;
+      }
     }
 
     if (!applyingJob.employer_id) {
@@ -168,6 +199,67 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
       applicantDataPayload.cv_data = finalAtsCV;
       applicantDataPayload.workExperiences = finalAtsCV.workExperiences || prevWorks || [];
       applicantDataPayload.languages = finalAtsCV.languages || (appUser as any).languages || [];
+
+      // ── If Editing existing application: update record directly preserving current status ──
+      if (editingApplication) {
+        const updatePayload: any = {
+          cover_letter: cvCoverLetter,
+          cv_url: cvUrl,
+          experience: fullExperience,
+          education: cvEducation,
+          skills: appUser.skills || [],
+          applicant_data: {
+            ...applicantDataPayload,
+            phone: applicantDataPayload.phone || editingApplication.applicant_data?.phone || appUser.phone,
+          },
+          updated_at: new Date().toISOString()
+        };
+
+        const { error: updateError } = await (supabase.from('job_applications') as any)
+          .update(updatePayload)
+          .eq('id', editingApplication.id);
+
+        if (updateError) throw updateError;
+
+        // 🔔 Send immediate notification to employer that applicant updated their application
+        const employerId = applyingJob.employer_id || editingApplication.employer_id || (editingApplication.jobs as any)?.user_id;
+        if (employerId) {
+          try {
+            const seekerName = appUser.name || 'متقدم للوظيفة';
+            const jobTitle = applyingJob.title || 'الوظيفة';
+            await (supabase.from('notifications') as any).insert([{
+              user_id: employerId,
+              to_id: employerId,
+              from_id: appUser.id,
+              from_name: seekerName,
+              from_avatar: appUser.avatar || null,
+              type: 'application_updated',
+              title: 'تحديث في طلب تقديم 📝',
+              message: `قام المتقدم ${seekerName} بتحديث بيانات طلبه لوظيفة "${jobTitle}".`,
+              data: {
+                application_id: editingApplication.id,
+                job_id: applyingJob.id,
+                target_tab: 'jobs',
+                sub_tab: 'requests'
+              },
+              read: false,
+              created_at: new Date().toISOString()
+            }]);
+          } catch (notifErr) {
+            console.warn('Employer notification warning:', notifErr);
+          }
+        }
+
+        clearTimeout(timeoutId);
+        succeeded = true;
+        addToast('تم حفظ التعديلات وإشعار صاحب العمل بنجاح! 🚀', 'success');
+        setSubmitError(null);
+        if (onEditSaved) {
+          onEditSaved({ ...editingApplication, ...updatePayload });
+        }
+        setApplyingJob(null);
+        return;
+      }
 
       console.log("💎 [UI_STEP_3] Calling service.applyToJob...");
       const applyResult = await jobService.applyToJob(appUser.id, applyingJob.employer_id!, {
@@ -298,7 +390,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
               <span>رجوع</span>
             </button>
             <span className="text-[10px] font-black text-blue-200 bg-white/10 px-3 py-1 rounded-full border border-white/10">
-              إكمال التقديم المهني
+              {editingApplication ? 'تعديل بيانات طلب التقديم 📝' : 'إكمال التقديم المهني'}
             </span>
           </div>
 
@@ -616,7 +708,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
             ) : (
               <div className="flex items-center gap-2">
                 <Send size={16} />
-                <span>إرسال التقديم الاحترافي ⚡</span>
+                <span>{editingApplication ? 'حفظ التعديلات وإشعار صاحب العمل 🚀' : 'إرسال التقديم الاحترافي ⚡'}</span>
               </div>
             )}
           </button>

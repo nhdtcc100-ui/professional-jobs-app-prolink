@@ -259,11 +259,13 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
       <div
         className="flex-1 min-h-0 w-full flex items-center justify-center relative overflow-hidden px-2 sm:px-4 py-2 bg-slate-100/70 dark:bg-slate-950"
       >
-        {/* Floating Side Button: Next (Left in RTL) - With soft ambient glowing light */}
+        {/* Floating Side Button: Next (Left in RTL) - Fades out on scroll so it NEVER hides text */}
         {currentIndex < resolvedItems.length - 1 && (
           <button
             onClick={goToNext}
-            className="absolute left-2 sm:left-4 md:left-6 top-1/2 -translate-y-1/2 z-30 p-2.5 sm:p-3.5 rounded-full bg-white/95 dark:bg-slate-900/95 text-blue-600 dark:text-blue-400 shadow-[0_0_24px_rgba(59,130,246,0.45)] dark:shadow-[0_0_28px_rgba(59,130,246,0.35)] ring-2 ring-blue-500/25 border border-blue-200/80 dark:border-blue-700/60 hover:shadow-[0_0_35px_rgba(59,130,246,0.65)] hover:scale-110 active:scale-95 transition-all backdrop-blur-xl cursor-pointer flex items-center justify-center group"
+            className={`absolute left-2 sm:left-4 md:left-6 top-1/2 -translate-y-1/2 z-30 p-2.5 sm:p-3.5 rounded-full bg-white/95 dark:bg-slate-900/95 text-blue-600 dark:text-blue-400 shadow-[0_0_24px_rgba(59,130,246,0.45)] dark:shadow-[0_0_28px_rgba(59,130,246,0.35)] ring-2 ring-blue-500/25 border border-blue-200/80 dark:border-blue-700/60 hover:shadow-[0_0_35px_rgba(59,130,246,0.65)] hover:scale-110 active:scale-95 transition-all duration-300 backdrop-blur-xl cursor-pointer items-center justify-center group ${
+              scrollProgress > 3 ? 'opacity-0 pointer-events-none -translate-x-3' : 'opacity-85 hover:opacity-100'
+            } hidden sm:flex`}
             title={isCurJob ? 'الوظيفة التالية' : isCurNews ? 'الخبر التالي' : 'المنشور التالي'}
             aria-label="التالي"
           >
@@ -271,11 +273,13 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
           </button>
         )}
 
-        {/* Floating Side Button: Previous (Right in RTL) - With soft ambient glowing light */}
+        {/* Floating Side Button: Previous (Right in RTL) - Fades out on scroll so it NEVER hides text */}
         {currentIndex > 0 && (
           <button
             onClick={goToPrev}
-            className="absolute right-2 sm:right-4 md:right-6 top-1/2 -translate-y-1/2 z-30 p-2.5 sm:p-3.5 rounded-full bg-white/95 dark:bg-slate-900/95 text-blue-600 dark:text-blue-400 shadow-[0_0_24px_rgba(59,130,246,0.45)] dark:shadow-[0_0_28px_rgba(59,130,246,0.35)] ring-2 ring-blue-500/25 border border-blue-200/80 dark:border-blue-700/60 hover:shadow-[0_0_35px_rgba(59,130,246,0.65)] hover:scale-110 active:scale-95 transition-all backdrop-blur-xl cursor-pointer flex items-center justify-center group"
+            className={`absolute right-2 sm:right-4 md:right-6 top-1/2 -translate-y-1/2 z-30 p-2.5 sm:p-3.5 rounded-full bg-white/95 dark:bg-slate-900/95 text-blue-600 dark:text-blue-400 shadow-[0_0_24px_rgba(59,130,246,0.45)] dark:shadow-[0_0_28px_rgba(59,130,246,0.35)] ring-2 ring-blue-500/25 border border-blue-200/80 dark:border-blue-700/60 hover:shadow-[0_0_35px_rgba(59,130,246,0.65)] hover:scale-110 active:scale-95 transition-all duration-300 backdrop-blur-xl cursor-pointer items-center justify-center group ${
+              scrollProgress > 3 ? 'opacity-0 pointer-events-none translate-x-3' : 'opacity-85 hover:opacity-100'
+            } hidden sm:flex`}
             title={isCurJob ? 'الوظيفة السابقة' : isCurNews ? 'الخبر السابق' : 'المنشور السابق'}
             aria-label="السابق"
           >
@@ -497,13 +501,35 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     );
                   })()}
 
-                  <button
-                    onClick={onClose}
-                    className="w-full py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
-                  >
-                    <ArrowRight size={14} className="text-slate-500" />
-                    <span>الرجوع</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={onClose}
+                      className="flex-1 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                    >
+                      <ArrowRight size={14} className="text-slate-500" />
+                      <span>الرجوع</span>
+                    </button>
+                    {currentIndex > 0 && (
+                      <button
+                        onClick={goToPrev}
+                        className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-black flex items-center gap-1 active:scale-95 cursor-pointer"
+                        title="الوظيفة السابقة"
+                      >
+                        <span>السابق</span>
+                        <ChevronRight size={15} />
+                      </button>
+                    )}
+                    {currentIndex < resolvedItems.length - 1 && (
+                      <button
+                        onClick={goToNext}
+                        className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-black flex items-center gap-1 active:scale-95 cursor-pointer"
+                        title="الوظيفة التالية"
+                      >
+                        <ChevronLeft size={15} />
+                        <span>التالي</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* ── Floating scroll hint indicator (مؤشر وجود سكرول للأسفل) ── */}
@@ -592,120 +618,149 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   document.body
                 )}
 
-                {/* ── Fixed Post Hero Header: رأس كارد المنشور مع الصورة والخلفية ── */}
-                <div className="shrink-0 relative overflow-hidden rounded-t-3xl border-b border-slate-200/80 dark:border-slate-800 z-10 bg-slate-950">
-                  <div 
-                    onClick={handleOpenPublisher}
-                    className="relative overflow-hidden h-56 sm:h-64 md:h-72 shrink-0 cursor-pointer group/hero"
-                    title="النقر هنا يفتح الملف المهني للناشر"
-                  >
-                    <img 
-                      src={heroCover} 
-                      alt={currentItem.authorName || 'صورة المنشور'} 
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover/hero:scale-105" 
-                      onError={(e) => handleImageError(e, AMAL_NEWS_IMAGE)}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-transparent" />
-                    
-                    <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/45 backdrop-blur-md text-white text-[10px] font-black border border-white/20 shadow-md">
-                      <Briefcase size={12} className="text-blue-400" />
-                      <span>{currentItem.feedType === 'post' ? 'منشور مهني' : 'مقال وتجربة'}</span>
-                    </div>
+                {/* ── Header: Clean Publisher/Author Bar ── */}
+                {(() => {
+                  const isArticle = (currentItem as any).post_type === 'article' || (currentItem as any).type === 'article' || currentItem.content?.startsWith('# ');
+                  const postDirectImage = currentItem.imageUrl || currentItem.image_url || currentItem.image || null;
+                  const hasVideo = !!currentItem.videoUrl;
 
-                    <div className="absolute bottom-3 right-4 left-4 z-10 flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <img
-                          src={currentItem.authorAvatar || 'https://ui-avatars.com/api/?background=random'}
-                          alt={currentItem.authorName}
-                          className="w-10 h-10 rounded-xl object-cover border-2 border-white/40 shadow-md"
-                        />
-                        <div>
-                          <h3 className="font-black text-white text-sm leading-tight drop-shadow-md">
-                            {currentItem.authorName || 'مستخدم'}
-                          </h3>
-                          <p className="text-[10px] text-white/80 font-bold">
-                            {currentItem.authorTitle || 'عضو في ProLink'}
-                          </p>
+                  return (
+                    <>
+                      {/* Top Bar with Publisher Info and Action Buttons */}
+                      <div className="shrink-0 p-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10 flex items-center justify-between gap-3">
+                        <div 
+                          onClick={handleOpenPublisher}
+                          className="flex items-center gap-3 cursor-pointer group/author min-w-0"
+                          title="عرض الملف المهني للناشر"
+                        >
+                          <img
+                            src={currentItem.authorAvatar || pubAvatar || 'https://ui-avatars.com/api/?background=random'}
+                            alt={currentItem.authorName}
+                            className="w-11 h-11 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm group-hover/author:ring-2 group-hover/author:ring-blue-500 transition-all shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <h3 className="font-black text-slate-900 dark:text-white text-sm leading-tight truncate group-hover/author:text-blue-600 transition-colors">
+                              {currentItem.authorName || 'مستخدم ProLink'}
+                            </h3>
+                            <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400 font-bold">
+                              <span className="truncate">{currentItem.authorTitle || 'عضو مهني'}</span>
+                              <span>•</span>
+                              <span className="flex items-center gap-1 shrink-0"><Clock size={10} /> {timeAgo(currentItem.timestamp || currentItem.created_at)}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`text-[9px] font-black px-2.5 py-1 rounded-full border ${
+                            isArticle 
+                              ? 'bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-300 border-purple-200 dark:border-purple-800' 
+                              : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800'
+                          }`}>
+                            {isArticle ? 'مقال مهني ✍️' : 'منشور مهني 💼'}
+                          </span>
+
+                          {/* Post Author Action Bar (if owner or admin) */}
+                          {(() => {
+                            const isPostOwner = !!(appUser && (currentItem.authorId === appUser.id || currentItem.author_id === appUser.id));
+                            const isPostAdmin = !!((appUser as any)?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
+                            if (!isPostOwner && !isPostAdmin) return null;
+                            return (
+                              <div className="flex items-center gap-1">
+                                {onEditPost && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); onEditPost(currentItem); }}
+                                    className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all border border-blue-200/60 dark:border-blue-800/50 cursor-pointer"
+                                    title="تعديل المنشور"
+                                  >
+                                    <Edit2 size={13} />
+                                  </button>
+                                )}
+                                {onDeletePost && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setShowPostDeleteConfirm(true); }}
+                                    className="p-1.5 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all border border-red-200/60 dark:border-red-800/50 cursor-pointer"
+                                    title="حذف المنشور"
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold text-white/80 flex items-center gap-1 bg-black/40 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10">
-                          <Clock size={11} />
-                          {timeAgo(currentItem.timestamp || currentItem.created_at)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Post Author Action Bar (if owner or admin) */}
-                {(() => {
-                  const isPostOwner = !!(appUser && (currentItem.authorId === appUser.id || currentItem.author_id === appUser.id));
-                  const isPostAdmin = !!((appUser as any)?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
-                  if (!isPostOwner && !isPostAdmin) return null;
-                  return (
-                    <div className="shrink-0 flex items-center justify-between px-5 py-2.5 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10">
-                      <span className="text-[11px] font-bold text-slate-400">إدارة المنشور:</span>
-                      <div className="flex items-center gap-2">
-                        {onEditPost && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onEditPost(currentItem);
-                            }}
-                            className="px-3 py-1 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-xs active:scale-95 border border-blue-200/60 dark:border-blue-800/50 cursor-pointer text-xs font-bold flex items-center gap-1"
-                            title="تعديل المنشور"
-                          >
-                            <Edit2 size={13} />
-                            <span>تعديل</span>
-                          </button>
+                      {/* Scrollable Post Body: Full Image Displayed, Then Text Below */}
+                      <div 
+                        ref={scrollContainerRef}
+                        onScroll={onScroll}
+                        className="flex-1 min-h-0 overflow-y-auto pro-scrollbar overscroll-y-contain p-4 sm:p-5 space-y-4"
+                        style={{
+                          WebkitOverflowScrolling: 'touch',
+                          touchAction: 'pan-y',
+                        }}
+                      >
+                        {/* 1. Full Image Display (NOT cropped as hero cover, shows complete image) */}
+                        {postDirectImage && (
+                          <div className="w-full rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center p-1 sm:p-2 shadow-inner">
+                            <img
+                              src={postDirectImage}
+                              alt={currentItem.authorName || 'صورة المنشور'}
+                              className="w-full h-auto max-h-[65vh] object-contain rounded-xl"
+                              onError={(e) => handleImageError(e, AMAL_NEWS_IMAGE)}
+                            />
+                          </div>
                         )}
-                        {onDeletePost && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowPostDeleteConfirm(true);
-                            }}
-                            className="px-3 py-1 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all shadow-xs active:scale-95 border border-red-200/60 dark:border-red-800/50 cursor-pointer text-xs font-bold flex items-center gap-1"
-                            title="حذف المنشور"
-                          >
-                            <Trash2 size={13} />
-                            <span>حذف</span>
-                          </button>
+
+                        {/* 2. Video Player if exists */}
+                        {hasVideo && (
+                          <div className="w-full rounded-2xl overflow-hidden bg-black aspect-video shadow-md">
+                            <video src={currentItem.videoUrl} controls className="w-full h-full object-contain" />
+                          </div>
                         )}
+
+                        {/* 3. Post Content Text (Cleanly Rendered Below the Image) */}
+                        <div className="bg-slate-50 dark:bg-slate-800/60 p-4 sm:p-5 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
+                          {currentItem.content ? (
+                            <BilingualSmartText text={currentItem.content} className="space-y-3" paragraphClassName="!text-slate-900 dark:!text-slate-100 font-medium text-sm sm:text-base leading-relaxed" />
+                          ) : (
+                            <p className="text-slate-400 italic">لا يوجد نص إضافي.</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    </>
                   );
                 })()}
 
-                {/* Scrollable Post Content */}
-                <div 
-                  ref={scrollContainerRef}
-                  onScroll={onScroll}
-                  className="flex-1 min-h-0 overflow-y-auto pro-scrollbar overscroll-y-contain px-5 py-4 space-y-4"
-                  style={{
-                    WebkitOverflowScrolling: 'touch',
-                    touchAction: 'pan-y',
-                  }}
-                >
-                  <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
-                    {currentItem.content ? (
-                      <BilingualSmartText text={currentItem.content} className="space-y-3" paragraphClassName="!text-black dark:!text-slate-100 font-medium" />
-                    ) : (
-                      <p className="text-slate-400 italic">لا يوجد نص إضافي.</p>
-                    )}
-                  </div>
-                </div>
-
-                {/* ── Fixed Post Bottom Bar: ثابت أسفل كارد المنشور ── */}
-                <div className="shrink-0 p-3 sm:px-5 sm:py-3.5 border-t border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-b-3xl z-20">
+                {/* ── Fixed Post Bottom Bar: ثابت أسفل كارد المنشور مع أزرار التنقل ── */}
+                <div className="shrink-0 p-3 sm:px-5 sm:py-3.5 border-t border-slate-200/90 dark:border-slate-800/90 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md rounded-b-3xl z-20 flex items-center gap-2">
                   <button
                     onClick={onClose}
-                    className="w-full py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                    className="flex-1 py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
                   >
                     <ArrowRight size={14} className="text-slate-500" />
                     <span>الرجوع</span>
                   </button>
+                  {currentIndex > 0 && (
+                    <button
+                      onClick={goToPrev}
+                      className="px-3.5 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-black flex items-center gap-1 active:scale-95 cursor-pointer"
+                      title="المنشور السابق"
+                    >
+                      <span>السابق</span>
+                      <ChevronRight size={15} />
+                    </button>
+                  )}
+                  {currentIndex < resolvedItems.length - 1 && (
+                    <button
+                      onClick={goToNext}
+                      className="px-3.5 py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-black flex items-center gap-1 active:scale-95 cursor-pointer"
+                      title="المنشور التالي"
+                    >
+                      <ChevronLeft size={15} />
+                      <span>التالي</span>
+                    </button>
+                  )}
                 </div>
 
                 {/* ── Floating scroll hint indicator (مؤشر وجود سكرول للأسفل) ── */}
@@ -805,13 +860,35 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     </a>
                   )}
 
-                  <button
-                    onClick={onClose}
-                    className="w-full py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
-                  >
-                    <ArrowRight size={14} className="text-slate-500" />
-                    <span>الرجوع</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={onClose}
+                      className="flex-1 py-2 px-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95 shadow-xs"
+                    >
+                      <ArrowRight size={14} className="text-slate-500" />
+                      <span>الرجوع</span>
+                    </button>
+                    {currentIndex > 0 && (
+                      <button
+                        onClick={goToPrev}
+                        className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-black flex items-center gap-1 active:scale-95 cursor-pointer"
+                        title="الوظيفة السابقة"
+                      >
+                        <span>السابق</span>
+                        <ChevronRight size={15} />
+                      </button>
+                    )}
+                    {currentIndex < resolvedItems.length - 1 && (
+                      <button
+                        onClick={goToNext}
+                        className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-black flex items-center gap-1 active:scale-95 cursor-pointer"
+                        title="الوظيفة التالية"
+                      >
+                        <ChevronLeft size={15} />
+                        <span>التالي</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* ── Floating scroll hint indicator (مؤشر وجود سكرول للأسفل) ── */}

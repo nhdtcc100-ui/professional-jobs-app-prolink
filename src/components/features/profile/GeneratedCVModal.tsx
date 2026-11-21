@@ -9,6 +9,7 @@ import { AppUser } from '../../../types';
 import { Share } from '@capacitor/share';
 import { Capacitor } from '@capacitor/core';
 import { useAppContext } from '../../../contexts/AppContext';
+import { supabase } from '../../../lib/supabase';
 
 export interface GeneratedCVModalProps {
   isOpen: boolean;
@@ -32,13 +33,34 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
   const printAreaRef = useRef<HTMLDivElement>(null);
   const [copiedNotice, setCopiedNotice] = useState(false);
   const { appUser } = useAppContext();
+  const targetUserId = user?.id || applicantData?.userId || applicantData?.user_id || applicantData?.applicant_id || (user as any)?.user_id;
+  const [dbProfile, setDbProfile] = useState<any>(null);
+
+  // 🔄 Always fetch complete profile from database for the applicant/target user
+  // This guarantees any employer or viewer sees 100% of the CV (experiences, skills, languages, education)
+  useEffect(() => {
+    if (!isOpen || !targetUserId) return;
+    let cancelled = false;
+    supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', targetUserId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (!cancelled && data && !error) {
+          setDbProfile(data);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [isOpen, targetUserId]);
 
   // 🛡️ Owner verification: only the actual owner of the CV can see the WhatsApp share action
   const isOwner = Boolean(
     appUser && (
       (user?.id && appUser.id === user.id) ||
       ((applicantData as any)?.user_id && appUser.id === (applicantData as any).user_id) ||
-      ((applicantData as any)?.applicant_id && appUser.id === (applicantData as any).applicant_id)
+      ((applicantData as any)?.applicant_id && appUser.id === (applicantData as any).applicant_id) ||
+      (targetUserId && appUser.id === targetUserId)
     )
   );
 
@@ -66,23 +88,24 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
 
   // Resolve merged profile fields
   // 0. Resolve saved CV data from database or props
-  const savedCvData = (applicantData as any)?.cv_data || (user as any)?.cv_data || (applicantData as any)?.cvData || (user as any)?.cvData || (applicantData as any)?.atsCV || (user as any)?.atsCV;
+  const savedCvData = dbProfile?.cv_data || (applicantData as any)?.cv_data || (user as any)?.cv_data || (applicantData as any)?.cvData || (user as any)?.cvData || (applicantData as any)?.atsCV || (user as any)?.atsCV;
 
-  const fullName = applicantData?.name || savedCvData?.name || savedCvData?.fullName || user?.name || user?.fullName || 'محترف ProLink';
-  const title = applicantData?.title || savedCvData?.title || user?.title || user?.displayTitle || user?.display_title || user?.specialty || user?.headline || 'متخصص مهني';
-  const location = applicantData?.location || savedCvData?.location || user?.location || 'العراق';
-  const phone = applicantData?.phone || savedCvData?.phone || user?.phone || '';
-  const email = applicantData?.email || savedCvData?.email || user?.email || '';
-  const bio = applicantData?.bio || savedCvData?.bio || savedCvData?.summary || user?.bio || '';
-  const education = applicantData?.education || savedCvData?.education || savedCvData?.educationText || user?.education || '';
+  const fullName = applicantData?.name || savedCvData?.name || savedCvData?.fullName || dbProfile?.name || dbProfile?.full_name || user?.name || user?.fullName || 'محترف ProLink';
+  const title = applicantData?.title || savedCvData?.title || dbProfile?.title || dbProfile?.job_title || dbProfile?.headline || user?.title || user?.displayTitle || user?.display_title || user?.specialty || user?.headline || 'متخصص مهني';
+  const location = applicantData?.location || savedCvData?.location || dbProfile?.location || user?.location || 'العراق';
+  const phone = applicantData?.phone || savedCvData?.phone || dbProfile?.phone || user?.phone || '';
+  const email = applicantData?.email || savedCvData?.email || dbProfile?.email || user?.email || '';
+  const bio = applicantData?.bio || savedCvData?.bio || savedCvData?.summary || dbProfile?.bio || user?.bio || '';
+  const education = applicantData?.education || savedCvData?.education || savedCvData?.educationText || dbProfile?.education || user?.education || '';
 
   // Resolve skills
   const skills: string[] = useMemo(() => {
     if (Array.isArray(savedCvData?.skills) && savedCvData.skills.length > 0) return savedCvData.skills;
+    if (Array.isArray(dbProfile?.skills) && dbProfile.skills.length > 0) return dbProfile.skills;
     if (Array.isArray(applicantData?.skills) && applicantData.skills.length > 0) return applicantData.skills;
     if (Array.isArray(user?.skills) && user.skills.length > 0) return user.skills;
     return [];
-  }, [applicantData?.skills, user?.skills, savedCvData?.skills]);
+  }, [applicantData?.skills, user?.skills, savedCvData?.skills, dbProfile?.skills]);
 
   // Helper to normalize any language representation
   const parseLanguageItem = (l: any, i: number) => {
@@ -104,13 +127,13 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
 
   // Resolve languages
   const languages = useMemo(() => {
-    const rawLangs = savedCvData?.languages || applicantData?.languages || user?.languages;
+    const rawLangs = savedCvData?.languages || dbProfile?.languages || applicantData?.languages || user?.languages;
     if (Array.isArray(rawLangs) && rawLangs.length > 0) {
       const parsed = rawLangs.map((l: any, i: number) => parseLanguageItem(l, i)).filter(Boolean);
       if (parsed.length > 0) return parsed;
     }
 
-    const userId = user?.id || applicantData?.userId;
+    const userId = user?.id || applicantData?.userId || targetUserId;
     if (userId) {
       try {
         const saved = localStorage.getItem(`prolink_ats_languages_${userId}`);
@@ -127,7 +150,7 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
       { id: 'l-1', name: 'العربية', level: 'اللغة الأم' },
       { id: 'l-2', name: 'الإنجليزية', level: 'متقدم' }
     ];
-  }, [applicantData, user, savedCvData?.languages]);
+  }, [applicantData, user, savedCvData?.languages, dbProfile?.languages, targetUserId]);
 
   // Resolve experiences
   const experiences = useMemo(() => {
@@ -148,6 +171,10 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
     const directExps = findArray(
       savedCvData?.workExperiences,
       savedCvData?.work_experiences,
+      dbProfile?.cv_data?.workExperiences,
+      dbProfile?.cv_data?.work_experiences,
+      dbProfile?.work_experiences,
+      dbProfile?.workExperiences,
       applicantData?.workExperiences,
       applicantData?.work_experiences,
       (applicantData as any)?.experiences,
@@ -159,7 +186,8 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
       (user as any)?.cv_data?.work_experiences,
       (user as any)?.cvData?.workExperiences,
       (applicantData as any)?.prevWorks,
-      (user as any)?.prevWorks
+      (user as any)?.prevWorks,
+      (dbProfile as any)?.prevWorks
     );
 
     if (directExps && directExps.length > 0) {
@@ -181,7 +209,7 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
     }
 
     // 2. Fallback to localStorage for the user if viewing own CV
-    const userId = user?.id || applicantData?.userId;
+    const userId = user?.id || applicantData?.userId || targetUserId;
     if (userId) {
       try {
         const saved = localStorage.getItem(`prolink_ats_experiences_${userId}`);
@@ -251,7 +279,7 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
         skills: skills.slice(0, 3).join(', ') || 'التخطيط، إدارة المهام، حل المشكلات'
       }
     ];
-  }, [applicantData, user, title, skills, savedCvData]);
+  }, [applicantData, user, title, skills, savedCvData, dbProfile]);
 
   // ── Calculate dynamic content density for responsive 1-page A4 scaling ──
   const contentDensity = useMemo<'compact' | 'normal' | 'spacious'>(() => {

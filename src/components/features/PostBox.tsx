@@ -74,6 +74,8 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const [videoUrl, setVideoUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const pendingUploadPromiseRef = useRef<Promise<string> | null>(null);
+  const finalUploadedUrlRef = useRef<string | null>(null);
 
   // Job Posting specialized state
   const [showJobForm, setShowJobForm] = useState(false);
@@ -97,8 +99,8 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const isSeeker = isJobSeeker(currentUser);
 
   const triggerUpload = async () => {
-    if (Capacitor.isNativePlatform()) {
-      try {
+    try {
+      if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
         const { preview, uploadPromise } = await mobileUploadService.pickAndUpload('post-image', {
           userId: appUser?.id || 'anon',
         });
@@ -106,9 +108,11 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
           setAttachment(preview);
           setUploadType(uploadType === 'article' ? 'article' : 'photo');
         }
+        pendingUploadPromiseRef.current = uploadPromise;
         // Background resolve persistent URL
         uploadPromise.then((finalUrl) => {
           if (finalUrl) {
+            finalUploadedUrlRef.current = finalUrl;
             setAttachment(finalUrl);
             setSelectedFile(null); // persistently stored in images bucket
           }
@@ -117,13 +121,13 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
             console.warn('[PostBox] Native upload fallback warning:', err);
           }
         });
-      } catch (err: any) {
-        if (!err?.message?.includes('cancel') && !err?.message?.includes('User cancel')) {
-          fileInputRef.current?.click();
-        }
+      } else {
+        fileInputRef.current?.click();
       }
-    } else {
-      fileInputRef.current?.click();
+    } catch (err: any) {
+      if (!err?.message?.includes('cancel') && !err?.message?.includes('User cancel')) {
+        fileInputRef.current?.click();
+      }
     }
   };
 
@@ -229,10 +233,20 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       // Handle Image Upload
       if ((postType === 'photo' || postType === 'article') && (postSelectedFile || postAttachment)) {
         try {
-          if (postAttachment && (postAttachment.startsWith('http://') || postAttachment.startsWith('https://'))) {
+          if (finalUploadedUrlRef.current) {
+            finalImageUrl = finalUploadedUrlRef.current;
+          } else if (pendingUploadPromiseRef.current) {
+            finalImageUrl = await pendingUploadPromiseRef.current;
+          } else if (postAttachment && (postAttachment.startsWith('http://') || postAttachment.startsWith('https://'))) {
             finalImageUrl = postAttachment;
           } else if (postSelectedFile) {
             const uploadRes = await mobileUploadService.uploadFile(postSelectedFile, 'post-image', appUser.id);
+            finalImageUrl = await uploadRes.uploadPromise;
+          } else if (postAttachment && postAttachment.startsWith('blob:')) {
+            const res = await fetch(postAttachment);
+            const blob = await res.blob();
+            const file = new File([blob], 'post-image.jpg', { type: 'image/jpeg' });
+            const uploadRes = await mobileUploadService.uploadFile(file, 'post-image', appUser.id);
             finalImageUrl = await uploadRes.uploadPromise;
           } else if (postAttachment && postAttachment.startsWith('data:')) {
             const res = await fetch(postAttachment);
@@ -294,18 +308,43 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && isSeeker && !file.type.startsWith('image/')) {
+    if (!file) return;
+    if (file.size === 0) {
+      addToast("الملف فارغ، يرجى اختيار صورة صالحة", "error");
+      return;
+    }
+    if (isSeeker && !file.type.startsWith('image/')) {
       addToast("كباحث عن عمل، يمكنك مشاركة الصور والمقالات فقط", "warning");
       return;
     }
-    if (file) {
-      setSelectedFile(file);
+
+    const isImg = file.type.startsWith('image/');
+    setUploadType(isImg ? (uploadType === 'article' ? 'article' : 'photo') : 'video');
+    setSelectedFile(file);
+
+    try {
+      const { preview, uploadPromise } = await mobileUploadService.uploadFile(
+        file,
+        isImg ? 'post-image' : 'post-video',
+        appUser?.id || 'anon'
+      );
+      if (preview) setAttachment(preview);
+      pendingUploadPromiseRef.current = uploadPromise;
+      uploadPromise.then((finalUrl) => {
+        if (finalUrl) {
+          finalUploadedUrlRef.current = finalUrl;
+          setAttachment(finalUrl);
+        }
+      }).catch((err) => {
+        console.warn('[PostBox] Background upload warning:', err);
+      });
+    } catch (err) {
+      console.warn('[PostBox] Fast upload fallback:', err);
       const reader = new FileReader();
       reader.onloadend = () => {
         setAttachment(reader.result as string);
-        setUploadType(file.type.startsWith('image/') ? 'photo' : 'video');
       };
       reader.readAsDataURL(file);
     }
@@ -432,7 +471,16 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
             
             <div className="flex justify-end gap-3 mt-5">
               <button 
-                onClick={() => { setContent(''); setArticleTitle(''); setAttachment(null); setUploadType(null); setIsPublishingArticle(false); }} 
+                onClick={() => {
+                  setContent('');
+                  setArticleTitle('');
+                  setAttachment(null);
+                  setSelectedFile(null);
+                  pendingUploadPromiseRef.current = null;
+                  finalUploadedUrlRef.current = null;
+                  setUploadType(null);
+                  setIsPublishingArticle(false);
+                }} 
                 className="px-6 py-3 text-xs font-black text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest"
               >
                 تراجع

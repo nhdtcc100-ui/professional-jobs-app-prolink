@@ -472,7 +472,7 @@ export function MissionsView({
       if (applicantId) {
         try {
           const notifType = status === 'approved' ? 'application_approved' : status === 'rejected' ? 'application_rejected' : 'application_pending';
-          const employerName = appUser.name || 'صاحب العمل';
+          const employerName = (targetApp as any)?.company || (targetApp?.job as any)?.company || (targetApp?.jobs as any)?.company || appUser.companyName || appUser.name || 'صاحب العمل';
           const message = status === 'approved'
             ? `وافق ${employerName} على طلب تقديمك لوظيفة "${jobTitle}".`
             : status === 'rejected'
@@ -482,13 +482,16 @@ export function MissionsView({
             user_id: applicantId,
             to_id: applicantId,
             from_id: appUser.id,
+            from_name: employerName,
+            from_avatar: appUser.avatar || null,
             type: notifType,
-            title: status === 'approved' ? 'قبول طلب التوظيف 🎉' : 'تحديث طلب التوظيف',
+            title: status === 'approved' ? `وافق ${employerName} على طلبك 🎉` : 'تحديث طلب التوظيف',
             message,
             data: {
               application_id: appId,
               job_title: jobTitle,
               employer_id: appUser.id,
+              employer_name: employerName,
               target_tab: 'jobs',
               sub_tab: 'requests'
             },

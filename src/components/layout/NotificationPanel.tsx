@@ -165,11 +165,12 @@ interface ItemRowProps {
 // ── Smart Notification Formatter (يحلل الإشعار ويصنع نصوصاً واضحة واحترافية) ────
 function getNotificationDisplay(n: AppNotification, sender: AppUser | null) {
   const isRole = n.type?.startsWith('role_');
-  const senderName = sender?.name && sender.name !== 'مستخدم' && sender.name !== 'مستخدم محادثة'
-    ? sender.name
+  const employerAccountName = (n as any).data?.employer_name || (n as any).data?.company;
+  const senderName = employerAccountName || ((sender?.companyName || sender?.name) && sender.name !== 'مستخدم' && sender.name !== 'مستخدم محادثة'
+    ? (sender.companyName || sender.name)
     : (n.fromName && n.fromName !== 'مستخدم' && n.fromName !== 'ProLink' 
         ? n.fromName 
-        : (isRole ? 'إدارة ProLink' : (sender?.name || 'مستخدم في ProLink')));
+        : (isRole ? 'إدارة ProLink' : (sender?.companyName || sender?.name || 'مستخدم في ProLink'))));
 
   const senderAvatar = sender?.avatar || n.fromAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(senderName)}&background=0284c7&color=fff`;
   const senderTitle = sender?.title || sender?.displayTitle || (sender as any)?.job_title || '';
@@ -196,12 +197,12 @@ function getNotificationDisplay(n: AppNotification, sender: AppUser | null) {
       break;
 
     case 'application_approved':
-      headline = 'تم قبول طلب التوظيف بنجاح! 🎉';
+      headline = `وافق ${senderName} على طلبك 🎉`;
       bodyText = n.message || `وافق ${senderName} على طلب تقديمك للوظيفة. تفقد تفاصيل القبول وتواصل معه الآن.`;
       break;
 
     case 'application_rejected':
-      headline = 'تحديث بخصوص طلب التوظيف ℹ️';
+      headline = `اعتذر ${senderName} عن طلب التقديم ℹ️`;
       bodyText = n.message || `اعتذر ${senderName} عن قبول طلب تقديمك في الوقت الحالي.`;
       break;
 
@@ -211,7 +212,7 @@ function getNotificationDisplay(n: AppNotification, sender: AppUser | null) {
       break;
 
     case 'application_pending':
-      headline = 'إعادة طلب التوظيف لقيد المراجعة 🔄';
+      headline = `طلبك قيد المراجعة لدى ${senderName} 🔄`;
       bodyText = n.message || `قام ${senderName} بإعادة طلبك إلى قيد المراجعة والتدقيق.`;
       break;
 
