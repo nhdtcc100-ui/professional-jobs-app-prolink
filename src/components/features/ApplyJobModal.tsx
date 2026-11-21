@@ -342,11 +342,22 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
           handleClose();
         }
       }}
-      className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[250] bg-white dark:bg-slate-900 flex flex-col overflow-hidden"
+      className="fixed inset-0 z-[250] flex flex-col overflow-hidden bg-transparent"
       dir="rtl"
+      style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
-      <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0 cursor-grab active:cursor-grabbing" />
-      <div className="flex flex-col w-full flex-1 min-h-0 max-w-lg mx-auto relative overflow-hidden">
+      {/* ── Sheet container — does NOT touch either bar ── */}
+      <div
+        className="flex flex-col flex-1 min-h-0 mx-auto w-full max-w-lg bg-white dark:bg-slate-900 overflow-hidden"
+        style={{
+          marginTop: '8px',
+          marginBottom: '72px',       /* MobileNav bar height so footer button is fully visible */
+          borderRadius: '24px 24px 20px 20px',
+          boxShadow: '0 -4px 32px rgba(0,0,0,0.18)',
+        }}
+      >
+      <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mt-2 mb-1 shrink-0 cursor-grab active:cursor-grabbing" />
+      <div className="flex flex-col w-full flex-1 min-h-0 relative overflow-hidden">
         {/* ── Success overlay ── */}
         <AnimatePresence>
           {applySuccess && (
@@ -670,7 +681,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
         {/* ── Footer (Sticky Bottom with Safe Area) ── */}
         <div
           className="sticky bottom-0 shrink-0 z-30 p-4 md:p-5 border-t border-slate-100 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-[0_-8px_25px_rgba(0,0,0,0.06)]"
-          style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 16px)' }}
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 20px)' }}
         >
           {submitError && (
             <div className="mb-2.5 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/40 text-red-600 dark:text-red-400 text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in">
@@ -713,7 +724,8 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
             )}
           </button>
         </div>
-      </div>
+      </div>  {/* inner flex flex-col */}
+      </div>  {/* sheet container */}
     </motion.div>
   );
 };

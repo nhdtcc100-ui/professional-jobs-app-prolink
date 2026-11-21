@@ -1243,6 +1243,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               targetId: n.target_id,
               read: n.read || readNotifSet.has(n.id),
               message: n.message,
+              data: n.data,  // ✅ employer_name and other payload fields
               timestamp: { toDate: () => new Date(n.created_at) }
             }))
             .filter(n => {
@@ -2444,8 +2445,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               targetId: n.target_id,
               read: n.read,
               message: n.message,
+              data: n.data,  // ✅ employer_name and other payload fields
               timestamp: { toDate: () => new Date(n.created_at || Date.now()) }
-            };
+            } as any;
 
             if (payload.eventType === 'INSERT') {
               if (n.type === 'role_change_approved') {

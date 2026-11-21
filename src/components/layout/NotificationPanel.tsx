@@ -371,8 +371,8 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
 
   return (
     <div className="relative overflow-hidden bg-rose-600 dark:bg-rose-700">
-      {/* Swipe Action Background Reveal */}
-      <div className="absolute inset-0 flex items-center justify-between px-5 text-white font-black text-xs select-none">
+      {/* Swipe Action Background Reveal — stays BEHIND the card content */}
+      <div className="absolute inset-0 z-0 flex items-center justify-between px-5 text-white font-black text-xs select-none pointer-events-none">
         <div className="flex items-center gap-1.5"><Trash2 size={15} /> <span>حذف</span></div>
         <div className="flex items-center gap-1.5"><span>حذف</span> <Trash2 size={15} /></div>
       </div>
@@ -388,7 +388,7 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
         exit={{ opacity: 0, x: 100 }}
         transition={{ duration: 0.2, delay: Math.min(idx * 0.02, 0.2) }}
         onClick={() => onManualClick(n)}
-        className={`px-4 py-3.5 flex items-start gap-3 cursor-pointer transition-all group relative border-b border-slate-100/80 dark:border-slate-800/60 ${
+        className={`relative z-10 px-4 py-3.5 flex items-start gap-3 cursor-pointer transition-all group border-b border-slate-100/80 dark:border-slate-800/60 ${
           isRead
             ? 'bg-white dark:bg-slate-900/90 hover:bg-slate-50 dark:hover:bg-slate-800/40 opacity-80'
             : 'bg-blue-50/50 dark:bg-blue-950/30 hover:bg-blue-50/80 dark:hover:bg-blue-950/50 font-medium'
