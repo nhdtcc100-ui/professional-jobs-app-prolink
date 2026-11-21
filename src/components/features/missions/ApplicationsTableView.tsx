@@ -477,8 +477,16 @@ function ApplicationsListViewContent({
         }]);
       }
 
+      const userAccountName = appUser?.name 
+        ? (appUser?.companyName && appUser.companyName !== appUser.name ? `${appUser.name} (${appUser.companyName})` : appUser.name)
+        : (appUser?.companyName || (selectedApp as any).company || 'مستخدم المنصة');
+
       // 🚀 Update status in Database silently and professionally
-      await handleApplicationAction(selectedApp.id, jobTitle, 'approved');
+      await handleApplicationAction(selectedApp.id, jobTitle, 'approved', {
+        applicantId: selectedApp.applicant_id,
+        companyName: userAccountName,
+        employerName: userAccountName,
+      });
 
       setShowScheduler(false);
       addToast('✅ تم قبول الطلب وتحديد موعد المقابلة بنجاح');
@@ -838,7 +846,9 @@ function ApplicationsListViewContent({
                                     whileTap={{ scale: 0.9 }}
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      const compName = (app as any).company || (app as any).job?.company || (app as any).jobs?.company || appUser?.companyName || appUser?.name || 'صاحب العمل';
+                                      const compName = appUser?.name 
+  ? (appUser?.companyName && appUser.companyName !== appUser.name ? `${appUser.name} (${appUser.companyName})` : appUser.name)
+  : (appUser?.companyName || (app as any).company || (app as any).job?.company || (app as any).jobs?.company || 'مستخدم المنصة');
                                       handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'approved', {
                                         applicantId: app.applicant_id || (app as any).applicantId,
                                         companyName: compName,
@@ -858,7 +868,9 @@ function ApplicationsListViewContent({
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     if (app.status !== 'rejected') {
-                                      const compName = (app as any).company || (app as any).job?.company || (app as any).jobs?.company || appUser?.companyName || appUser?.name || 'صاحب العمل';
+                                      const compName = appUser?.name 
+  ? (appUser?.companyName && appUser.companyName !== appUser.name ? `${appUser.name} (${appUser.companyName})` : appUser.name)
+  : (appUser?.companyName || (app as any).company || (app as any).job?.company || (app as any).jobs?.company || 'مستخدم المنصة');
                                       handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'rejected', {
                                         applicantId: app.applicant_id || (app as any).applicantId,
                                         companyName: compName,
@@ -1360,7 +1372,9 @@ function ApplicationsListViewContent({
                               {app.status !== 'approved' && (
                                 <button
                                   onClick={() => {
-                                    const compName = (app as any).company || (app as any).job?.company || (app as any).jobs?.company || appUser?.companyName || appUser?.name || 'صاحب العمل';
+                                    const compName = appUser?.name 
+  ? (appUser?.companyName && appUser.companyName !== appUser.name ? `${appUser.name} (${appUser.companyName})` : appUser.name)
+  : (appUser?.companyName || (app as any).company || (app as any).job?.company || (app as any).jobs?.company || 'مستخدم المنصة');
                                     handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'approved', {
                                       applicantId: app.applicant_id || (app as any).applicantId,
                                       companyName: compName,
@@ -1409,7 +1423,9 @@ function ApplicationsListViewContent({
                               {app.status !== 'rejected' && (
                                 <button
                                   onClick={() => {
-                                    const compName = (app as any).company || (app as any).job?.company || (app as any).jobs?.company || appUser?.companyName || appUser?.name || 'صاحب العمل';
+                                    const compName = appUser?.name 
+  ? (appUser?.companyName && appUser.companyName !== appUser.name ? `${appUser.name} (${appUser.companyName})` : appUser.name)
+  : (appUser?.companyName || (app as any).company || (app as any).job?.company || (app as any).jobs?.company || 'مستخدم المنصة');
                                     handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'rejected', {
                                       applicantId: app.applicant_id || (app as any).applicantId,
                                       companyName: compName,
@@ -1428,7 +1444,9 @@ function ApplicationsListViewContent({
                               {app.status !== 'pending' && (
                                 <button
                                   onClick={() => {
-                                    const compName = (app as any).company || (app as any).job?.company || (app as any).jobs?.company || appUser?.companyName || appUser?.name || 'صاحب العمل';
+                                    const compName = appUser?.name 
+  ? (appUser?.companyName && appUser.companyName !== appUser.name ? `${appUser.name} (${appUser.companyName})` : appUser.name)
+  : (appUser?.companyName || (app as any).company || (app as any).job?.company || (app as any).jobs?.company || 'مستخدم المنصة');
                                     handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'pending', {
                                       applicantId: app.applicant_id || (app as any).applicantId,
                                       companyName: compName,

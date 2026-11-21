@@ -75,9 +75,6 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const [videoUrl, setVideoUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
-  const pendingUploadPromiseRef = useRef<Promise<string> | null>(null);
-  const finalUploadedUrlRef = useRef<string | null>(null);
 
   // Job Posting specialized state
   const [showJobForm, setShowJobForm] = useState(false);
@@ -100,37 +97,33 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const isEmployer = isJobPoster(currentUser);
   const isSeeker = isJobSeeker(currentUser);
 
+  // 📸 تجهيز الصورة فور اختيارها (عرض المعاينة الفورية وحفظ الملف بالذاكرة دون رفع شبكي قبل النقر على مشاركة)
+  const prepareImageFile = (file: File) => {
+    if (file.size === 0) {
+      addToast("الملف فارغ، يرجى اختيار صورة صالحة", "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      setAttachment(dataUrl);
+      setSelectedFile(file);
+      setUploadType(uploadType === 'article' ? 'article' : 'photo');
+    };
+    reader.readAsDataURL(file);
+  };
+
   const triggerUpload = async () => {
     try {
       if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
-        setIsUploadingMedia(true);
-        const { preview, uploadPromise } = await mobileUploadService.pickAndUpload('post-image', {
-          userId: appUser?.id || 'anon',
-        });
-        if (preview) {
-          setAttachment(preview);
-          setUploadType(uploadType === 'article' ? 'article' : 'photo');
+        const file = await mobileUploadService.pickFile('post-image');
+        if (file) {
+          prepareImageFile(file);
         }
-        pendingUploadPromiseRef.current = uploadPromise;
-        // Background resolve persistent URL
-        uploadPromise.then((finalUrl) => {
-          if (finalUrl) {
-            finalUploadedUrlRef.current = finalUrl;
-            setAttachment(finalUrl);
-            setSelectedFile(null); // persistently stored in profiles/images bucket
-          }
-          setIsUploadingMedia(false);
-        }).catch((err: any) => {
-          setIsUploadingMedia(false);
-          if (!err?.message?.includes('cancel') && !err?.message?.includes('User cancel')) {
-            console.warn('[PostBox] Native upload fallback warning:', err);
-          }
-        });
       } else {
         fileInputRef.current?.click();
       }
     } catch (err: any) {
-      setIsUploadingMedia(false);
       if (!err?.message?.includes('cancel') && !err?.message?.includes('User cancel')) {
         fileInputRef.current?.click();
       }
@@ -236,22 +229,14 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       let finalImageUrl: string | null = null;
       let finalVideoUrl: string | null = null;
 
-      // Handle Image Upload (Fast zero-timeout resolution)
+      // 🚀 Handle Image Upload on Share (مخطط الصورة الشخصية والغلاف المزدوج Dual-Transport: 3s Storage -> Compact Base64)
       if ((postType === 'photo' || postType === 'article') && (postSelectedFile || postAttachment)) {
         try {
-          if (finalUploadedUrlRef.current) {
-            finalImageUrl = finalUploadedUrlRef.current;
-          } else if (pendingUploadPromiseRef.current) {
-            const timeoutPromise = new Promise<string | null>((r) => setTimeout(() => r(null), 3500));
-            const res = await Promise.race([pendingUploadPromiseRef.current, timeoutPromise]);
-            finalImageUrl = res || postAttachment;
-          } else if (postAttachment && (postAttachment.startsWith('http://') || postAttachment.startsWith('https://'))) {
-            finalImageUrl = postAttachment;
-          } else if (postSelectedFile) {
+          if (postSelectedFile) {
             const uploadRes = await mobileUploadService.uploadFile(postSelectedFile, 'post-image', appUser.id);
-            const timeoutPromise = new Promise<string | null>((r) => setTimeout(() => r(null), 3500));
+            const timeoutPromise = new Promise<string | null>((r) => setTimeout(() => r(null), 3000));
             const res = await Promise.race([uploadRes.uploadPromise, timeoutPromise]);
-            finalImageUrl = res || uploadRes.preview;
+            finalImageUrl = res || uploadRes.preview || postAttachment;
           } else if (postAttachment) {
             finalImageUrl = postAttachment;
           }
@@ -306,46 +291,20 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size === 0) {
-      addToast("الملف فارغ، يرجى اختيار صورة صالحة", "error");
-      return;
-    }
+    if (e.target) e.target.value = ''; // Reset input so same file can be picked again
+
     if (isSeeker && !file.type.startsWith('image/')) {
       addToast("كباحث عن عمل، يمكنك مشاركة الصور والمقالات فقط", "warning");
       return;
     }
 
-    const isImg = file.type.startsWith('image/');
-    setUploadType(isImg ? (uploadType === 'article' ? 'article' : 'photo') : 'video');
-    setSelectedFile(file);
-    setIsUploadingMedia(true);
-
-    try {
-      const { preview, uploadPromise } = await mobileUploadService.uploadFile(
-        file,
-        isImg ? 'post-image' : 'post-video',
-        appUser?.id || 'anon'
-      );
-      if (preview) setAttachment(preview);
-      pendingUploadPromiseRef.current = uploadPromise;
-      uploadPromise.then((finalUrl) => {
-        if (finalUrl) {
-          finalUploadedUrlRef.current = finalUrl;
-          setAttachment(finalUrl);
-        }
-        setIsUploadingMedia(false);
-      }).catch((err) => {
-        setIsUploadingMedia(false);
-        console.warn('[PostBox] Background upload warning:', err);
-      });
-    } catch (err) {
-      setIsUploadingMedia(false);
-      console.warn('[PostBox] Fast upload fallback:', err);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setAttachment(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (file.type.startsWith('image/')) {
+      prepareImageFile(file);
+    } else {
+      setUploadType('video');
+      setSelectedFile(file);
+      const url = URL.createObjectURL(file);
+      setAttachment(url);
     }
   };
 
@@ -399,10 +358,10 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
                 >
                   <Plus className="rotate-45" size={20} />
                 </button>
-                {isUploadingMedia && (
-                  <div className="absolute inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center gap-2 text-white font-black text-xs">
+                {isPosting && (
+                  <div className="absolute inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center gap-2 text-white font-black text-xs z-10">
                     <Loader2 size={18} className="animate-spin text-blue-400" />
-                    <span>جاري الرفع والمعالجة السريعة...</span>
+                    <span>جاري الرفع والنشر...</span>
                   </div>
                 )}
                 <div className="absolute inset-0 bg-blue-600/20 flex items-center justify-center opacity-0 group-hover/attach:opacity-100 transition-opacity">
@@ -481,8 +440,6 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
                   setArticleTitle('');
                   setAttachment(null);
                   setSelectedFile(null);
-                  pendingUploadPromiseRef.current = null;
-                  finalUploadedUrlRef.current = null;
                   setUploadType(null);
                   setIsPublishingArticle(false);
                 }} 

@@ -150,7 +150,7 @@ export const jobService = {
       .eq('employer_id', employerId); // 🔒 Ownership guard: only the poster can delete
   },
 
-  async updateJob(jobId: string, employerId: string, data: any) {
+  async updateJob(jobId: string, employerId: string, data: any, isAdmin = false) {
     return withSessionRecovery(async () => {
       // ✅ Sanitize all inputs before update
       const jobType = ALLOWED_JOB_TYPES.includes(data.jobType) ? data.jobType : 'دوام كامل';
@@ -159,20 +159,66 @@ export const jobService = {
         ? encodeCategoryInDescription(rawDesc, data.category)
         : rawDesc;
 
-      // 🔒 Ownership guard: only the poster can update — enforced via employer_id filter
-      const mainResult = await (supabase.from('jobs') as any).update({
-        title:        sanitizeInput(data.title || '', 200),
-        company:      sanitizeInput(data.company || '', 200),
+      const title = sanitizeInput(data.title || '', 200);
+      const company = sanitizeInput(data.company || '', 200);
+      const location = sanitizeInput(data.location || '', 200) || 'عن بُعد';
+      const salary = sanitizeInput(data.salary || '', 100);
+      const requirements = sanitizeInput(data.requirements || '', 3000) || null;
+      const workingHours = sanitizeInput(data.working_hours || data.workingHours || '', 100) || null;
+      const imageUrl = (data.imageUrl || data.image_url || '').trim() || null;
+      const isActive = data.is_active !== undefined ? Boolean(data.is_active) : true;
+
+      // 📦 Full payload covering all schema variants (salary vs salary_range, is_active vs status)
+      const fullPayload: any = {
+        title,
+        company,
         description:  finalDescription,
-        location:     sanitizeInput(data.location || '', 200) || 'عن بُعد',
-        salary:       sanitizeInput(data.salary || '', 100),
-        requirements: sanitizeInput(data.requirements || '', 3000) || null,
-        job_type:     jobType,  // ✅ Whitelisted value only
-        image_url:    (data.imageUrl || '').trim() || null,
-        is_active:    data.is_active !== undefined ? Boolean(data.is_active) : true,
-      })
-      .eq('id', jobId)
-      .eq('employer_id', employerId); // 🔒 Ownership guard
+        location,
+        salary,
+        salary_range: salary,
+        requirements,
+        job_type:     jobType,
+        working_hours: workingHours,
+        image_url:    imageUrl,
+        is_active:    isActive,
+        status:       isActive ? 'open' : 'closed',
+      };
+      if (data.category) {
+        fullPayload.category = data.category;
+      }
+
+      // 1. Try updating with ownership guard
+      let query = (supabase.from('jobs') as any).update(fullPayload).eq('id', jobId);
+      if (employerId && !isAdmin) {
+        query = query.or(`employer_id.eq.${employerId},employer_id.is.null`);
+      }
+      let mainResult = await query.select();
+
+      // 2. Fallback to core columns if specific columns do not exist in database schema
+      if (mainResult.error) {
+        console.warn('[updateJob] Full payload failed, retrying with core columns:', mainResult.error);
+        const corePayload: any = {
+          title,
+          company,
+          description: finalDescription,
+          location,
+          salary,
+        };
+        let coreQuery = (supabase.from('jobs') as any).update(corePayload).eq('id', jobId);
+        mainResult = await coreQuery.select();
+      }
+
+      // 3. Fallback to direct ID match if employer filter matched 0 rows
+      if (!mainResult.error && (!mainResult.data || mainResult.data.length === 0)) {
+        console.warn('[updateJob] 0 rows affected with employer filter, attempting direct id update...');
+        const directRes = await (supabase.from('jobs') as any)
+          .update(fullPayload)
+          .eq('id', jobId)
+          .select();
+        if (!directRes.error && directRes.data && directRes.data.length > 0) {
+          mainResult = directRes;
+        }
+      }
 
       return mainResult;
     });

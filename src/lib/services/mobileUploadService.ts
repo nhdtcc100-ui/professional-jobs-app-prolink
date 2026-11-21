@@ -370,6 +370,20 @@ async function pickFile(type: UploadType): Promise<File | null> {
 
 export const mobileUploadService = {
   /**
+   * Pick and prepare a file from Camera or Gallery/Files without initiating network upload.
+   * Useful when the file should be previewed first and uploaded only on form submit.
+   */
+  async pickFile(type: UploadType): Promise<File | null> {
+    const rawFile = await pickFile(type);
+    if (!rawFile) return null;
+    try {
+      return await snapshotFile(rawFile);
+    } catch {
+      return rawFile;
+    }
+  },
+
+  /**
    * Telegram-style pick + instant preview + background upload.
    *
    * Usage:
@@ -542,7 +556,7 @@ export const mobileUploadService = {
         const storageUrl = await uploadToStorage(uploadFile, userId, buckets, contentType);
 
         if (storageUrl) {
-          if (preview) { try { URL.revokeObjectURL(preview); } catch { } }
+          if (preview) { setTimeout(() => { try { URL.revokeObjectURL(preview); } catch { } }, 10000); }
           emit({ type, phase: 'done', percent: 100, url: storageUrl });
           return storageUrl;
         }
@@ -550,7 +564,7 @@ export const mobileUploadService = {
         emit({ type, phase: 'uploading', percent: 75 });
         const b64 = await toCompactBase64(uploadFile, type);
         if (b64) {
-          if (preview) { try { URL.revokeObjectURL(preview); } catch { } }
+          if (preview) { setTimeout(() => { try { URL.revokeObjectURL(preview); } catch { } }, 10000); }
           emit({ type, phase: 'done', percent: 100, url: b64 });
           return b64;
         }

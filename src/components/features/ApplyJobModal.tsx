@@ -212,12 +212,23 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
             ...applicantDataPayload,
             phone: applicantDataPayload.phone || editingApplication.applicant_data?.phone || appUser.phone,
           },
-          updated_at: new Date().toISOString()
         };
 
-        const { error: updateError } = await (supabase.from('job_applications') as any)
+        let { error: updateError } = await (supabase.from('job_applications') as any)
           .update(updatePayload)
           .eq('id', editingApplication.id);
+
+        // Fallback update if extended columns are not present in schema
+        if (updateError) {
+          console.warn('[ApplyJobModal] Extended application update failed, retrying with core columns:', updateError);
+          const fallbackRes = await (supabase.from('job_applications') as any)
+            .update({
+              cover_letter: cvCoverLetter,
+              cv_url: cvUrl,
+            })
+            .eq('id', editingApplication.id);
+          updateError = fallbackRes.error;
+        }
 
         if (updateError) throw updateError;
 

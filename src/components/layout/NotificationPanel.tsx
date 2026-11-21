@@ -167,19 +167,27 @@ function getNotificationDisplay(n: AppNotification, sender: AppUser | null) {
   const isRole = n.type?.startsWith('role_');
   const isJobNotif = n.type?.startsWith('application_') || n.type === 'job_application';
 
-  // 1. استخراج اسم صاحب العمل / الشركة الحقيقي بدقة تامة
+  // 1. استخراج اسم صاحب العمل / الحساب الحقيقي بدقة تامة (عدم استخدام كلمة "صاحب العمل" كاسم مطلقاً)
   const employerAccountName = (n as any).data?.employer_name || (n as any).data?.company;
-  const rawSender = employerAccountName
-    || (n.fromName && n.fromName !== 'مستخدم' && n.fromName !== 'ProLink' && n.fromName !== 'مستخدم محادثة' ? n.fromName : null)
-    || (sender?.companyName || (sender?.name && sender.name !== 'مستخدم' && sender.name !== 'ProLink' ? sender.name : null));
+  const rawSender = (employerAccountName && employerAccountName !== 'صاحب العمل' && employerAccountName !== 'جهة التوظيف' ? employerAccountName : null)
+    || (sender?.name && sender.name !== 'مستخدم' && sender.name !== 'ProLink' && sender.name !== 'صاحب العمل' ? (sender.companyName && sender.companyName !== sender.name ? `${sender.name} (${sender.companyName})` : sender.name) : null)
+    || (sender?.companyName && sender.companyName !== 'صاحب العمل' ? sender.companyName : null)
+    || (n.fromName && n.fromName !== 'مستخدم' && n.fromName !== 'ProLink' && n.fromName !== 'مستخدم محادثة' && n.fromName !== 'صاحب العمل' ? n.fromName : null);
 
-  const senderName = rawSender || (isJobNotif ? 'صاحب العمل' : (isRole ? 'إدارة ProLink' : 'مستخدم في المنصة'));
+  const senderName = rawSender || (isJobNotif ? (sender?.name || 'حساب التوظيف') : (isRole ? 'إدارة ProLink' : 'مستخدم في المنصة'));
 
   const senderAvatar = sender?.avatar || n.fromAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(senderName)}&background=0284c7&color=fff`;
   const senderTitle = sender?.title || sender?.displayTitle || (sender as any)?.job_title || '';
 
   let headline = n.title || '';
   let bodyText = n.message || '';
+
+  if (headline && headline.includes('صاحب العمل') && senderName && senderName !== 'صاحب العمل') {
+    headline = headline.replace(/صاحب العمل/g, senderName);
+  }
+  if (bodyText && bodyText.includes('صاحب العمل') && senderName && senderName !== 'صاحب العمل') {
+    bodyText = bodyText.replace(/صاحب العمل/g, senderName);
+  }
 
   switch (n.type) {
     case 'follow_request':

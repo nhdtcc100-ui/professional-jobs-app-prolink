@@ -67,7 +67,7 @@ export function MissionsView({
   jobs, appUser, allUsers, addToast, messages, onApplyJob, setActiveTab, onPublisherClick,
   initialSelectedJob, onClearInitialJob, onViewJob
 }: MissionsViewProps) {
-  const { refreshData, markJobApplicationNotificationsAsRead, handleDeleteJob: deleteJobGlobal } = useAppContext();
+  const { refreshData, markJobApplicationNotificationsAsRead, handleDeleteJob: deleteJobGlobal, setJobs } = useAppContext();
   const isAdmin = isUserAdmin(appUser);
 
   const [mainTab, setMainTab] = useState<MainTab>('jobs');
@@ -334,16 +334,34 @@ export function MissionsView({
       };
 
       const { error } = editingJobId
-        ? await jobService.updateJob(editingJobId, appUser.id, postData)
+        ? await jobService.updateJob(editingJobId, appUser.id, postData, isAdmin)
         : await jobService.postJob(postData);
 
       if (error) throw error;
 
-      addToast(editingJobId ? '✅ تم تحديث الوظيفة!' : '🚀 تم نشر الوظيفة!');
+      // ⚡ التحديث الفوري في الذاكرة والكاش لاستبدال القديم بالجديد فوراً
+      if (editingJobId && setJobs) {
+        setJobs(prev => prev.map(j => {
+          if (j.id === editingJobId) {
+            return {
+              ...j,
+              ...postData,
+              jobType: postData.jobType,
+              category: postData.category,
+              workingHours: postData.working_hours,
+              working_hours: postData.working_hours,
+              imageUrl: postData.imageUrl,
+            };
+          }
+          return j;
+        }));
+      }
+
+      addToast(editingJobId ? '✅ تم حفظ تعديلات الوظيفة وتحديثها بنجاح!' : '🚀 تم نشر الوظيفة!');
       setFormData({ ...EMPTY_JOB_FORM, company: appUser.companyName || '' });
       setShowPostForm(false);
       setEditingJobId(null);
-      refreshData();
+      if (refreshData) refreshData();
     } catch (e: any) {
       addToast('فشل: ' + (e.message || 'خطأ غير معروف'), 'error');
     } finally {
@@ -485,9 +503,13 @@ export function MissionsView({
       if (applicantId) {
         try {
           const notifType = status === 'approved' ? 'application_approved' : status === 'rejected' ? 'application_rejected' : 'application_pending';
-          const employerName = extraMeta?.companyName || extraMeta?.employerName
-            || (targetApp as any)?.company || (targetApp?.job as any)?.company || (targetApp?.jobs as any)?.company
-            || appUser.companyName || (appUser.role === 'employer' ? appUser.name : '') || appUser.name || 'جهة التوظيف';
+          const employerName = (extraMeta?.companyName && extraMeta.companyName !== 'صاحب العمل')
+            ? extraMeta.companyName
+            : (extraMeta?.employerName && extraMeta.employerName !== 'صاحب العمل')
+              ? extraMeta.employerName
+              : appUser.name
+                ? (appUser.companyName && appUser.companyName !== appUser.name ? `${appUser.name} (${appUser.companyName})` : appUser.name)
+                : (appUser.companyName || (targetApp as any)?.company || 'مستخدم المنصة');
 
           const notifTitle = status === 'approved'
             ? `وافق ${employerName} على طلبك 🎉`

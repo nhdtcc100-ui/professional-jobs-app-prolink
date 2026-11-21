@@ -10,6 +10,7 @@ import { Job, AppUser } from '../../../types';
 import { useAppContext } from '../../../contexts/AppContext';
 import { safeTimeAgo } from '../../../lib/utils/formatDate';
 import { supabase } from '../../../lib/supabase';
+import { jobService } from '../../../lib/services/jobService';
 import { getJobCategory, cleanJobDescription } from '../../../lib/utils/jobCategoryUtils';
 
 interface JobCardProps {
@@ -101,7 +102,7 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
         salary: editSalary.trim(),
         description: editDescription.trim(),
       };
-      const { error } = await (supabase as any).from('jobs').update(updates).eq('id', job.id);
+      const { error } = await jobService.updateJob(job.id, appUser?.id || '', updates, !!appUser?.isAdmin);
       if (error) throw error;
       // Optimistic update
       (job as any).title = updates.title;
