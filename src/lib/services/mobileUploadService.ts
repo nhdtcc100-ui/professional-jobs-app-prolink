@@ -55,7 +55,7 @@ const IMAGE_MAX_DIM = 1000;   // px
 const IMAGE_QUALITY = 0.82;
 const THUMB_MAX_DIM = 400;    // px – compact Base64 thumbnail (crisp on mobile retina)
 const THUMB_QUALITY = 0.75;
-const UPLOAD_TIMEOUT = 3_000;  // ⚡ 3s max per bucket attempt — fast fallback to Base64 in <150ms!
+const UPLOAD_TIMEOUT = 12_000;  // ⚡ 12s max per bucket attempt — كافٍ لرفع الصور حتى على الشبكات البطيئة
 
 const IMAGE_BUCKETS: Record<string, string[]> = {
   avatar: ['profiles', 'images'],

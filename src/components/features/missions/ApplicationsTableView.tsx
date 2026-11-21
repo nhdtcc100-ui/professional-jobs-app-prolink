@@ -42,15 +42,21 @@ interface JobApplication {
   status: 'pending' | 'approved' | 'rejected';
   created_at: string;
   applicant_id?: string;
+  employer_id?: string;
   applicant_data?: ApplicantData;
   cover_letter?: string;
   cv_url?: string;
   jobTitle?: string;
   job?: {
     title: string;
+    company?: string;
+    employer_id?: string;
   };
   jobs?: {
     title: string;
+    company?: string;
+    employer_id?: string;
+    user_id?: string;
   };
 }
 
@@ -336,6 +342,20 @@ function ApplicationsListViewContent({
       title: data.title || profile?.title || (profile as any)?.job_title || (profile as any)?.headline || '',
       bio: data.bio || profile?.bio || '',
       cvUrl: app.cv_url || data.cvUrl || data.cv_url || profile?.cvUrl || (profile as any)?.cv_url || '',
+    };
+  };
+
+  // Helper to retrieve employer info (used in isSentView — job seeker sees employer header)
+  const resolveEmployer = (app: JobApplication) => {
+    const empId = app.employer_id || (app as any).employerId || app.jobs?.employer_id || app.jobs?.user_id || app.job?.employer_id;
+    const empProfile = empId ? allUsers.find(u => u.id === empId) : null;
+    const jobCompany = (app as any).company || app.jobs?.company || app.job?.company || (app as any).companyName;
+    return {
+      id: empId || '',
+      name: empProfile?.name || (app as any).employer_name || (app as any).employerName || jobCompany || 'صاحب العمل',
+      avatar: empProfile?.avatar || (empProfile as any)?.avatar_url || '',
+      companyName: empProfile?.companyName || jobCompany || '',
+      title: empProfile?.title || empProfile?.displayTitle || (empProfile as any)?.job_title || '',
     };
   };
 
@@ -1007,6 +1027,9 @@ function ApplicationsListViewContent({
                 if (!app) return null;
                 const index = selectedAppIndex;
                 const resolved = resolveApplicant(app);
+                // 🏢 عند isSentView (باحث عن عمل يعرض طلباته) → headerInfo = بيانات صاحب العمل
+                // 👤 عند !isSentView (صاحب العمل يعرض الطلبات الواردة) → headerInfo = بيانات المتقدم
+                const headerInfo = isSentView ? resolveEmployer(app) : resolved;
                 const statusBadge = app.status === 'approved'
                   ? { label: 'مقبول', cls: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' }
                   : app.status === 'rejected'
@@ -1035,7 +1058,7 @@ function ApplicationsListViewContent({
                           <div className="flex items-center gap-4">
                             <div className="relative group">
                               <img
-                                src={resolved.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(resolved.name || 'U')}&background=random`}
+                                src={headerInfo.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(headerInfo.name || 'U')}&background=random`}
                                 className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl object-cover border-4 border-white/30 shadow-2xl"
                                 referrerPolicy="no-referrer"
                                 alt=""
@@ -1047,15 +1070,31 @@ function ApplicationsListViewContent({
                             </div>
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className="text-xl sm:text-2xl font-black text-white">{resolved.name}</h3>
+                                <h3 className="text-xl sm:text-2xl font-black text-white">{headerInfo.name}</h3>
                                 <span className={`px-3 py-1 rounded-full text-[10px] font-black border bg-white/20 text-white border-white/30`}>
                                   {statusBadge.label}
                                 </span>
                               </div>
-                              <p className="text-xs sm:text-sm font-bold text-blue-100/80 flex items-center gap-1.5 mt-1">
-                                <Briefcase size={14} className="text-blue-200" />
-                                {app.job?.title || app.jobs?.title || app.jobTitle}
-                              </p>
+                              {/* isSentView: عرض اسم الشركة + مسمى الوظيفة | !isSentView: عرض مسمى المتقدم + الوظيفة */}
+                              {isSentView ? (
+                                <>
+                                  {(headerInfo as any).companyName && (headerInfo as any).companyName !== headerInfo.name && (
+                                    <p className="text-xs sm:text-sm font-bold text-blue-100/80 flex items-center gap-1.5 mt-0.5">
+                                      <Briefcase size={13} className="text-blue-200" />
+                                      {(headerInfo as any).companyName}
+                                    </p>
+                                  )}
+                                  <p className="text-xs sm:text-sm font-bold text-blue-100/80 flex items-center gap-1.5 mt-1">
+                                    <Briefcase size={14} className="text-blue-200" />
+                                    {app.job?.title || app.jobs?.title || (app as any).jobTitle || 'وظيفة مهنية'}
+                                  </p>
+                                </>
+                              ) : (
+                                <p className="text-xs sm:text-sm font-bold text-blue-100/80 flex items-center gap-1.5 mt-1">
+                                  <Briefcase size={14} className="text-blue-200" />
+                                  {app.job?.title || app.jobs?.title || (app as any).jobTitle}
+                                </p>
+                              )}
                               <span className="text-[10px] text-blue-200/60 font-bold block mt-1">
                                 تاريخ التقديم: {new Date(app.created_at).toLocaleDateString('ar-EG')}
                               </span>

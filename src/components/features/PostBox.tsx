@@ -229,14 +229,24 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       let finalImageUrl: string | null = null;
       let finalVideoUrl: string | null = null;
 
-      // 🚀 Handle Image Upload on Share (مخطط الصورة الشخصية والغلاف المزدوج Dual-Transport: 3s Storage -> Compact Base64)
+      // 🚀 Handle Image Upload on Share (مخطط رفع صورة المنشور — نفس Dual-Transport بالملف الشخصي والغلاف)
       if ((postType === 'photo' || postType === 'article') && (postSelectedFile || postAttachment)) {
         try {
           if (postSelectedFile) {
+            // ⬆️ ابدأ الرفع للتخزين فوراً (لا race قصير — ننتظر حتى 15 ثانية كما في Avatar/Cover)
             const uploadRes = await mobileUploadService.uploadFile(postSelectedFile, 'post-image', appUser.id);
-            const timeoutPromise = new Promise<string | null>((r) => setTimeout(() => r(null), 3000));
-            const res = await Promise.race([uploadRes.uploadPromise, timeoutPromise]);
-            finalImageUrl = res || uploadRes.preview || postAttachment;
+            const timeoutPromise = new Promise<string | null>((r) => setTimeout(() => r(null), 15_000));
+            const storageUrl = await Promise.race([uploadRes.uploadPromise, timeoutPromise]);
+            if (storageUrl && !storageUrl.startsWith('data:')) {
+              // ✅ رابط تخزين حقيقي من Supabase Storage
+              finalImageUrl = storageUrl;
+            } else if (storageUrl && storageUrl.startsWith('data:')) {
+              // ✅ Base64 fallback (compact thumbnail من mobileUploadService)
+              finalImageUrl = storageUrl;
+            } else {
+              // ⚠️ انتهت المهلة — استخدم Data URL كـ fallback مؤقت (سيُخزَّن في DB)
+              finalImageUrl = postAttachment;
+            }
           } else if (postAttachment) {
             finalImageUrl = postAttachment;
           }
@@ -259,8 +269,11 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
                          ? (appUser.companyName || 'صاحب عمل')
                          : 'باحث عن عمل',
         content:       postContent,
+        // 🖼️ أعطِ الأولوية لـ Storage URL؛ إن لم يتوفر استخدم Base64 (compact فقط ≤ 150KB) وليس Data URL الأصلي الكبير
         image_url:     (postType === 'photo' || postType === 'article')
-                         ? (finalImageUrl || postAttachment)
+                         ? (finalImageUrl && !finalImageUrl.startsWith('blob:')
+                              ? finalImageUrl
+                              : (postAttachment && postAttachment.length <= 200_000 ? postAttachment : null))
                          : null,
         video_url:     postType === 'video'
                          ? (finalVideoUrl || null)
