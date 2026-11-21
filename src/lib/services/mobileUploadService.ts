@@ -417,24 +417,23 @@ export const mobileUploadService = {
 
     emit({ type, phase: 'reading', percent: 5 });
 
-    // 2. Snapshot into memory IMMEDIATELY (prevents Android URI permission expiry)
-    let workingFile: File;
-    try {
-      workingFile = await snapshotFile(rawFile);
-    } catch {
-      workingFile = rawFile;
-    }
-
-    // 3. Create instant ObjectURL preview for immediate UI feedback (Telegram UX)
+    // 2. ✅ معاينة فورية 0ms من rawFile مباشرة بدون أي انتظار
     let preview: string | null = null;
     if (type !== 'cv') {
-      try { preview = URL.createObjectURL(workingFile); } catch { }
+      try { preview = URL.createObjectURL(rawFile); } catch { }
     }
     emit({ type, phase: 'compressing', percent: 20, preview: preview ?? undefined });
 
-    // 4. Background upload promise
+    // 3. Background upload promise — الـ snapshot والضغط والرفع كلها في الخلفية
     const uploadPromise = (async (): Promise<string> => {
       try {
+        // ✅ نعمل الـ snapshot في الخلفية بدون تعليق الواجهة
+        let workingFile: File;
+        try {
+          workingFile = await snapshotFile(rawFile);
+        } catch {
+          workingFile = rawFile;
+        }
         // 4a. CV documents → delegate to cvService (has its own multi-bucket logic)
         if (type === 'cv') {
           emit({ type, phase: 'uploading', percent: 40 });

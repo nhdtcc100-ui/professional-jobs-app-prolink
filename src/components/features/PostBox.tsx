@@ -105,8 +105,8 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
 
   // 📸 تجهيز الصورة فور اختيارها — المخطط الهندسي الفوري كمخطط تليجرام/واتساب:
   //   1. معاينة 0ms فورية عبر URL.createObjectURL
-  //   2. ضغط كـ Base64 مسبق في الذاكرة RAM خلال 30ms كصمام أمان فوري
-  //   3. بدء الرفع فوراً في الخلفية لـ Storage
+  //   2. ضغط كـ Base64 في الذاكرة RAM مباشرة من File (يدعم blob: و data:) ← إصلاح رئيسي
+  //   3. بدء الرفع فوراً في الخلفية لـ Storage بشكل متوازي
   const prepareImageFile = async (file: File) => {
     if (!file || file.size === 0) {
       addToast("الملف فارغ، يرجى اختيار صورة صالحة", "error");
@@ -121,14 +121,29 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
     uploadedImageUrlRef.current = null;
     compactBase64Ref.current = null;
 
-    // ✅ 2. تجهيز Base64 مضغوط وفوري بالخلفية RAM كنسخة سريعة جاهزة دائماً
-    imageService.compactBase64(preview, 720, 0.72)
-      .then(b64 => {
+    // ✅ 2. تجهيز Base64 مضغوط مباشرة من File عبر FileReader (يدعم blob: URLs)
+    // imageService.compactBase64 يتطلب data: URL لذا نولّد Base64 مباشرة من File
+    (async () => {
+      try {
+        // قراءة File كـ dataURL في <100ms
+        const dataUrl = await new Promise<string | null>((resolve) => {
+          const reader = new FileReader();
+          const t = setTimeout(() => resolve(null), 3000);
+          reader.onload = () => {
+            clearTimeout(t);
+            resolve(typeof reader.result === 'string' ? reader.result : null);
+          };
+          reader.onerror = () => { clearTimeout(t); resolve(null); };
+          reader.readAsDataURL(file);
+        });
+        if (!dataUrl) return;
+        // ضغط إلى صورة صغيرة 720px جاهزة كـ Base64 فوري (~40-70KB)
+        const b64 = await imageService.compactBase64(dataUrl, 720, 0.72);
         if (b64) compactBase64Ref.current = b64;
-      })
-      .catch(() => {});
+      } catch { /* تجاهل — الرفع من Storage سيكمل */ }
+    })();
 
-    // ✅ 3. رفع فوري متوازي لـ Storage
+    // ✅ 3. رفع فوري متوازي لـ Storage في الخلفية
     const targetUserId = currentUser?.id || appUser?.id;
     if (targetUserId) {
       setIsUploadingMedia(true);

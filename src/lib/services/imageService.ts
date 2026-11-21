@@ -696,14 +696,19 @@ export const imageService = {
   },
 
   /**
-   * Compacts a base64 data URL to a small JPEG thumbnail for DB storage.
+   * Compacts a data URL or blob URL to a small JPEG thumbnail for DB storage.
+   * ✅ يدعم كلاً من data: URLs و blob: URLs
    */
   async compactBase64(dataUrl: string, maxDim = 200, quality = 0.55): Promise<string | null> {
     return new Promise<string | null>((resolve) => {
       try {
-        if (!dataUrl.startsWith('data:')) { resolve(null); return; }
+        // ✅ نقبل blob: URLs مباشرة (createObjectURL) بالإضافة إلى data: URLs
+        if (!dataUrl.startsWith('data:') && !dataUrl.startsWith('blob:')) {
+          resolve(null);
+          return;
+        }
         const img = new Image();
-        const timeout = setTimeout(() => resolve(null), 5000);
+        const timeout = setTimeout(() => { try { URL.revokeObjectURL(dataUrl); } catch {} resolve(null); }, 5000);
         img.onload = () => {
           clearTimeout(timeout);
           try {
@@ -718,7 +723,7 @@ export const imageService = {
             if (!ctx) { resolve(null); return; }
             ctx.drawImage(img, 0, 0, w, h);
             const compact = canvas.toDataURL('image/jpeg', quality);
-            console.log(`ℹ️ [compactBase64] ${dataUrl.length} -> ${compact.length} chars (${Math.round(compact.length / 1024)}KB)`);
+            console.log(`ℹ️ [compactBase64] -> ${compact.length} chars (${Math.round(compact.length / 1024)}KB)`);
             resolve(compact);
           } catch { resolve(null); }
         };
