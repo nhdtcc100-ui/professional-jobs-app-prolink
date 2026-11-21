@@ -456,11 +456,16 @@ export function MissionsView({
     }
   };
 
-  const handleApplicationAction = async (appId: string, jobTitle: string, status: 'approved' | 'rejected' | 'pending') => {
+  const handleApplicationAction = async (
+    appId: string,
+    jobTitle: string,
+    status: 'approved' | 'rejected' | 'pending',
+    extraMeta?: { applicantId?: string; companyName?: string; employerName?: string }
+  ) => {
     if (!appUser) return;
     try {
       await withSessionRecovery(async () => {
-        const { data: updatedRows, error } = await (supabase as any).from('job_applications').update({ status }).eq('id', appId).select('id');
+        const { data: updatedRows, error } = await (supabase as any).from('job_applications').update({ status }).eq('id', appId).select('id, applicant_id');
         if (error) throw error;
         if (!updatedRows || updatedRows.length === 0) throw new Error('لا تملك صلاحية تعديل هذا الطلب');
         return updatedRows;
@@ -468,16 +473,34 @@ export function MissionsView({
 
       // 🔔 Send immediate notification to applicant
       const targetApp = incomingApplications.find((a: any) => a.id === appId);
-      const applicantId = targetApp?.applicant_id || (targetApp as any)?.applicantId;
+      let applicantId = extraMeta?.applicantId || targetApp?.applicant_id || (targetApp as any)?.applicantId;
+
+      if (!applicantId) {
+        try {
+          const { data: dbApp } = await (supabase.from('job_applications') as any).select('applicant_id').eq('id', appId).maybeSingle();
+          if (dbApp?.applicant_id) applicantId = dbApp.applicant_id;
+        } catch (_) {}
+      }
+
       if (applicantId) {
         try {
           const notifType = status === 'approved' ? 'application_approved' : status === 'rejected' ? 'application_rejected' : 'application_pending';
-          const employerName = (targetApp as any)?.company || (targetApp?.job as any)?.company || (targetApp?.jobs as any)?.company || appUser.companyName || appUser.name || 'صاحب العمل';
-          const message = status === 'approved'
-            ? `وافق ${employerName} على طلب تقديمك لوظيفة "${jobTitle}".`
+          const employerName = extraMeta?.companyName || extraMeta?.employerName
+            || (targetApp as any)?.company || (targetApp?.job as any)?.company || (targetApp?.jobs as any)?.company
+            || appUser.companyName || (appUser.role === 'employer' ? appUser.name : '') || appUser.name || 'جهة التوظيف';
+
+          const notifTitle = status === 'approved'
+            ? `وافق ${employerName} على طلبك 🎉`
             : status === 'rejected'
-              ? `اعتذر ${employerName} عن قبول طلب تقديمك لوظيفة "${jobTitle}".`
-              : `قام ${employerName} بإعادة طلبك لوظيفة "${jobTitle}" إلى قيد المراجعة.`;
+              ? `اعتذر ${employerName} عن طلب التقديم ℹ️`
+              : `طلبك قيد المراجعة لدى ${employerName} 🔄`;
+
+          const notifMessage = status === 'approved'
+            ? `وافق ${employerName} على طلب تقديمك لوظيفة "${jobTitle}". يمكنك الآن بدء المحادثة وتنسيق المقابلة 🎉`
+            : status === 'rejected'
+              ? `اعتذر ${employerName} عن قبول طلب تقديمك لوظيفة "${jobTitle}". نتمنى لك التوفيق في الفرص القادمة ℹ️`
+              : `قام ${employerName} بإعادة طلبك لوظيفة "${jobTitle}" إلى قيد المراجعة والتدقيق 🔄`;
+
           await (supabase.from('notifications') as any).insert([{
             user_id: applicantId,
             to_id: applicantId,
@@ -485,13 +508,14 @@ export function MissionsView({
             from_name: employerName,
             from_avatar: appUser.avatar || null,
             type: notifType,
-            title: status === 'approved' ? `وافق ${employerName} على طلبك 🎉` : 'تحديث طلب التوظيف',
-            message,
+            title: notifTitle,
+            message: notifMessage,
             data: {
               application_id: appId,
               job_title: jobTitle,
               employer_id: appUser.id,
               employer_name: employerName,
+              company: employerName,
               target_tab: 'jobs',
               sub_tab: 'requests'
             },

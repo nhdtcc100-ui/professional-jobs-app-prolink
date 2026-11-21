@@ -165,54 +165,57 @@ interface ItemRowProps {
 // ── Smart Notification Formatter (يحلل الإشعار ويصنع نصوصاً واضحة واحترافية) ────
 function getNotificationDisplay(n: AppNotification, sender: AppUser | null) {
   const isRole = n.type?.startsWith('role_');
+  const isJobNotif = n.type?.startsWith('application_') || n.type === 'job_application';
+
+  // 1. استخراج اسم صاحب العمل / الشركة الحقيقي بدقة تامة
   const employerAccountName = (n as any).data?.employer_name || (n as any).data?.company;
-  const senderName = employerAccountName || ((sender?.companyName || sender?.name) && sender.name !== 'مستخدم' && sender.name !== 'مستخدم محادثة'
-    ? (sender.companyName || sender.name)
-    : (n.fromName && n.fromName !== 'مستخدم' && n.fromName !== 'ProLink' 
-        ? n.fromName 
-        : (isRole ? 'إدارة ProLink' : (sender?.companyName || sender?.name || 'مستخدم في ProLink'))));
+  const rawSender = employerAccountName
+    || (n.fromName && n.fromName !== 'مستخدم' && n.fromName !== 'ProLink' && n.fromName !== 'مستخدم محادثة' ? n.fromName : null)
+    || (sender?.companyName || (sender?.name && sender.name !== 'مستخدم' && sender.name !== 'ProLink' ? sender.name : null));
+
+  const senderName = rawSender || (isJobNotif ? 'صاحب العمل' : (isRole ? 'إدارة ProLink' : 'مستخدم في المنصة'));
 
   const senderAvatar = sender?.avatar || n.fromAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(senderName)}&background=0284c7&color=fff`;
   const senderTitle = sender?.title || sender?.displayTitle || (sender as any)?.job_title || '';
 
-  let headline = '';
-  let bodyText = '';
+  let headline = n.title || '';
+  let bodyText = n.message || '';
 
   switch (n.type) {
     case 'follow_request':
-      headline = 'طلب تواصل مهني ومزامنة 🤝';
-      bodyText = `يرغب ${senderName}${senderTitle ? ` (${senderTitle})` : ''} بالانضمام إلى شبكتك المهنية وتبادل الفرص.`;
+      headline = n.title || 'طلب تواصل مهني ومزامنة 🤝';
+      bodyText = n.message || `يرغب ${senderName}${senderTitle ? ` (${senderTitle})` : ''} بالانضمام إلى شبكتك المهنية وتبادل الفرص.`;
       break;
 
     case 'sync_approval':
-      headline = 'تم قبول طلب التواصل بنجاح ✅';
-      bodyText = `وافق ${senderName} على طلب التواصل. أصبح بإمكانك الآن مراسلته ومتابعة نشاطه.`;
+      headline = n.title || 'تم قبول طلب التواصل بنجاح ✅';
+      bodyText = n.message || `وافق ${senderName} على طلب التواصل. أصبح بإمكانك الآن مراسلته ومتابعة نشاطه.`;
       break;
 
     case 'job_application':
-      headline = 'تقديم جديد على وظيفة معلنة 💼';
+      headline = n.title || 'تقديم جديد على وظيفة معلنة 💼';
       bodyText = n.message && n.message !== 'خبر' && n.message !== 'إشعار جديد'
         ? n.message
         : `قدّم ${senderName} سيرة ذاتية وطلباً جديداً على الوظيفة المعلنة.`;
       break;
 
     case 'application_approved':
-      headline = `وافق ${senderName} على طلبك 🎉`;
+      headline = n.title || `وافق ${senderName} على طلبك 🎉`;
       bodyText = n.message || `وافق ${senderName} على طلب تقديمك للوظيفة. تفقد تفاصيل القبول وتواصل معه الآن.`;
       break;
 
     case 'application_rejected':
-      headline = `اعتذر ${senderName} عن طلب التقديم ℹ️`;
+      headline = n.title || `اعتذر ${senderName} عن طلب التقديم ℹ️`;
       bodyText = n.message || `اعتذر ${senderName} عن قبول طلب تقديمك في الوقت الحالي.`;
       break;
 
     case 'application_updated':
-      headline = 'تحديث وتعديل في طلب تقديم 📝';
+      headline = n.title || 'تحديث وتعديل في طلب تقديم 📝';
       bodyText = n.message || `قام المتقدم ${senderName} بتحديث وتعديل بيانات طلبه للوظيفة.`;
       break;
 
     case 'application_pending':
-      headline = `طلبك قيد المراجعة لدى ${senderName} 🔄`;
+      headline = n.title || `طلبك قيد المراجعة لدى ${senderName} 🔄`;
       bodyText = n.message || `قام ${senderName} بإعادة طلبك إلى قيد المراجعة والتدقيق.`;
       break;
 
@@ -311,6 +314,7 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
   const cfg = NOTIF_CONFIG[n.type] || NOTIF_CONFIG.default;
   const Icon = cfg.icon;
   const [isSwipedOut, setIsSwipedOut] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const { senderName, senderAvatar, senderTitle, headline, bodyText } = useMemo(
     () => getNotificationDisplay(n, sender),
@@ -370,9 +374,9 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
   }
 
   return (
-    <div className="relative overflow-hidden bg-rose-600 dark:bg-rose-700">
-      {/* Swipe Action Background Reveal — stays BEHIND the card content */}
-      <div className="absolute inset-0 z-0 flex items-center justify-between px-5 text-white font-black text-xs select-none pointer-events-none">
+    <div className="relative overflow-hidden bg-slate-100 dark:bg-slate-900">
+      {/* Swipe Action Background Reveal — Only visible when dragging */}
+      <div className={`absolute inset-0 z-0 flex items-center justify-between px-5 text-white font-black text-xs select-none bg-rose-600 dark:bg-rose-700 transition-opacity duration-150 ${isDragging ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
         <div className="flex items-center gap-1.5"><Trash2 size={15} /> <span>حذف</span></div>
         <div className="flex items-center gap-1.5"><span>حذف</span> <Trash2 size={15} /></div>
       </div>
@@ -382,7 +386,11 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
         drag="x"
         dragConstraints={{ left: 0, right: 0 }}
         dragElastic={0.65}
-        onDragEnd={handleDragEnd}
+        onDragStart={() => setIsDragging(true)}
+        onDragEnd={(e, info) => {
+          setIsDragging(false);
+          handleDragEnd(e, info);
+        }}
         initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0, x: 0 }}
         exit={{ opacity: 0, x: 100 }}
@@ -390,8 +398,8 @@ const NotificationItemRow: React.FC<ItemRowProps> = ({
         onClick={() => onManualClick(n)}
         className={`relative z-10 px-4 py-3.5 flex items-start gap-3 cursor-pointer transition-all group border-b border-slate-100/80 dark:border-slate-800/60 ${
           isRead
-            ? 'bg-white dark:bg-slate-900/90 hover:bg-slate-50 dark:hover:bg-slate-800/40 opacity-80'
-            : 'bg-blue-50/50 dark:bg-blue-950/30 hover:bg-blue-50/80 dark:hover:bg-blue-950/50 font-medium'
+            ? 'bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800'
+            : 'bg-[#f0f7ff] dark:bg-[#132337] hover:bg-[#e6f1fe] dark:hover:bg-[#1a2f48] font-medium'
         }`}
       >
         {/* Unread Glow Dot */}

@@ -99,6 +99,7 @@ function App() {
     authEmail, setAuthEmail, authPhone, setAuthPhone, authName, setAuthName, authPassword, setAuthPassword,
     myGroups, fetchMyGroups, allGroups, fetchGroups,
     isPublishingArticle,
+    isEditingApp,
     theme, toggleTheme, refreshData,
     isGuestMode, enterGuestMode, exitGuestMode,
   } = useAppContext();
@@ -905,7 +906,7 @@ function App() {
         />
       )}
 
-      {!showAdmin && !applyingJob && !detailFeed && !isPublishingArticle && !showPostFormGlobal && !editingFeedPost && !editingFeedJob && activeTab !== 'post-job' && (
+      {!showAdmin && !applyingJob && !isEditingApp && !detailFeed && !isPublishingArticle && !showPostFormGlobal && !editingFeedPost && !editingFeedJob && activeTab !== 'post-job' && (
         <MobileNav
           activeTab={activeTab} setActiveTab={setActiveTab}
           showMobileMenu={showMobileMenu} setShowMobileMenu={setShowMobileMenu}

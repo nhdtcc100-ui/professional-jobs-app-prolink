@@ -170,7 +170,12 @@ function exportToExcel(apps: JobApplication[], label: string, addToast: (msg: st
 interface ApplicationsListViewProps {
   incomingApplications: JobApplication[];
   isSentView?: boolean;
-  handleApplicationAction: (appId: string, jobTitle: string, status: 'approved' | 'rejected' | 'pending') => Promise<void>;
+  handleApplicationAction: (
+    appId: string,
+    jobTitle: string,
+    status: 'approved' | 'rejected' | 'pending',
+    extraMeta?: { applicantId?: string; companyName?: string; employerName?: string }
+  ) => Promise<void>;
   onDeleteApplication: (appId: string) => Promise<void>;
   addToast: (msg: string, type?: any) => void;
   appUser: AppUser | null;
@@ -225,7 +230,7 @@ function ApplicationsListViewContent({
   addToast,
   appUser,
 }: ApplicationsListViewProps) {
-  const { setActiveTab, setSelectedChat, allUsers = [], activeTab, canUseMessaging } = useAppContext();
+  const { setActiveTab, setSelectedChat, allUsers = [], activeTab, canUseMessaging, setIsEditingApp } = useAppContext();
   const isAdmin = isUserAdmin(appUser);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
@@ -240,6 +245,20 @@ function ApplicationsListViewContent({
   const [editEducation, setEditEducation] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  const openEditModal = (app: any) => {
+    setEditingApp(app);
+    setEditCoverLetter(app.cover_letter || '');
+    setEditExperience(app.applicant_data?.experience || (app as any).experience || '');
+    setEditEducation(app.applicant_data?.education || (app as any).education || '');
+    setEditPhone(app.applicant_data?.phone || '');
+    if (setIsEditingApp) setIsEditingApp(true);
+  };
+
+  const closeEditModal = () => {
+    setEditingApp(null);
+    if (setIsEditingApp) setIsEditingApp(false);
+  };
 
   // 🛡️ Keep-Alive guard: close the fixed z-[300] overlay when user navigates away.
   // Because MissionsView uses CSS `hidden` (not unmount), this component stays in
@@ -714,11 +733,7 @@ function ApplicationsListViewContent({
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setEditingApp(app);
-                                  setEditCoverLetter(app.cover_letter || '');
-                                  setEditExperience(app.applicant_data?.experience || (app as any).experience || '');
-                                  setEditEducation(app.applicant_data?.education || (app as any).education || '');
-                                  setEditPhone(app.applicant_data?.phone || '');
+                                  openEditModal(app);
                                 }}
                                 className="py-2.5 px-3 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/50 rounded-xl text-[10px] font-black flex items-center justify-center gap-1.5 active:scale-95 border border-blue-200/50 dark:border-blue-800/50 cursor-pointer"
                                 title="تعديل خطاب التقديم والبيانات"
@@ -823,7 +838,12 @@ function ApplicationsListViewContent({
                                     whileTap={{ scale: 0.9 }}
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'approved');
+                                      const compName = (app as any).company || (app as any).job?.company || (app as any).jobs?.company || appUser?.companyName || appUser?.name || 'صاحب العمل';
+                                      handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'approved', {
+                                        applicantId: app.applicant_id || (app as any).applicantId,
+                                        companyName: compName,
+                                        employerName: compName,
+                                      });
                                     }}
                                     className="w-9 h-9 flex items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800/30 hover:bg-emerald-500 hover:text-white transition-all"
                                     title="قبول الطلب"
@@ -838,7 +858,12 @@ function ApplicationsListViewContent({
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     if (app.status !== 'rejected') {
-                                      handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'rejected');
+                                      const compName = (app as any).company || (app as any).job?.company || (app as any).jobs?.company || appUser?.companyName || appUser?.name || 'صاحب العمل';
+                                      handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'rejected', {
+                                        applicantId: app.applicant_id || (app as any).applicantId,
+                                        companyName: compName,
+                                        employerName: compName,
+                                      });
                                     }
                                   }}
                                   className={`w-9 h-9 flex items-center justify-center rounded-xl transition-all ${app.status === 'rejected'
@@ -1334,7 +1359,14 @@ function ApplicationsListViewContent({
                             <div className="flex flex-wrap gap-2.5">
                               {app.status !== 'approved' && (
                                 <button
-                                  onClick={() => handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'approved')}
+                                  onClick={() => {
+                                    const compName = (app as any).company || (app as any).job?.company || (app as any).jobs?.company || appUser?.companyName || appUser?.name || 'صاحب العمل';
+                                    handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'approved', {
+                                      applicantId: app.applicant_id || (app as any).applicantId,
+                                      companyName: compName,
+                                      employerName: compName,
+                                    });
+                                  }}
                                   className="flex-1 min-w-[130px] py-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/25 active:scale-95 cursor-pointer"
                                 >
                                   <CheckCircle size={16} /> قبول الطلب
@@ -1376,7 +1408,14 @@ function ApplicationsListViewContent({
 
                               {app.status !== 'rejected' && (
                                 <button
-                                  onClick={() => handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'rejected')}
+                                  onClick={() => {
+                                    const compName = (app as any).company || (app as any).job?.company || (app as any).jobs?.company || appUser?.companyName || appUser?.name || 'صاحب العمل';
+                                    handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'rejected', {
+                                      applicantId: app.applicant_id || (app as any).applicantId,
+                                      companyName: compName,
+                                      employerName: compName,
+                                    });
+                                  }}
                                   className="flex-1 min-w-[130px] py-4 bg-red-500 hover:bg-red-600 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-500/25 active:scale-95 cursor-pointer"
                                 >
                                   <XCircle size={16} /> رفض الطلب
@@ -1388,7 +1427,14 @@ function ApplicationsListViewContent({
                             <div className="flex gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
                               {app.status !== 'pending' && (
                                 <button
-                                  onClick={() => handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'pending')}
+                                  onClick={() => {
+                                    const compName = (app as any).company || (app as any).job?.company || (app as any).jobs?.company || appUser?.companyName || appUser?.name || 'صاحب العمل';
+                                    handleApplicationAction(app.id, app.job?.title || app.jobs?.title || app.jobTitle || 'وظيفة', 'pending', {
+                                      applicantId: app.applicant_id || (app as any).applicantId,
+                                      companyName: compName,
+                                      employerName: compName,
+                                    });
+                                  }}
                                   className="flex-1 py-3.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-2xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
                                 >
                                   <RotateCcw size={14} /> إعادة لقيد المراجعة
@@ -1518,13 +1564,7 @@ function ApplicationsListViewContent({
                               {/* Edit My Application Button */}
                               <button
                                 type="button"
-                                onClick={() => {
-                                  setEditingApp(app);
-                                  setEditCoverLetter(app.cover_letter || '');
-                                  setEditExperience(app.applicant_data?.experience || (app as any).experience || '');
-                                  setEditEducation(app.applicant_data?.education || (app as any).education || '');
-                                  setEditPhone(app.applicant_data?.phone || '');
-                                }}
+                                onClick={() => openEditModal(app)}
                                 className="flex-1 min-w-[130px] py-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 active:scale-95 cursor-pointer"
                               >
                                 <Edit2 size={15} /> تعديل بيانات طلبي
@@ -1591,7 +1631,7 @@ function ApplicationsListViewContent({
             allUsers={allUsers}
             applySuccess={false}
             setApplySuccess={() => {}}
-            setApplyingJob={(j) => { if (!j) setEditingApp(null); }}
+            setApplyingJob={(j) => { if (!j) closeEditModal(); }}
             cvCoverLetter={editCoverLetter}
             setCvCoverLetter={setEditCoverLetter}
             cvFileObj={null}
@@ -1607,7 +1647,7 @@ function ApplicationsListViewContent({
             addToast={addToast}
             editingApplication={editingApp}
             onEditSaved={() => {
-              setEditingApp(null);
+              closeEditModal();
               if ((window as any).refreshApplications) (window as any).refreshApplications();
             }}
           />

@@ -55,13 +55,13 @@ const IMAGE_MAX_DIM = 1000;   // px
 const IMAGE_QUALITY = 0.82;
 const THUMB_MAX_DIM = 400;    // px – compact Base64 thumbnail (crisp on mobile retina)
 const THUMB_QUALITY = 0.75;
-const UPLOAD_TIMEOUT = 15_000; // 15s per bucket attempt — same as profile avatar/cover pipeline
+const UPLOAD_TIMEOUT = 3_000;  // ⚡ 3s max per bucket attempt — fast fallback to Base64 in <150ms!
 
 const IMAGE_BUCKETS: Record<string, string[]> = {
   avatar: ['profiles', 'images'],
   cover: ['profiles', 'images'],
-  'post-image': ['images', 'profiles'],
-  'post-video': ['images', 'profiles'],
+  'post-image': ['profiles', 'images'],
+  'post-video': ['profiles', 'images'],
 };
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
@@ -182,8 +182,8 @@ async function toCompactBase64(file: File, type: UploadType = 'avatar'): Promise
   try {
     let targetFile = file;
     if (!(file as any).__isCompressed && file.size > 250 * 1024) {
-      const maxDim = type === 'cover' ? 800 : THUMB_MAX_DIM;
-      const quality = type === 'cover' ? 0.72 : THUMB_QUALITY;
+      const maxDim = (type === 'cover' || type === 'post-image') ? 800 : THUMB_MAX_DIM;
+      const quality = (type === 'cover' || type === 'post-image') ? 0.75 : THUMB_QUALITY;
       targetFile = await compressImageFile(file, maxDim, quality);
     }
     return new Promise(resolve => {
@@ -212,47 +212,39 @@ async function uploadToStorage(
   }
   const fileName = `${userId}/${uuid}.${ext}`;
 
-  // Ensure auth session headers are fresh (required for Storage RLS)
+  // Quick check auth session
   try {
     await Promise.race([
       supabase.auth.getSession(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('getSession timeout')), 3000)),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 1000)),
     ]);
   } catch { }
 
-  // Per-bucket upload with retry: 3 attempts × 15s each, then next bucket
+  // Fast bucket upload (3s max per bucket) with immediate Base64 fallback on failure
   const targetBuckets = buckets.slice(0, 2);
   for (const bucket of targetBuckets) {
-    const MAX_RETRIES = 2;
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      try {
-        const uploadPromise = supabase.storage
-          .from(bucket)
-          .upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' });
+    try {
+      const uploadPromise = supabase.storage
+        .from(bucket)
+        .upload(fileName, file, { contentType, upsert: true, cacheControl: '3600' });
 
-        const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
-          setTimeout(() => reject(new Error(`Storage timeout – bucket: ${bucket} attempt: ${attempt}`)), UPLOAD_TIMEOUT)
-        );
+      const timeoutPromise = new Promise<{ data: any; error: any }>((_, reject) =>
+        setTimeout(() => reject(new Error(`Storage timeout – bucket: ${bucket}`)), UPLOAD_TIMEOUT)
+      );
 
-        const { error } = await Promise.race([uploadPromise, timeoutPromise]);
+      const { error } = await Promise.race([uploadPromise, timeoutPromise]);
 
-        if (!error) {
-          const { data } = supabase.storage.from(bucket).getPublicUrl(fileName);
-          if (data?.publicUrl) {
-            // Cache-bust so fresh image always loads
-            const sep = data.publicUrl.includes('?') ? '&' : '?';
-            return `${data.publicUrl}${sep}t=${uuid}`;
-          }
-        } else {
-          console.warn(`[mobileUpload] bucket '${bucket}' attempt ${attempt} failed:`, error.message);
-          // Don't retry on permission errors — they won't resolve
-          if (error.message?.includes('security') || error.message?.includes('policy') || error.message?.includes('403')) break;
-          if (attempt < MAX_RETRIES) await new Promise(res => setTimeout(res, 800 * (attempt + 1)));
+      if (!error) {
+        const { data } = supabase.storage.from(bucket).getPublicUrl(fileName);
+        if (data?.publicUrl) {
+          const sep = data.publicUrl.includes('?') ? '&' : '?';
+          return `${data.publicUrl}${sep}t=${uuid}`;
         }
-      } catch (err: any) {
-        console.warn(`[mobileUpload] bucket '${bucket}' attempt ${attempt} exception:`, err?.message || err);
-        if (attempt < MAX_RETRIES) await new Promise(res => setTimeout(res, 800 * (attempt + 1)));
+      } else {
+        console.warn(`[mobileUpload] bucket '${bucket}' failed:`, error.message);
       }
+    } catch (err: any) {
+      console.warn(`[mobileUpload] bucket '${bucket}' exception:`, err?.message || err);
     }
   }
   return null;

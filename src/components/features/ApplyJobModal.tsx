@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Briefcase, MapPin, Info, Sparkles, FileText, Trash2, Paperclip,
@@ -328,6 +328,14 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
     }
   };
 
+  // 🚫 إخفاء البار السفلي بالكامل أثناء فتح التقديم أو التعديل
+  useEffect(() => {
+    document.body.classList.add('hide-bottom-nav');
+    return () => {
+      document.body.classList.remove('hide-bottom-nav');
+    };
+  }, []);
+
   return (
     <motion.div
       initial={{ y: '100%' }}
@@ -342,22 +350,11 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
           handleClose();
         }
       }}
-      className="fixed inset-0 z-[250] flex flex-col overflow-hidden bg-transparent"
+      className="fixed inset-0 h-[100dvh] max-h-[100dvh] z-[250] bg-white dark:bg-slate-900 flex flex-col overflow-hidden"
       dir="rtl"
-      style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
-      {/* ── Sheet container — does NOT touch either bar ── */}
-      <div
-        className="flex flex-col flex-1 min-h-0 mx-auto w-full max-w-lg bg-white dark:bg-slate-900 overflow-hidden"
-        style={{
-          marginTop: '8px',
-          marginBottom: '72px',       /* MobileNav bar height so footer button is fully visible */
-          borderRadius: '24px 24px 20px 20px',
-          boxShadow: '0 -4px 32px rgba(0,0,0,0.18)',
-        }}
-      >
-      <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mt-2 mb-1 shrink-0 cursor-grab active:cursor-grabbing" />
-      <div className="flex flex-col w-full flex-1 min-h-0 relative overflow-hidden">
+      <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto my-2 shrink-0 cursor-grab active:cursor-grabbing" />
+      <div className="flex flex-col w-full flex-1 min-h-0 max-w-lg mx-auto relative overflow-hidden">
         {/* ── Success overlay ── */}
         <AnimatePresence>
           {applySuccess && (
@@ -724,8 +721,7 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
             )}
           </button>
         </div>
-      </div>  {/* inner flex flex-col */}
-      </div>  {/* sheet container */}
+      </div>
     </motion.div>
   );
 };

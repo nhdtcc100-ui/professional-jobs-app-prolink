@@ -283,6 +283,10 @@ export const MobileNav: React.FC<MobileNavProps> = ({
     return list;
   }, [appUser, pendingRequestsCount, theme, toggleTheme, logout, setShowAdmin, setActiveTab, canUseNetwork, canUseGroups, canUseKhakiTheme]);
 
+  if (typeof document !== 'undefined' && document.body.classList.contains('hide-bottom-nav')) {
+    return null;
+  }
+
   return (
     <>
       {/* ══════════════════════════════════════════════════════════════════════

@@ -82,6 +82,8 @@ interface AppContextType {
   setSelectedGroup: (group: any | null) => void;
   isPublishingArticle: boolean;
   setIsPublishingArticle: (is: boolean) => void;
+  isEditingApp: boolean;
+  setIsEditingApp: (is: boolean) => void;
   // Theme State
   theme: 'light' | 'dark' | 'khaki';
   setTheme: (t: 'light' | 'dark' | 'khaki') => void;
@@ -864,6 +866,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [allUsers, selectedChat?.id]);
   const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
   const [isPublishingArticle, setIsPublishingArticle] = useState(false);
+  const [isEditingApp, setIsEditingApp] = useState(false);
 
   const [theme, setTheme] = useState<'light' | 'dark' | 'khaki'>(() => {
     const saved = localStorage.getItem('prolink_theme');
@@ -1242,6 +1245,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               fromAvatar: n.from_avatar,
               targetId: n.target_id,
               read: n.read || readNotifSet.has(n.id),
+              title: n.title,
               message: n.message,
               data: n.data,  // ✅ employer_name and other payload fields
               timestamp: { toDate: () => new Date(n.created_at) }
@@ -2444,6 +2448,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               fromAvatar: n.from_avatar,
               targetId: n.target_id,
               read: n.read,
+              title: n.title,
               message: n.message,
               data: n.data,  // ✅ employer_name and other payload fields
               timestamp: { toDate: () => new Date(n.created_at || Date.now()) }
@@ -2601,6 +2606,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     selectedChat, setSelectedChat,
     selectedGroup, setSelectedGroup,
     isPublishingArticle, setIsPublishingArticle,
+    isEditingApp, setIsEditingApp,
     theme, setTheme, toggleTheme,
     addToast, handleGoogleLogin, handleEmailLogin, handleEmailSignUp, handlePhoneAuth, logout,
     refreshData: (silent?: boolean, userId?: string) => fetchAllData(silent, userId, true), handleApplyJob, 

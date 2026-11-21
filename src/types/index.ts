@@ -145,7 +145,9 @@ export interface AppNotification {
   targetId: string;
   read: boolean;
   timestamp: any;
+  title?: string;
   message?: string;
+  data?: any;
 }
 export interface JobApplication {
   id: string;

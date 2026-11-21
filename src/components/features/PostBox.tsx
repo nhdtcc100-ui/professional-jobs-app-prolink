@@ -9,7 +9,8 @@ import {
   FileText, 
   Plus, 
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { 
   JobPostForm 
@@ -74,6 +75,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const [videoUrl, setVideoUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const pendingUploadPromiseRef = useRef<Promise<string> | null>(null);
   const finalUploadedUrlRef = useRef<string | null>(null);
 
@@ -101,6 +103,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const triggerUpload = async () => {
     try {
       if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
+        setIsUploadingMedia(true);
         const { preview, uploadPromise } = await mobileUploadService.pickAndUpload('post-image', {
           userId: appUser?.id || 'anon',
         });
@@ -114,9 +117,11 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
           if (finalUrl) {
             finalUploadedUrlRef.current = finalUrl;
             setAttachment(finalUrl);
-            setSelectedFile(null); // persistently stored in images bucket
+            setSelectedFile(null); // persistently stored in profiles/images bucket
           }
+          setIsUploadingMedia(false);
         }).catch((err: any) => {
+          setIsUploadingMedia(false);
           if (!err?.message?.includes('cancel') && !err?.message?.includes('User cancel')) {
             console.warn('[PostBox] Native upload fallback warning:', err);
           }
@@ -125,6 +130,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
         fileInputRef.current?.click();
       }
     } catch (err: any) {
+      setIsUploadingMedia(false);
       if (!err?.message?.includes('cancel') && !err?.message?.includes('User cancel')) {
         fileInputRef.current?.click();
       }
@@ -230,30 +236,24 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       let finalImageUrl: string | null = null;
       let finalVideoUrl: string | null = null;
 
-      // Handle Image Upload
+      // Handle Image Upload (Fast zero-timeout resolution)
       if ((postType === 'photo' || postType === 'article') && (postSelectedFile || postAttachment)) {
         try {
           if (finalUploadedUrlRef.current) {
             finalImageUrl = finalUploadedUrlRef.current;
           } else if (pendingUploadPromiseRef.current) {
-            finalImageUrl = await pendingUploadPromiseRef.current;
+            const timeoutPromise = new Promise<string | null>((r) => setTimeout(() => r(null), 3500));
+            const res = await Promise.race([pendingUploadPromiseRef.current, timeoutPromise]);
+            finalImageUrl = res || postAttachment;
           } else if (postAttachment && (postAttachment.startsWith('http://') || postAttachment.startsWith('https://'))) {
             finalImageUrl = postAttachment;
           } else if (postSelectedFile) {
             const uploadRes = await mobileUploadService.uploadFile(postSelectedFile, 'post-image', appUser.id);
-            finalImageUrl = await uploadRes.uploadPromise;
-          } else if (postAttachment && postAttachment.startsWith('blob:')) {
-            const res = await fetch(postAttachment);
-            const blob = await res.blob();
-            const file = new File([blob], 'post-image.jpg', { type: 'image/jpeg' });
-            const uploadRes = await mobileUploadService.uploadFile(file, 'post-image', appUser.id);
-            finalImageUrl = await uploadRes.uploadPromise;
-          } else if (postAttachment && postAttachment.startsWith('data:')) {
-            const res = await fetch(postAttachment);
-            const blob = await res.blob();
-            const file = new File([blob], 'post-image.jpg', { type: 'image/jpeg' });
-            const uploadRes = await mobileUploadService.uploadFile(file, 'post-image', appUser.id);
-            finalImageUrl = await uploadRes.uploadPromise;
+            const timeoutPromise = new Promise<string | null>((r) => setTimeout(() => r(null), 3500));
+            const res = await Promise.race([uploadRes.uploadPromise, timeoutPromise]);
+            finalImageUrl = res || uploadRes.preview;
+          } else if (postAttachment) {
+            finalImageUrl = postAttachment;
           }
         } catch (uploadErr) {
           console.warn('[PostBox] Image upload fallback to attachment:', uploadErr);
@@ -266,29 +266,24 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
         finalVideoUrl = await imageService.uploadVideo(postSelectedFile, appUser.id);
       }
 
-      const { data: newPost, error }: any = await withSessionRecovery(async () => {
-        return withTimeout<any>(
-          db.from('posts').insert([{
-            author_id:     appUser.id,
-            author_name:   appUser.name   || 'مستخدم Elevate عراق',
-            author_avatar: appUser.avatar || null,
-            author_title:  appUser.role === 'employer'
-                             ? (appUser.companyName || 'صاحب عمل')
-                             : 'باحث عن عمل',
-            content:       postContent,
-            image_url:     (postType === 'photo' || postType === 'article')
-                             ? (finalImageUrl || postAttachment)
-                             : null,
-            video_url:     postType === 'video'
-                             ? (finalVideoUrl || null)
-                             : (postVideoUrl || null),
-            likes_count:   0,
-          }]).select('id, image_url').single(),
-          15000,
-          'postBox.insert'
-        );
-      });
+      const postPayload = {
+        author_id:     appUser.id,
+        author_name:   appUser.name   || 'مستخدم Elevate عراق',
+        author_avatar: appUser.avatar || null,
+        author_title:  appUser.role === 'employer'
+                         ? (appUser.companyName || 'صاحب عمل')
+                         : 'باحث عن عمل',
+        content:       postContent,
+        image_url:     (postType === 'photo' || postType === 'article')
+                         ? (finalImageUrl || postAttachment)
+                         : null,
+        video_url:     postType === 'video'
+                         ? (finalVideoUrl || null)
+                         : (postVideoUrl || null),
+        likes_count:   0,
+      };
 
+      const { data: newPost, error } = await postService.createPost(postPayload);
       if (error) throw error;
 
       postService.invalidateCache();
@@ -323,6 +318,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
     const isImg = file.type.startsWith('image/');
     setUploadType(isImg ? (uploadType === 'article' ? 'article' : 'photo') : 'video');
     setSelectedFile(file);
+    setIsUploadingMedia(true);
 
     try {
       const { preview, uploadPromise } = await mobileUploadService.uploadFile(
@@ -337,10 +333,13 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
           finalUploadedUrlRef.current = finalUrl;
           setAttachment(finalUrl);
         }
+        setIsUploadingMedia(false);
       }).catch((err) => {
+        setIsUploadingMedia(false);
         console.warn('[PostBox] Background upload warning:', err);
       });
     } catch (err) {
+      setIsUploadingMedia(false);
       console.warn('[PostBox] Fast upload fallback:', err);
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -400,6 +399,12 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
                 >
                   <Plus className="rotate-45" size={20} />
                 </button>
+                {isUploadingMedia && (
+                  <div className="absolute inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center gap-2 text-white font-black text-xs">
+                    <Loader2 size={18} className="animate-spin text-blue-400" />
+                    <span>جاري الرفع والمعالجة السريعة...</span>
+                  </div>
+                )}
                 <div className="absolute inset-0 bg-blue-600/20 flex items-center justify-center opacity-0 group-hover/attach:opacity-100 transition-opacity">
                   <CheckCircle className="text-white w-12 h-12" />
                 </div>
