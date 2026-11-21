@@ -91,6 +91,17 @@ export function isSessionOrAuthError(error: any): boolean {
   const msg = (error?.message || error?.details || error?.error_description || String(error)).toLowerCase();
   const code = String(error?.code || error?.status || '');
 
+  // 🛡️ استبعاد أخطاء مفاتيح الربط وأعمدة المؤلف: author_id أو posts_author_id_fkey ليست أخطاء جلسة أو مصادقة
+  if (
+    code === '23503' || 
+    code === '22P02' ||
+    msg.includes('foreign key') ||
+    msg.includes('author_id') ||
+    msg.includes('posts_author_id_fkey')
+  ) {
+    return false;
+  }
+
   return (
     code === '401' ||
     code === '403' ||
@@ -100,7 +111,9 @@ export function isSessionOrAuthError(error: any): boolean {
     msg.includes('expired') ||
     msg.includes('unauthorized') ||
     msg.includes('session') ||
-    msg.includes('auth') ||
+    /\bauth\b/i.test(msg) ||
+    msg.includes('authentication') ||
+    msg.includes('not authenticated') ||
     msg.includes('permission denied') ||
     msg.includes('connection') ||
     msg.includes('network') ||

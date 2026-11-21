@@ -55,13 +55,13 @@ const IMAGE_MAX_DIM = 1000;   // px
 const IMAGE_QUALITY = 0.82;
 const THUMB_MAX_DIM = 400;    // px – compact Base64 thumbnail (crisp on mobile retina)
 const THUMB_QUALITY = 0.75;
-const UPLOAD_TIMEOUT = 15_000; // ⚡ 15s max per bucket attempt — واقعي ومناسب لشبكات الهاتف المحمول بدون انقطاع مبكر
+const UPLOAD_TIMEOUT = 8_000; // ⚡ 8s max per bucket attempt — فائق السرعة ويمنع التعليق
 
 const IMAGE_BUCKETS: Record<string, string[]> = {
   avatar: ['profiles', 'images'],
-  cover: ['profiles', 'images'],
-  'post-image': ['profiles', 'images'],
-  'post-video': ['profiles', 'images'],
+  cover: ['images', 'profiles'],
+  'post-image': ['images', 'profiles'],
+  'post-video': ['images', 'profiles'],
 };
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
@@ -212,13 +212,8 @@ async function uploadToStorage(
   }
   const fileName = `${userId}/${uuid}.${ext}`;
 
-  // Quick check auth session
-  try {
-    await Promise.race([
-      supabase.auth.getSession(),
-      new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000)),
-    ]);
-  } catch { }
+  // Non-blocking background session refresh
+  supabase.auth.getSession().catch(() => {});
 
   // Fast bucket upload (3s max per bucket) with immediate Base64 fallback on failure
   const targetBuckets = buckets.slice(0, 2);

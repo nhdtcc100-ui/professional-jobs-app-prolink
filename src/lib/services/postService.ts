@@ -1,17 +1,10 @@
-import { supabase } from '../supabase';
+﻿import { supabase } from '../supabase';
 import { Post, AppUser } from '../../types';
 import { sanitizeInput, sanitizeComment } from '../security/inputValidator';
 import { canUserPostAndInteract } from '../utils/roleUtils';
-
-import { withMutex } from './concurrencyMutex';
-import { idempotencyEngine, withIdempotency } from './idempotencyEngine';
-import { withCollisionRetry } from './collisionHandler';
 import { generateUUID } from '../security/distributedId';
-import { withTimeout } from '../utils/withTimeout';
-import { concurrencyMutex } from './concurrencyMutex';
-import { withSessionRecovery } from './sessionRecovery';
 
-// ✅ Max content lengths to prevent payload abuse
+// âœ… Max content lengths to prevent payload abuse
 const MAX_POST_LENGTH = 5000;
 const MAX_ECHO_LENGTH = 3000;
 
@@ -72,7 +65,7 @@ export const postService = {
   },
 
   /**
-   * ⚡ Cursor-based pagination for feed
+   * âš¡ Cursor-based pagination for feed
    */
   async fetchPostsBefore(cursorDate: string, limit = 20) {
     try {
@@ -115,103 +108,90 @@ export const postService = {
   },
 
   async createPost(postData: any) {
-    return withSessionRecovery(async () => {
-    const authorId = postData.author_id || 'anonymous';
-    const mutexKey = `post_create_${authorId}`;
-    const postId = postData.id || generateUUID();
-    // ✅ Use a fresh UUID per attempt as idempotency key so retries are not blocked by cached errors
-    const idempotencyKey = idempotencyEngine.generateKey('posts', authorId, {
-      id: postId,
-      content: postData.content,
-      image_url: postData.image_url,
-      author_id: authorId,
-    });
+    // ─────────────────────────────────────────────────────────────────────────
+    // 🏗️ BACKEND FIX: دالة نظيفة واحدة بدون طبقات متداخلة (mutex/idempotency/sessionRecovery)
+    // السبب: الطبقات الأربع كانت تُسبب deadlock عند أي خطأ في الإدراج
+    // الحل: insert مباشر بمهلة واقعية + تحقق من author_id + fallback واضح
+    // ─────────────────────────────────────────────────────────────────────────
 
-    try {
-      const result: any = await withMutex(mutexKey, () =>
-        withIdempotency(
-          idempotencyKey,
-          async () => {
-            // ✅ Sanitize all text fields & scan for threat injections before inserting
-            const user = { id: postData.author_id, name: postData.author_name };
-            const sanitized = {
-              ...postData,
-              id: postId,
-              content: sanitizeInput(postData.content || '', MAX_POST_LENGTH, user),
-              author_name: sanitizeInput(postData.author_name || '', 100, user),
-            };
+    const user = { id: postData.author_id, name: postData.author_name };
 
-            return withCollisionRetry(async (_attempt, _freshId) => {
-              // 🛡️ استبعاد الحقول غير الموجودة بقاعدة البيانات لتنفيذ الإدراج في خطوة واحدة سريعة
-              const { dislikes_count, post_type, type, ...cleanRow } = sanitized;
-              const rowToInsert = {
-                id: cleanRow.id || _freshId,
-                ...cleanRow,
-              };
-
-              // ✅ مهلة إدراج واقعية 15 ثانية لتناسب شبكات الهاتف المحمول
-              const insertWithTimeout = async () => {
-                const res = await withTimeout(
-                  (supabase.from('posts') as any).insert([rowToInsert]).select(),
-                  15000,
-                  'createPost.insert'
-                );
-                return res;
-              };
-
-              try {
-                const res: any = await insertWithTimeout();
-                if (res.error && (res.error.code === '42703' || res.error.message?.includes('post_type') || res.error.message?.includes('dislikes_count'))) {
-                  const { post_type: _pt, type: _t, dislikes_count: _, ...fallbackRow } = rowToInsert;
-                  const fbRes: any = await withTimeout(
-                    (supabase.from('posts') as any).insert([fallbackRow]).select(),
-                    15000,
-                    'createPost.insert.fallback'
-                  );
-                  if (!fbRes.error) this.invalidateCache();
-                  const retData = Array.isArray(fbRes.data) ? fbRes.data[0] : (fbRes.data || fallbackRow);
-                  return { data: retData, error: fbRes.error };
-                }
-                if (!res.error) this.invalidateCache();
-                const retData = Array.isArray(res.data) ? res.data[0] : (res.data || rowToInsert);
-                return { data: retData, error: res.error };
-              } catch (insertErr) {
-                // ✅ Log real error — don't swallow silently
-                console.error('[createPost] insert error:', insertErr);
-                // Fallback: try stripping unknown columns
-                const { post_type: _pt, type: _t, dislikes_count: _, ...fallbackRow } = rowToInsert;
-                const fbRes: any = await withTimeout(
-                  (supabase.from('posts') as any).insert([fallbackRow]).select(),
-                  15000,
-                  'createPost.insert.catch-fallback'
-                );
-                if (!fbRes.error) this.invalidateCache();
-                const retData = Array.isArray(fbRes.data) ? fbRes.data[0] : (fbRes.data || fallbackRow);
-                return { data: retData, error: fbRes.error };
-              }
-            }, { scope: 'createPost' });
-          },
-          { ttlMs: 60000, scope: 'posts' }
-        )
-      );
-
-      if (result?.error) {
-        idempotencyEngine.invalidate(idempotencyKey);
-        concurrencyMutex.clearKey(mutexKey);
-      }
-      return result;
-    } catch (outerErr) {
-      // ✅ Release stuck locks so the user can retry without a page refresh
-      console.error('[createPost] outer error — releasing mutex and idempotency:', outerErr);
-      idempotencyEngine.invalidate(idempotencyKey);
-      concurrencyMutex.clearKey(mutexKey);
-      return { data: null, error: outerErr instanceof Error ? outerErr : new Error(String(outerErr)) };
+    // 1. التحقق من صحة author_id — UUID صالح
+    const authorId: string = postData.author_id;
+    if (!authorId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(authorId)) {
+      console.error('[createPost] Invalid author_id — not a UUID:', authorId);
+      return { data: null, error: new Error('معرّف المستخدم غير صالح. يرجى تسجيل الدخول مجدداً.') };
     }
-    });
+
+    // 2. بناء الصف بأعمدة موثوقة فقط
+    const postId = postData.id || generateUUID();
+    const rowToInsert: Record<string, any> = {
+      id:            postId,
+      author_id:     authorId,
+      author_name:   sanitizeInput(postData.author_name  || 'مستخدم', 100, user),
+      author_avatar: postData.author_avatar || null,
+      author_title:  sanitizeInput(postData.author_title || '', 120, user) || null,
+      content:       sanitizeInput(postData.content      || '', MAX_POST_LENGTH, user),
+      image_url:     postData.image_url  || null,
+      video_url:     postData.video_url  || null,
+      likes_count:   0,
+    };
+
+    // إضافة حقول echo إن وُجدت
+    if (postData.is_echo) {
+      rowToInsert.is_echo                = true;
+      rowToInsert.original_post_id       = postData.original_post_id     || null;
+      rowToInsert.original_author_name   = postData.original_author_name || null;
+      rowToInsert.original_author_avatar = postData.original_author_avatar || null;
+      rowToInsert.original_content       = postData.original_content     || null;
+    }
+
+    // 3. إدراج مباشر مع مهلة 12 ثانية
+    try {
+      const { data, error } = await Promise.race([
+        (supabase.from('posts') as any).insert([rowToInsert]).select(),
+        new Promise<{ data: null; error: Error }>((_, rej) =>
+          setTimeout(() => rej(new Error('TIMEOUT: createPost (12s)')), 12_000)
+        ),
+      ]);
+
+      if (error) {
+        // أخطاء لا تستوجب إعادة المحاولة (UUID خاطئ، FK مفقود، تكرار، عمود مجهول)
+        const noRetry = ['23503', '22P02', '23505', '42703'].includes((error as any).code);
+        if (noRetry) {
+          console.error('[createPost] DB constraint error (no retry):', error);
+          return { data: null, error };
+        }
+        // خطأ شبكة — محاولة ثانية وأخيرة بعد 1.5 ثانية بـ UUID جديد
+        console.warn('[createPost] DB error on first attempt, retrying once:', error);
+        await new Promise(r => setTimeout(r, 1500));
+        rowToInsert.id = generateUUID();
+        const retry = await Promise.race([
+          (supabase.from('posts') as any).insert([rowToInsert]).select(),
+          new Promise<{ data: null; error: Error }>((_, rej) =>
+            setTimeout(() => rej(new Error('TIMEOUT: createPost retry (12s)')), 12_000)
+          ),
+        ]);
+        if (!retry.error) this.invalidateCache();
+        const retData = Array.isArray(retry.data) ? retry.data[0] : (retry.data || rowToInsert);
+        return { data: retData, error: retry.error };
+      }
+
+      this.invalidateCache();
+      const retData = Array.isArray(data) ? data[0] : (data || rowToInsert);
+      return { data: retData, error: null };
+
+    } catch (err: any) {
+      console.error('[createPost] Exception during insert:', err?.message || err);
+      return {
+        data: null,
+        error: err instanceof Error ? err : new Error(String(err?.message || 'خطأ في الاتصال. يرجى إعادة المحاولة.'))
+      };
+    }
   },
 
   /**
-   * ✅ Atomic like using parameterized SDK query.
+   * âœ… Atomic like using parameterized SDK query.
    */
   async likePost(postId: string, currentLikes: number) {
     return (supabase.from('posts') as any)
@@ -220,7 +200,7 @@ export const postService = {
   },
 
   /**
-   * ✅ Dislike: increments dislikes_count atomically with fallback.
+   * âœ… Dislike: increments dislikes_count atomically with fallback.
    */
   async dislikePost(postId: string, currentDislikes: number) {
     try {
@@ -238,50 +218,50 @@ export const postService = {
   },
 
   /**
-   * ✅ Parameterized comment insert with strict input sanitization
+   * âœ… Parameterized comment insert with strict input sanitization
    */
   async addComment(postId: string, author: AppUser, content: string) {
-    // 🚫 Strict Role Check
+    // ðŸš« Strict Role Check
     if (!canUserPostAndInteract(author)) {
-      return { data: null, error: { message: 'غير مصرح للباحثين عن عمل بالتعليق أو التفاعل 🚫' } };
+      return { data: null, error: { message: 'ØºÙŠØ± Ù…ØµØ±Ø­ Ù„Ù„Ø¨Ø§Ø­Ø«ÙŠÙ† Ø¹Ù† Ø¹Ù…Ù„ Ø¨Ø§Ù„ØªØ¹Ù„ÙŠÙ‚ Ø£Ùˆ Ø§Ù„ØªÙØ§Ø¹Ù„ ðŸš«' } };
     }
 
     // Validate inputs
     if (!postId || !author?.id || !content?.trim()) {
-      return { data: null, error: { message: 'بيانات التعليق غير مكتملة' } };
+      return { data: null, error: { message: 'Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ØªØ¹Ù„ÙŠÙ‚ ØºÙŠØ± Ù…ÙƒØªÙ…Ù„Ø©' } };
     }
 
     const user = { id: author.id, name: author.name, email: author.email };
 
-    // ✅ Sanitize comment content & scan for threat injection
+    // âœ… Sanitize comment content & scan for threat injection
     const cleanContent = sanitizeComment(content, user);
     if (!cleanContent) {
-      return { data: null, error: { message: 'محتوى التعليق فارغ بعد التحقق الأمني' } };
+      return { data: null, error: { message: 'Ù…Ø­ØªÙˆÙ‰ Ø§Ù„ØªØ¹Ù„ÙŠÙ‚ ÙØ§Ø±Øº Ø¨Ø¹Ø¯ Ø§Ù„ØªØ­Ù‚Ù‚ Ø§Ù„Ø£Ù…Ù†ÙŠ' } };
     }
 
-    // ✅ Author name sanitized to prevent XSS in displayed name
+    // âœ… Author name sanitized to prevent XSS in displayed name
     return (supabase.from('comments') as any).insert([{
       post_id: postId,
       author_id: author.id,   // From authenticated session - not user input
-      author_name: sanitizeInput(author.name || 'مستخدم', 100, user),
+      author_name: sanitizeInput(author.name || 'Ù…Ø³ØªØ®Ø¯Ù…', 100, user),
       author_avatar: author.avatar,
-      content: cleanContent   // ✅ Sanitized content
+      content: cleanContent   // âœ… Sanitized content
     }]);
   },
 
   /**
-   * ✅ Echo / Repost: creates a new post carrying full repost metadata
+   * âœ… Echo / Repost: creates a new post carrying full repost metadata
    * so the UI can render it as a "repost card" instead of plain text.
    */
   async echoPost(author: AppUser, post: Post) {
-    // 🚫 Strict Role Check
+    // ðŸš« Strict Role Check
     if (!canUserPostAndInteract(author)) {
-      return { data: null, error: { message: 'غير مصرح للباحثين عن عمل بإعادة نشر المنشورات 🚫' } };
+      return { data: null, error: { message: 'ØºÙŠØ± Ù…ØµØ±Ø­ Ù„Ù„Ø¨Ø§Ø­Ø«ÙŠÙ† Ø¹Ù† Ø¹Ù…Ù„ Ø¨Ø¥Ø¹Ø§Ø¯Ø© Ù†Ø´Ø± Ø§Ù„Ù…Ù†Ø´ÙˆØ±Ø§Øª ðŸš«' } };
     }
 
     return this.createPost({
       author_id: author.id,           // From authenticated session
-      author_name: sanitizeInput(author.name || 'مستخدم', 100),
+      author_name: sanitizeInput(author.name || 'Ù…Ø³ØªØ®Ø¯Ù…', 100),
       author_avatar: author.avatar,
       content: '',                     // Echo posts have no extra caption by default
       image_url: null,
@@ -289,29 +269,29 @@ export const postService = {
       // Repost-specific metadata
       is_echo: true,
       original_post_id: post.id,
-      original_author_name: sanitizeInput(post.authorName || 'مستخدم', 100),
+      original_author_name: sanitizeInput(post.authorName || 'Ù…Ø³ØªØ®Ø¯Ù…', 100),
       original_author_avatar: post.authorAvatar || null,
       original_content: sanitizeInput(post.content || '', MAX_ECHO_LENGTH),
     });
   },
 
   /**
-   * ✅ Relocate post: both IDs from authenticated context, content sanitized
+   * âœ… Relocate post: both IDs from authenticated context, content sanitized
    */
   async relocatePost(author: AppUser, targetUser: AppUser, post: Post) {
     const safeContent = sanitizeInput(
-      `تم ترحيل منشور إليك: ${post.content}\nالرابط: ${post.imageUrl || ''}`,
+      `ØªÙ… ØªØ±Ø­ÙŠÙ„ Ù…Ù†Ø´ÙˆØ± Ø¥Ù„ÙŠÙƒ: ${post.content}\nØ§Ù„Ø±Ø§Ø¨Ø·: ${post.imageUrl || ''}`,
       2000
     );
     return (supabase.from('messages') as any).insert([{
       sender_id: author.id,       // From authenticated session
       receiver_id: targetUser.id, // From validated user list
-      content: safeContent        // ✅ Sanitized
+      content: safeContent        // âœ… Sanitized
     }]);
   },
 
   /**
-   * ✅ Delete post with ownership verification
+   * âœ… Delete post with ownership verification
    * RLS on Supabase also enforces this at the DB level.
    */
   async deletePost(postId: string, authorId?: string, isAdmin = false) {
@@ -324,3 +304,4 @@ export const postService = {
     return query.select('id');
   },
 };
+
