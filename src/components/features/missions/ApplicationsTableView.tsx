@@ -236,8 +236,31 @@ function ApplicationsListViewContent({
   addToast,
   appUser,
 }: ApplicationsListViewProps) {
-  const { setActiveTab, setSelectedChat, allUsers = [], activeTab, canUseMessaging, setIsEditingApp } = useAppContext();
+  const { setActiveTab, setSelectedChat, allUsers = [], activeTab, canUseMessaging, setIsEditingApp, setSelectedProfile } = useAppContext();
   const isAdmin = isUserAdmin(appUser);
+
+  const openUserProfile = (userId?: string, fallbackData?: any) => {
+    if (!userId && !fallbackData) return;
+    const targetUser = allUsers.find(u => u.id === userId);
+    if (targetUser) {
+      if (setSelectedProfile) setSelectedProfile(targetUser);
+      setActiveTab('profile');
+      setSelectedAppIndex(null);
+    } else if (fallbackData) {
+      const minimalUser: any = {
+        id: userId || fallbackData.id || 'unknown',
+        name: fallbackData.name || 'مستخدم',
+        avatar: fallbackData.avatar || '',
+        coverUrl: fallbackData.cover || fallbackData.coverUrl || '',
+        companyName: fallbackData.companyName || '',
+        title: fallbackData.title || '',
+        role: isSentView ? 'employer' : 'seeker',
+      };
+      if (setSelectedProfile) setSelectedProfile(minimalUser);
+      setActiveTab('profile');
+      setSelectedAppIndex(null);
+    }
+  };
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
   const [selectedAppIndex, setSelectedAppIndex] = useState<number | null>(null);
@@ -355,6 +378,7 @@ function ApplicationsListViewContent({
       id: empId || '',
       name: candidateName && candidateName !== 'صاحب العمل' ? candidateName : (jobCompany || 'جهة التوظيف'),
       avatar: empProfile?.avatar || (empProfile as any)?.avatar_url || (app as any).employer_avatar || '',
+      cover: (app as any).employer_cover || empProfile?.coverUrl || (empProfile as any)?.cover_url || (app.jobs as any)?.image_url || '',
       companyName: empProfile?.companyName || jobCompany || '',
       title: empProfile?.title || empProfile?.displayTitle || (empProfile as any)?.job_title || '',
     };
@@ -629,45 +653,91 @@ function ApplicationsListViewContent({
                     const idx = filteredApps.findIndex(a => a.id === app.id);
                     setSelectedAppIndex(idx >= 0 ? idx : 0);
                   }}
-                  className={`p-5 rounded-[2.2rem] transition-all duration-300 group relative overflow-hidden cursor-pointer ${isHighlighted
+                  className={`rounded-[2.2rem] transition-all duration-300 group relative overflow-hidden cursor-pointer ${isHighlighted
                   ? 'ring-4 ring-blue-500/80 border-blue-500 shadow-2xl shadow-blue-500/30 scale-[1.01] bg-blue-50/70 dark:bg-blue-950/50'
                   : 'border border-white dark:border-slate-700 shadow-sm hover:shadow-xl hover:translate-y-[-4px] bg-white/90 dark:bg-slate-800/90'
-                  }`}>
+                  } ${isSentView ? 'p-0' : 'p-4 sm:p-5'}`}>
                   {isHighlighted && (
                     <div className="absolute top-2 left-2 z-20 px-3 py-1 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-full text-[9px] font-black shadow-lg flex items-center gap-1.5 animate-bounce">
                       <Sparkles size={11} className="text-amber-300" />
-                      <span>المتقدم المعروض حالياً 📍</span>
+                      <span>{isSentView ? 'الطلب المعروض حالياً 📍' : 'المتقدم المعروض حالياً 📍'}</span>
                     </div>
                   )}
                   {(() => {
                     const resolved = resolveApplicant(app);
-                    return (
-                      <div className="flex items-start gap-4">
-                        <div className="relative">
-                          <img
-                            src={resolved.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(resolved.name || 'U')}&background=0a66c2&color=fff`}
-                            className={`w-14 h-14 rounded-2xl object-cover shadow-md border-2 transition-all ${isHighlighted ? 'border-blue-500 scale-105' : 'border-white dark:border-slate-700'}`}
-                            alt=""
-                          />
-                          <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white dark:border-slate-700 flex items-center justify-center shadow-sm ${app.status === 'approved' ? 'bg-emerald-500' :
-                            app.status === 'rejected' ? 'bg-red-500' :
-                              'bg-amber-500'
-                            }`}>
-                            {app.status === 'approved' ? <CheckCircle size={10} className="text-white" /> :
-                              app.status === 'rejected' ? <XCircle size={10} className="text-white" /> :
-                                <Clock size={10} className="text-white" />}
-                          </div>
-                        </div>
+                    const employerInfo = resolveEmployer(app);
+                    // 🏢 في الطلبات المرسلة للباحث نعرض صورة وغلاف صاحب العمل، وعند صاحب العمل نعرض المتقدم
+                    const cardParty = isSentView ? employerInfo : resolved;
+                    const cardCover = isSentView ? (employerInfo.cover || (app.jobs as any)?.image_url || (app as any).job?.image_url) : null;
 
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <h3 className="text-sm font-black text-slate-800 dark:text-white truncate">
-                                {isSentView ? (app.jobTitle || app.jobs?.title || 'وظيفة مهنية') : resolved.name}
-                              </h3>
-                              <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold mb-1 flex items-center gap-1">
-                                <Briefcase size={10} /> {isSentView ? ((app as any).company || (app.jobs as any)?.company || 'الشركة المعلنة') : (app.jobTitle || app.jobs?.title || app.job?.title)}
-                              </p>
+                    return (
+                      <div className="w-full flex flex-col">
+                        {/* 🖼️ غلاف متجاوب يغطي النصف العلوي في كروت الطلبات المرسلة للباحث */}
+                        {isSentView && (
+                          <div className="relative w-full h-24 sm:h-28 overflow-hidden bg-slate-200 dark:bg-slate-800 rounded-t-[2.2rem]">
+                            {cardCover ? (
+                              <img
+                                src={cardCover}
+                                alt="Cover"
+                                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-r from-blue-700 via-indigo-700 to-slate-900 flex items-center justify-center">
+                                <Briefcase className="text-white/20" size={32} />
+                              </div>
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                            <div className="absolute top-3 left-3 text-[10px] font-black text-white bg-black/40 backdrop-blur-md px-3 py-1 rounded-xl flex items-center gap-1">
+                              {app.status === 'approved' && <><CheckCircle size={12} className="text-emerald-400" /> <span>مقبول</span></>}
+                              {app.status === 'rejected' && <><XCircle size={12} className="text-red-400" /> <span>معتذر عنه</span></>}
+                              {(!app.status || app.status === 'pending') && <><Clock size={12} className="text-amber-400" /> <span>قيد الانتظار</span></>}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className={`flex items-start gap-3 sm:gap-4 ${isSentView ? 'p-4 sm:p-5 pt-0' : ''}`}>
+                          <div
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openUserProfile(cardParty.id, cardParty);
+                            }}
+                            className={`relative cursor-pointer group/avatar shrink-0 ${isSentView ? '-mt-7 z-10' : ''}`}
+                            title="عرض الملف الشخصي"
+                          >
+                            <img
+                              src={cardParty.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(cardParty.name || 'U')}&background=0a66c2&color=fff`}
+                              className={`rounded-2xl object-cover shadow-md border-2 transition-transform group-hover/avatar:scale-105 ${
+                                isSentView ? 'w-14 h-14 sm:w-16 sm:h-16 border-white dark:border-slate-800 shadow-xl' : 'w-12 h-12 sm:w-14 sm:h-14'
+                              } ${isHighlighted ? 'border-blue-500 scale-105' : 'border-white dark:border-slate-700'}`}
+                              alt=""
+                            />
+                            <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white dark:border-slate-700 flex items-center justify-center shadow-sm ${app.status === 'approved' ? 'bg-emerald-500' :
+                              app.status === 'rejected' ? 'bg-red-500' :
+                                'bg-amber-500'
+                              }`}>
+                              {app.status === 'approved' ? <CheckCircle size={10} className="text-white" /> :
+                                app.status === 'rejected' ? <XCircle size={10} className="text-white" /> :
+                                  <Clock size={10} className="text-white" />}
+                            </div>
+                          </div>
+
+                          <div className={`flex-1 min-w-0 ${isSentView ? 'pt-2' : ''}`}>
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <h3 className="text-sm font-black text-slate-800 dark:text-white truncate">
+                                  {isSentView ? (app.jobTitle || app.jobs?.title || 'وظيفة مهنية') : resolved.name}
+                                </h3>
+                                <p 
+                                  onClick={(e) => {
+                                    if (isSentView) {
+                                      e.stopPropagation();
+                                      openUserProfile(employerInfo.id, employerInfo);
+                                    }
+                                  }}
+                                  className={`text-[10px] text-blue-600 dark:text-blue-400 font-bold mb-1 flex items-center gap-1 ${isSentView ? 'hover:underline cursor-pointer' : ''}`}
+                                >
+                                  <Briefcase size={10} /> {isSentView ? (employerInfo.name || (app as any).company || (app.jobs as any)?.company || 'الشركة المعلنة') : (app.jobTitle || app.jobs?.title || app.job?.title)}
+                                </p>
 
                               {/* Status badge for sent applications */}
                               {isSentView && (
@@ -912,6 +982,7 @@ function ApplicationsListViewContent({
                           )}
                         </div>
                       </div>
+                    </div>
                     );
                   })()}
                 </GlassCard>
@@ -962,14 +1033,18 @@ function ApplicationsListViewContent({
                   ? (currentApp.job?.title || currentApp.jobs?.title || (currentApp as any).jobTitle || 'وظيفة مهنية')
                   : topMiniInfo.name;
                 return (
-                  <div className="flex items-center gap-2 min-w-0">
+                  <div 
+                    onClick={() => openUserProfile(isSentView ? topMiniInfo.id : (resolveApplicant(currentApp).id || currentApp.applicant_id), topMiniInfo)}
+                    className="flex items-center gap-2 min-w-0 cursor-pointer group/top hover:opacity-80 transition-opacity"
+                    title="عرض الملف الشخصي"
+                  >
                     <img
                       src={topMiniInfo.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(topMiniInfo.name || 'U')}&background=random`}
-                      className="w-7 h-7 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                      className="w-7 h-7 rounded-lg object-cover border border-slate-200 dark:border-slate-700 shrink-0 transition-transform group-hover/top:scale-110"
                       alt=""
                     />
                     <div className="flex flex-col min-w-0">
-                      <span className="text-xs font-black text-slate-800 dark:text-white truncate max-w-[130px] md:max-w-[200px]">
+                      <span className="text-xs font-black text-slate-800 dark:text-white truncate max-w-[130px] md:max-w-[200px] group-hover/top:text-blue-600 dark:group-hover/top:text-blue-400 transition-colors">
                         {topMiniInfo.name}
                       </span>
                       {isSentView && (
@@ -1074,10 +1149,14 @@ function ApplicationsListViewContent({
                         <div className="absolute top-0 right-0 w-48 h-48 bg-white/5 rounded-full -translate-y-24 translate-x-24" />
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 relative z-10">
                           <div className="flex items-center gap-4">
-                            <div className="relative group">
+                            <div 
+                              onClick={() => openUserProfile(isSentView ? headerInfo.id : (resolved.id || app.applicant_id), headerInfo)}
+                              className="relative group cursor-pointer"
+                              title="عرض الملف الشخصي"
+                            >
                               <img
                                 src={headerInfo.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(headerInfo.name || 'U')}&background=random`}
-                                className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl object-cover border-4 border-white/30 shadow-2xl"
+                                className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl object-cover border-4 border-white/30 shadow-2xl transition-transform group-hover:scale-105 active:scale-95"
                                 referrerPolicy="no-referrer"
                                 alt=""
                               />
@@ -1088,7 +1167,13 @@ function ApplicationsListViewContent({
                             </div>
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className="text-xl sm:text-2xl font-black text-white">{headerInfo.name}</h3>
+                                <h3 
+                                  onClick={() => openUserProfile(isSentView ? headerInfo.id : (resolved.id || app.applicant_id), headerInfo)}
+                                  className="text-xl sm:text-2xl font-black text-white hover:underline cursor-pointer"
+                                  title="عرض الملف الشخصي"
+                                >
+                                  {headerInfo.name}
+                                </h3>
                                 <span className={`px-3 py-1 rounded-full text-[10px] font-black border bg-white/20 text-white border-white/30`}>
                                   {statusBadge.label}
                                 </span>

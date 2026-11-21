@@ -215,7 +215,7 @@ export function MissionsView({
 
       const { data: sent } = await (supabase as any)
         .from('job_applications')
-        .select('*, jobs(title, company, description, requirements)')
+        .select('*, jobs(id, title, company, description, requirements, employer_id, user_id, image_url, location, salary, jobType)')
         .eq('applicant_id', appUser.id)
         .order('created_at', { ascending: false });
 
@@ -226,6 +226,7 @@ export function MissionsView({
           const empUser = allUsers.find(u => u.id === empId);
           const companyName = job?.company || app.jobs?.company || empUser?.companyName || (empUser?.name ? `${empUser.name}` : 'شركة معتمدة');
           const employerName = empUser?.name || companyName;
+          const employerCover = empUser?.coverUrl || (empUser as any)?.cover_url || job?.image_url || app.jobs?.image_url || null;
           return {
             ...app,
             jobTitle: job?.title || app.jobs?.title || 'وظيفة مهنية',
@@ -233,6 +234,7 @@ export function MissionsView({
             employer_id: empId,
             employer_name: employerName,
             employer_avatar: empUser?.avatar || (empUser as any)?.avatar_url || null,
+            employer_cover: employerCover,
           };
         }));
       } else {

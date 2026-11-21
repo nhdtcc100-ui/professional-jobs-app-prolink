@@ -18,12 +18,13 @@ import {
 import { jobService } from '../../lib/services/jobService';
 import { postService } from '../../lib/services/postService';
 import { supabase } from '../../lib/supabase';
-import { imageService, snapshotFile } from '../../lib/services/imageService';
+import { imageService, snapshotFile, pickImageFromGallery } from '../../lib/services/imageService';
 import { mobileUploadService } from '../../lib/services/mobileUploadService';
 import { GlassButton } from '../ui';
 import { useAppContext } from '../../contexts/AppContext';
 import { withTimeout } from '../../lib/utils/withTimeout';
 import { withSessionRecovery } from '../../lib/services/sessionRecovery';
+import { generateUUID } from '../../lib/security/distributedId';
 import { Capacitor } from '@capacitor/core';
 import React, { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -70,11 +71,14 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
     setPostError(check.valid ? null : (check.error ?? null));
   };
   const [isPosting, setIsPosting] = useState(false);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
   const [uploadType, setUploadType] = useState<null | 'photo' | 'video' | 'job' | 'article'>(null);
   const [attachment, setAttachment] = useState<string | null>(null);
   const [videoUrl, setVideoUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const isPostingRef = useRef(false);
+  const uploadedImageUrlRef = useRef<string | null>(null);
 
   // Job Posting specialized state
   const [showJobForm, setShowJobForm] = useState(false);
@@ -97,31 +101,52 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const isEmployer = isJobPoster(currentUser);
   const isSeeker = isJobSeeker(currentUser);
 
-  // 📸 تجهيز الصورة فور اختيارها (تجميد فوري بالذاكرة RAM مع عرض المعاينة الفورية طبق الأصل للغلاف)
+  // 📸 تجهيز الصورة فور اختيارها (تجميد فوري بالذاكرة RAM مع بدء الرفع في الخلفية طبق الأصل للملف الشخصي)
   const prepareImageFile = async (file: File) => {
-    if (file.size === 0) {
+    if (!file || file.size === 0) {
       addToast("الملف فارغ، يرجى اختيار صورة صالحة", "error");
       return;
     }
     try {
       // 🔒 تجميد فوري في RAM لمنع تلف ملفات أندرويد المعرض (Scoped Storage)
       const snap = await snapshotFile(file);
-      const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setAttachment(dataUrl);
-        setSelectedFile(snap);
-        setUploadType(uploadType === 'article' ? 'article' : 'photo');
-      };
-      reader.readAsDataURL(snap);
+      setSelectedFile(snap);
+      setUploadType(uploadType === 'article' ? 'article' : 'photo');
+      uploadedImageUrlRef.current = null;
+
+      // معاينة فورية بدون أي تأخير 0ms
+      try {
+        const objUrl = URL.createObjectURL(snap);
+        setAttachment(objUrl);
+      } catch {
+        const reader = new FileReader();
+        reader.onload = () => setAttachment(reader.result as string);
+        reader.readAsDataURL(snap);
+      }
+
+      // ⚡ بدء الرفع فوراً في الخلفية طبق الأصل للغلاف والصورة الشخصية
+      const targetUserId = currentUser?.id || appUser?.id;
+      if (targetUserId) {
+        setIsUploadingMedia(true);
+        mobileUploadService.uploadFile(snap, 'post-image', targetUserId)
+          .then(res => res.uploadPromise)
+          .then(url => {
+            if (url) {
+              uploadedImageUrlRef.current = url;
+            }
+          })
+          .catch(err => {
+            console.warn('[PostBox] Background pre-upload warn:', err);
+          })
+          .finally(() => {
+            setIsUploadingMedia(false);
+          });
+      }
     } catch {
+      setSelectedFile(file);
+      setUploadType(uploadType === 'article' ? 'article' : 'photo');
       const reader = new FileReader();
-      reader.onload = () => {
-        const dataUrl = reader.result as string;
-        setAttachment(dataUrl);
-        setSelectedFile(file);
-        setUploadType(uploadType === 'article' ? 'article' : 'photo');
-      };
+      reader.onload = () => setAttachment(reader.result as string);
       reader.readAsDataURL(file);
     }
   };
@@ -129,9 +154,11 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const triggerUpload = async () => {
     try {
       if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
-        const file = await mobileUploadService.pickFile('post-image');
+        const file = await pickImageFromGallery();
         if (file) {
-          prepareImageFile(file);
+          await prepareImageFile(file);
+        } else {
+          fileInputRef.current?.click();
         }
       } else {
         fileInputRef.current?.click();
@@ -198,9 +225,13 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       addToast('حسابك محظور ولا يمكنك النشر 🚫', 'error');
       return;
     }
-    if (isPosting) return; 
+    // 🛡️ صمام أمان صارم لمنع النشر المزدوج نهائياً
+    if (isPostingRef.current || isPosting) return; 
+    isPostingRef.current = true;
+    setIsPosting(true);
 
-    const tempId = `temp-${Date.now()}`;
+    // 🔑 توليد UUID مسبقاً وتوحيده بين Optimistic Update وقاعدة البيانات لمنع التكرار نهائياً
+    const newPostId = generateUUID();
     const rawContent = (uploadType === 'article' && articleTitle.trim())
       ? `# ${articleTitle.trim()}\n\n${content}`
       : content;
@@ -221,14 +252,13 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
     setSelectedFile(null);
     setVideoUrl('');
     setUploadType(null);
-    setIsPosting(true);
 
-    // 2. Optimistic Update
+    // 2. Optimistic Update (using the exact same newPostId)
     const optimisticPost = {
-      id: tempId,
+      id: newPostId,
       authorId: appUser.id,
       authorName: appUser.name || 'مستخدم Elevate عراق',
-      authorAvatar: appUser.avatar || 'https://ui-avatars.com/api/?background=random',
+      authorAvatar: appUser.avatar || 'https://ui-avatars.com/api/?name=User&background=random',
       authorTitle: appUser.role === 'employer' ? (appUser.companyName || 'صاحب عمل') : 'باحث عن عمل',
       content: postContent,
       imageUrl: (postType === 'photo' || postType === 'article') ? postAttachment : null,
@@ -239,28 +269,35 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
     setPosts(prev => [optimisticPost as any, ...prev]);
 
     try {
-      let finalImageUrl: string | null = null;
+      let finalImageUrl: string | null = uploadedImageUrlRef.current || null;
       let finalVideoUrl: string | null = null;
 
       // 🚀 Handle Image Upload on Share (مخطط رفع صورة المنشور — طبق الأصل لمخطط الغلاف والصورة الشخصية)
       if ((postType === 'photo' || postType === 'article') && (postSelectedFile || postAttachment)) {
-        try {
-          if (postSelectedFile) {
-            // ⬆️ رفع مباشر إلى Supabase Storage بنفس المحرك المستخدم بالملف الشخصي
-            const uploadRes = await mobileUploadService.uploadFile(postSelectedFile, 'post-image', appUser.id);
-            const storageUrl = await uploadRes.uploadPromise;
-            if (storageUrl) {
-              finalImageUrl = storageUrl;
-            } else if (postAttachment && !postAttachment.startsWith('blob:') && postAttachment.length <= 250_000) {
-              finalImageUrl = postAttachment;
+        if (!finalImageUrl) {
+          try {
+            if (postSelectedFile) {
+              const uploadRes = await mobileUploadService.uploadFile(postSelectedFile, 'post-image', appUser.id);
+              const storageUrl = await uploadRes.uploadPromise;
+              if (storageUrl) {
+                finalImageUrl = storageUrl;
+              }
             }
-          } else if (postAttachment && !postAttachment.startsWith('blob:') && postAttachment.length <= 250_000) {
-            finalImageUrl = postAttachment;
+          } catch (uploadErr) {
+            console.warn('[PostBox] Image upload fallback to compact Base64:', uploadErr);
           }
-        } catch (uploadErr) {
-          console.warn('[PostBox] Image upload fallback:', uploadErr);
-          if (postAttachment && !postAttachment.startsWith('blob:') && postAttachment.length <= 250_000) {
+        }
+
+        // 🛡️ إذا لم يتوفر Storage URL، ضغط المعاينة كـ Base64 صغير وخفيف
+        if (!finalImageUrl && postAttachment) {
+          if (!postAttachment.startsWith('blob:') && postAttachment.length <= 200_000) {
             finalImageUrl = postAttachment;
+          } else {
+            try {
+              finalImageUrl = await imageService.compactBase64(postAttachment, 600, 0.72);
+            } catch {
+              finalImageUrl = null;
+            }
           }
         }
       }
@@ -271,6 +308,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       }
 
       const postPayload = {
+        id:            newPostId,
         author_id:     appUser.id,
         author_name:   appUser.name   || 'مستخدم Elevate عراق',
         author_avatar: appUser.avatar || null,
@@ -278,15 +316,8 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
                          ? (appUser.companyName || 'صاحب عمل')
                          : 'باحث عن عمل',
         content:       postContent,
-        // 🖼️ أعطِ الأولوية لـ Storage URL؛ إن لم يتوفر استخدم Base64 (compact فقط ≤ 150KB) وليس Data URL الأصلي الكبير
-        image_url:     (postType === 'photo' || postType === 'article')
-                         ? (finalImageUrl && !finalImageUrl.startsWith('blob:')
-                              ? finalImageUrl
-                              : (postAttachment && postAttachment.length <= 200_000 ? postAttachment : null))
-                         : null,
-        video_url:     postType === 'video'
-                         ? (finalVideoUrl || null)
-                         : (postVideoUrl || null),
+        image_url:     (postType === 'photo' || postType === 'article') ? finalImageUrl : null,
+        video_url:     postType === 'video' ? (finalVideoUrl || null) : (postVideoUrl || null),
         likes_count:   0,
       };
 
@@ -294,34 +325,50 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       if (error) throw error;
 
       postService.invalidateCache();
+      uploadedImageUrlRef.current = null;
 
-      if (newPost?.id) {
-        setPosts(prev => prev.map(p => p.id === tempId ? { ...p, id: newPost.id, imageUrl: finalImageUrl || postAttachment || p.imageUrl } : p));
-      }
+      // Update post in state with final DB URLs (matching newPostId)
+      setPosts(prev => prev.map(p => p.id === newPostId ? {
+        ...p,
+        id: newPost?.id || newPostId,
+        imageUrl: finalImageUrl || p.imageUrl,
+        videoUrl: finalVideoUrl || p.videoUrl,
+      } : p));
 
       addToast('تم النشر بنجاح! 🚀');
     } catch (e: any) {
       console.error(e);
       addToast('فشل الإرسال: ' + e.message, 'error');
-      setPosts(prev => prev.filter(p => p.id !== tempId));
+      setPosts(prev => prev.filter(p => p.id !== newPostId));
     } finally {
+      isPostingRef.current = false;
       setIsPosting(false);
       setIsPublishingArticle(false);
     }
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    let file = e.target.files?.[0];
+    const targetInput = e.target;
+    if (!file) {
+      await new Promise(r => setTimeout(r, 120));
+      file = targetInput?.files?.[0];
+    }
     if (!file) return;
-    if (e.target) e.target.value = ''; // Reset input so same file can be picked again
+    if (targetInput) targetInput.value = ''; // Reset input so same file can be picked again
 
-    if (isSeeker && !file.type.startsWith('image/')) {
+    // 📸 تمييز كامل ودقيق لجميع صور الأستوديو ومعارض أندرويد وLightroom
+    const isImageFile = file.type.startsWith('image/') ||
+      /\.(jpe?g|png|webp|gif|bmp|heic|heif|dng|raw)$/i.test(file.name || '') ||
+      (!file.type && !/\.(mp4|mov|avi|mkv|webm)$/i.test(file.name || ''));
+
+    if (isSeeker && !isImageFile) {
       addToast("كباحث عن عمل، يمكنك مشاركة الصور والمقالات فقط", "warning");
       return;
     }
 
-    if (file.type.startsWith('image/')) {
-      prepareImageFile(file);
+    if (isImageFile) {
+      await prepareImageFile(file);
     } else {
       setUploadType('video');
       setSelectedFile(file);
@@ -471,10 +518,10 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
               </button>
               <GlassButton 
                 onClick={handlePost} 
-                disabled={(!content.trim() && !attachment && !videoUrl) || isPosting || !!postError} 
+                disabled={(!content.trim() && !attachment && !videoUrl) || isPosting || isUploadingMedia || !!postError} 
                 className="py-3 px-10 rounded-2xl shadow-[0_10px_20px_rgba(10,102,194,0.3)] hover:shadow-[0_15px_30px_rgba(10,102,194,0.5)] active:scale-95 transition-all"
               >
-                {isPosting ? 'جاري النشر...' : 'نشر الآن 🚀'}
+                {isPosting ? 'جاري النشر...' : isUploadingMedia ? 'جاري تجهيز الصورة...' : 'نشر الآن 🚀'}
               </GlassButton>
             </div>
           </motion.div>

@@ -118,10 +118,12 @@ export const postService = {
     return withSessionRecovery(async () => {
     const authorId = postData.author_id || 'anonymous';
     const mutexKey = `post_create_${authorId}`;
+    const postId = postData.id || generateUUID();
     // ✅ Use a fresh UUID per attempt as idempotency key so retries are not blocked by cached errors
     const idempotencyKey = idempotencyEngine.generateKey('posts', authorId, {
+      id: postId,
       content: postData.content,
-      media_url: postData.media_url,
+      image_url: postData.image_url,
       author_id: authorId,
     });
 
@@ -146,13 +148,14 @@ export const postService = {
             const user = { id: postData.author_id, name: postData.author_name };
             const sanitized = {
               ...postData,
+              id: postId,
               content: sanitizeInput(postData.content || '', MAX_POST_LENGTH, user),
               author_name: sanitizeInput(postData.author_name || '', 100, user),
             };
 
-            return withCollisionRetry(async (_attempt, freshId) => {
+            return withCollisionRetry(async (_attempt, _freshId) => {
               const rowToInsert = {
-                id: sanitized.id || freshId,
+                id: sanitized.id || _freshId,
                 ...sanitized,
                 dislikes_count: 0,
               };
@@ -160,7 +163,7 @@ export const postService = {
               // ✅ Wrap every insert with a 10s timeout to prevent hanging locks
               const insertWithTimeout = async () => {
                 const res = await withTimeout(
-                  (supabase.from('posts') as any).insert([rowToInsert]),
+                  (supabase.from('posts') as any).insert([rowToInsert]).select(),
                   10000,
                   'createPost.insert'
                 );
@@ -172,31 +175,34 @@ export const postService = {
                 if (res.error && (res.error.code === '42703' || res.error.message?.includes('dislikes_count'))) {
                   const { dislikes_count, ...fallbackRow } = rowToInsert;
                   const fbRes: any = await withTimeout(
-                    (supabase.from('posts') as any).insert([fallbackRow]),
+                    (supabase.from('posts') as any).insert([fallbackRow]).select(),
                     10000,
                     'createPost.insert.fallback'
                   );
                   if (!fbRes.error) this.invalidateCache();
-                  return fbRes;
+                  const retData = Array.isArray(fbRes.data) ? fbRes.data[0] : (fbRes.data || fallbackRow);
+                  return { data: retData, error: fbRes.error };
                 }
                 if (!res.error) this.invalidateCache();
-                return res;
+                const retData = Array.isArray(res.data) ? res.data[0] : (res.data || rowToInsert);
+                return { data: retData, error: res.error };
               } catch (insertErr) {
                 // ✅ Log real error — don't swallow silently
                 console.error('[createPost] insert error:', insertErr);
                 // Fallback: try without dislikes_count column
                 const { dislikes_count, ...fallbackRow } = rowToInsert;
                 const fbRes: any = await withTimeout(
-                  (supabase.from('posts') as any).insert([fallbackRow]),
+                  (supabase.from('posts') as any).insert([fallbackRow]).select(),
                   10000,
                   'createPost.insert.catch-fallback'
                 );
                 if (!fbRes.error) this.invalidateCache();
-                return fbRes;
+                const retData = Array.isArray(fbRes.data) ? fbRes.data[0] : (fbRes.data || fallbackRow);
+                return { data: retData, error: fbRes.error };
               }
             }, { scope: 'createPost' });
           },
-          { ttlMs: 3000, scope: 'posts' }
+          { ttlMs: 60000, scope: 'posts' }
         )
       );
 
