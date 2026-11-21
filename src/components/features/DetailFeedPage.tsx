@@ -315,9 +315,10 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
               /* ── Job View: الكارد العلوي (الغلاف والعنوان والناشر) ثابت 100%، والتفاصيل سكرول داخلي ── */
               <div className="flex flex-col h-full w-full overflow-hidden">
                 
-                {/* ── 1. FIXED TOP HERO CARD: ثابت رغم السكرول ── */}
+                {/* ── 1. FIXED TOP HERO CARD: ثابت رغم السكرول — يظهر صورة إذا وجدت، وتصميم أنيق بدون صورة مكسورة إذا لم توجد ── */}
                 {(() => {
                   const isActive = currentItem.is_active !== false;
+                  const realJobImage = currentItem.image_url || currentItem.imageUrl || currentItem.image || pubUser?.coverUrl || (pubUser as any)?.cover_url || null;
 
                   const handleOpenPublisher = () => {
                     const targetUser = pubUser || {
@@ -337,72 +338,133 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     }
                   };
 
-                  return (
-                    <div className="shrink-0 relative overflow-hidden rounded-t-3xl border-b border-slate-200/80 dark:border-slate-800 z-10 bg-slate-950">
-                      <div 
-                        onClick={handleOpenPublisher}
-                        className={`relative overflow-hidden ${heroCover ? 'h-48 sm:h-56' : 'h-40 sm:h-48'} shrink-0 cursor-pointer group/hero`}
-                        title="النقر هنا يفتح الملف المهني للناشر"
-                      >
-                        <img 
-                          src={heroCover} 
-                          alt={currentItem.title} 
-                          className="w-full h-full object-cover transition-transform duration-700 group-hover/hero:scale-105" 
-                          onError={(e) => handleImageError(e, DEFAULT_NEWS_PLACEHOLDER)}
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/50 to-transparent" />
-                        
-                        {/* Publisher profile shortcut pill */}
-                        <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/45 hover:bg-black/65 backdrop-blur-md text-white text-[10px] font-black border border-white/20 transition-all shadow-md group-hover/hero:scale-105">
-                          <ExternalLink size={12} />
-                          <span>الملف المهني للناشر 🏢</span>
-                        </div>
+                  // 🖼️ إذا كانت الوظيفة تحتوي على صورة خلفية:
+                  if (realJobImage) {
+                    return (
+                      <div className="shrink-0 relative overflow-hidden rounded-t-3xl border-b border-slate-200/80 dark:border-slate-800 z-10 bg-slate-950">
+                        <div 
+                          onClick={handleOpenPublisher}
+                          className="relative overflow-hidden h-48 sm:h-56 md:h-64 shrink-0 cursor-pointer group/hero"
+                          title="النقر هنا يفتح الملف المهني للناشر"
+                        >
+                          <img 
+                            src={realJobImage} 
+                            alt={currentItem.title} 
+                            className="w-full h-full object-cover transition-transform duration-700 group-hover/hero:scale-105" 
+                            onError={(e) => handleImageError(e, DEFAULT_NEWS_PLACEHOLDER)}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/50 to-transparent" />
+                          
+                          {/* Publisher profile shortcut pill */}
+                          <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/45 hover:bg-black/65 backdrop-blur-md text-white text-[10px] font-black border border-white/20 transition-all shadow-md group-hover/hero:scale-105">
+                            <ExternalLink size={12} />
+                            <span>الملف المهني للناشر 🏢</span>
+                          </div>
 
-                        <div className="absolute bottom-4 right-4 left-4 z-10">
-                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                            <div className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-md border ${
-                              isActive ? 'bg-emerald-500/20 border-emerald-400/30 text-emerald-400' : 'bg-slate-700/40 border-slate-600/30 text-slate-300'
-                            }`}>
-                              <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
-                              {isActive ? 'التوظيف متاح الآن' : 'التوظيف مغلق'}
+                          <div className="absolute bottom-4 right-4 left-4 z-10">
+                            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                              <div className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-md border ${
+                                isActive ? 'bg-emerald-500/20 border-emerald-400/30 text-emerald-400' : 'bg-slate-700/40 border-slate-600/30 text-slate-300'
+                              }`}>
+                                <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
+                                {isActive ? 'التوظيف متاح الآن' : 'التوظيف مغلق'}
+                              </div>
+                            </div>
+                            
+                            <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md line-clamp-2">
+                              {currentItem.title}
+                            </h1>
+                            
+                            <div 
+                              className="flex items-center gap-2 mt-2 cursor-pointer hover:opacity-90 transition-opacity"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenPublisher();
+                              }}
+                            >
+                              {pubAvatar ? (
+                                <img src={pubAvatar} alt="" className="w-6 h-6 rounded-lg object-cover border border-white/30 shadow-md" />
+                              ) : (
+                                <div className="w-6 h-6 rounded-lg bg-blue-600/80 border border-white/20 flex items-center justify-center text-white text-xs font-black">
+                                  {currentItem.company ? currentItem.company.charAt(0) : 'P'}
+                                </div>
+                              )}
+                              <p className="text-xs sm:text-sm text-white/95 font-black">{currentItem.company}</p>
+                              <span className="text-[10px] font-bold text-white/60">• {timeAgo(currentItem.postedAt)}</span>
+                              {(pubUser?.phone || (pubUser as any)?.website) && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openContactMenu({ phone: pubUser?.phone, name: pubUser?.name || currentItem.company, website: (pubUser as any)?.website, cvUrl: (pubUser as any)?.cv_url });
+                                  }}
+                                  className="mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/90 hover:bg-emerald-500 text-white text-[10px] font-black border border-emerald-300/30 shadow-md active:scale-95 transition-all"
+                                  title="تواصل مع صاحب الوظيفة: واتساب / اتصال / روابطه"
+                                >
+                                  <Phone size={12} /> تواصل معه
+                                </button>
+                              )}
                             </div>
                           </div>
-                          
-                          <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md line-clamp-2">
-                            {currentItem.title}
-                          </h1>
-                          
-                          <div 
-                            className="flex items-center gap-2 mt-2 cursor-pointer hover:opacity-90 transition-opacity"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenPublisher();
-                            }}
-                          >
-                            {pubAvatar ? (
-                              <img src={pubAvatar} alt="" className="w-6 h-6 rounded-lg object-cover border border-white/30 shadow-md" />
-                            ) : (
-                              <div className="w-6 h-6 rounded-lg bg-blue-600/80 border border-white/20 flex items-center justify-center text-white text-xs font-black">
-                                {currentItem.company ? currentItem.company.charAt(0) : 'P'}
-                              </div>
-                            )}
-                            <p className="text-xs sm:text-sm text-white/95 font-black">{currentItem.company}</p>
-                            <span className="text-[10px] font-bold text-white/60">• {timeAgo(currentItem.postedAt)}</span>
-                            {(pubUser?.phone || (pubUser as any)?.website) && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  openContactMenu({ phone: pubUser?.phone, name: pubUser?.name || currentItem.company, website: (pubUser as any)?.website, cvUrl: (pubUser as any)?.cv_url });
-                                }}
-                                className="mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/90 hover:bg-emerald-500 text-white text-[10px] font-black border border-emerald-300/30 shadow-md active:scale-95 transition-all"
-                                title="تواصل مع صاحب الوظيفة: واتساب / اتصال / روابطه"
-                              >
-                                <Phone size={12} /> تواصل معه
-                              </button>
-                            )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // 🏢 إذا كانت الوظيفة لا تحتوي على خلفية: ترويسة كارد متدرجة فاخرة بدون صورة مكسورة
+                  return (
+                    <div className="shrink-0 relative overflow-hidden rounded-t-3xl border-b border-slate-200/80 dark:border-slate-800 z-10 bg-gradient-to-br from-[#0a66c2] via-[#00488f] to-[#002447] p-5 sm:p-6 text-white">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-md border ${
+                          isActive ? 'bg-emerald-500/25 border-emerald-400/40 text-emerald-300' : 'bg-slate-700/50 border-slate-600/40 text-slate-300'
+                        }`}>
+                          <div className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-400 animate-pulse' : 'bg-slate-400'}`} />
+                          {isActive ? 'فرصة عمل نشطة' : 'التوظيف مغلق'}
+                        </div>
+                        <button
+                          onClick={handleOpenPublisher}
+                          className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/15 hover:bg-white/25 backdrop-blur-md text-white text-[10px] font-black border border-white/20 transition-all cursor-pointer"
+                        >
+                          <ExternalLink size={11} />
+                          <span>الملف المهني 🏢</span>
+                        </button>
+                      </div>
+
+                      <h1 className="text-xl sm:text-2xl font-black text-white leading-tight mb-3 tracking-tight">
+                        {currentItem.title}
+                      </h1>
+
+                      <div className="flex items-center gap-3 pt-2 border-t border-white/15 flex-wrap">
+                        <div 
+                          className="flex items-center gap-2 cursor-pointer hover:opacity-90 transition-opacity"
+                          onClick={handleOpenPublisher}
+                        >
+                          {pubAvatar ? (
+                            <img src={pubAvatar} alt="" className="w-8 h-8 rounded-xl object-cover border border-white/30 shadow-md" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-xl bg-white/20 border border-white/30 flex items-center justify-center text-white text-xs font-black">
+                              {currentItem.company ? currentItem.company.charAt(0) : 'P'}
+                            </div>
+                          )}
+                          <div>
+                            <p className="text-xs sm:text-sm font-black text-white">{currentItem.company}</p>
+                            <span className="text-[10px] font-bold text-white/70">{timeAgo(currentItem.postedAt)}</span>
                           </div>
                         </div>
+
+                        {(pubUser?.phone || (pubUser as any)?.website) && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openContactMenu({ phone: pubUser?.phone, name: pubUser?.name || currentItem.company, website: (pubUser as any)?.website, cvUrl: (pubUser as any)?.cv_url });
+                            }}
+                            className="mr-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black border border-emerald-300/30 shadow-md active:scale-95 transition-all cursor-pointer"
+                            title="تواصل مع صاحب الوظيفة"
+                          >
+                            <Phone size={12} /> تواصل معه
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -618,48 +680,61 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   document.body
                 )}
 
-                {/* ── Header: Article Hero Cover OR regular post bar ── */}
+                {/* ── Header: Hero Cover للمنشور أو المقال (إذا وُجدت صورة كالأخبار تماماً، وإذا لم توجد يظهر تصميم أنيق بدون صورة مكسورة) ── */}
                 {(() => {
-                  const isArticle = (currentItem as any).post_type === 'article' || (currentItem as any).type === 'article' || currentItem.content?.startsWith('# ');
-                  const postDirectImage = currentItem.imageUrl || currentItem.image_url || currentItem.image || null;
+                  const isArticle = (currentItem as any).post_type === 'article' || (currentItem as any).type === 'article' || currentItem.content?.startsWith('# ') || (currentItem.content?.length || 0) > 300;
+                  const postDirectImage = currentItem.imageUrl || currentItem.image_url || currentItem.image || currentItem.thumbnail || pubUser?.coverUrl || (pubUser as any)?.cover_url || null;
                   const hasVideo = !!currentItem.videoUrl;
                   const isPostOwner = !!(appUser && (currentItem.authorId === appUser.id || currentItem.author_id === appUser.id));
                   const isPostAdmin = !!((appUser as any)?.isAdmin || (appUser as any)?.role === 'admin' || (appUser as any)?.role === 'superadmin' || (appUser as any)?.is_admin);
 
-                  // ── 🗞️ Article Hero Cover (عند وجود صورة: مثل الأخبار تماماً) ──
-                  if (isArticle && postDirectImage) {
-                    // استخراج عنوان المقال (أول سطر # أو أول 80 حرف)
-                    const rawContent = currentItem.content || '';
-                    const articleTitleMatch = rawContent.match(/^#\s+(.+)/m);
-                    const articleTitle = articleTitleMatch ? articleTitleMatch[1] : (currentItem.title || currentItem.authorName || 'مقال مهني');
+                  // استخراج عنوان المقال أو المنشور
+                  const rawContent = currentItem.content || '';
+                  const articleTitleMatch = rawContent.match(/^#\s+(.+)/m);
+                  let displayTitle = articleTitleMatch ? articleTitleMatch[1] : (currentItem.title || '');
+                  if (!displayTitle && isArticle) {
+                    const firstLine = rawContent.split('\n').filter((l: string) => l.trim().length > 0)[0] || '';
+                    displayTitle = firstLine.length <= 90 ? firstLine : firstLine.slice(0, 90) + '...';
+                  }
 
+                  // ── 🗞️ عند وجود صورة (سواء مقال أو منشور): تظهر الصورة العلوية كهيرو كارد كامل كالأخبار تماماً ──
+                  if (postDirectImage) {
                     return (
                       <>
-                        {/* Fixed Article Hero — نفس مخطط الأخبار */}
+                        {/* Fixed Post / Article Hero — رأس ثابت 100% بالخلفية الهيرو */}
                         <div className="shrink-0 relative overflow-hidden rounded-t-3xl border-b border-slate-200/80 dark:border-slate-800 z-10 bg-slate-950">
                           <div className="relative overflow-hidden h-56 sm:h-64 md:h-72 shrink-0">
                             <img
                               src={postDirectImage}
-                              alt={articleTitle}
+                              alt={displayTitle || currentItem.authorName || 'صورة'}
                               className="w-full h-full object-cover"
                               onError={(e) => handleImageError(e, AMAL_NEWS_IMAGE)}
                             />
                             <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-transparent" />
 
-                            {/* Article type pill */}
-                            <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600/80 backdrop-blur-md text-white text-[10px] font-black border border-purple-400/30 shadow-md">
-                              <FileText size={12} className="text-purple-200" />
-                              <span>مقال مهني ✍️</span>
+                            {/* Type badge */}
+                            <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/50 backdrop-blur-md text-white text-[10px] font-black border border-white/20 shadow-md">
+                              {isArticle ? (
+                                <>
+                                  <FileText size={12} className="text-purple-300" />
+                                  <span>مقال مهني ✍️</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Briefcase size={12} className="text-blue-300" />
+                                  <span>منشور مهني 💼</span>
+                                </>
+                              )}
                             </div>
 
-                            {/* Admin/owner actions */}
+                            {/* Owner / Admin action buttons */}
                             {(isPostOwner || isPostAdmin) && (
                               <div className="absolute top-3 right-3 z-20 flex items-center gap-1">
                                 {onEditPost && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); onEditPost(currentItem); }}
                                     className="p-2 bg-black/40 backdrop-blur-md text-white hover:bg-blue-600 rounded-xl transition-all border border-white/20 cursor-pointer"
-                                    title="تعديل المقال"
+                                    title="تعديل"
                                   >
                                     <Edit2 size={13} />
                                   </button>
@@ -668,7 +743,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                                   <button
                                     onClick={(e) => { e.stopPropagation(); setShowPostDeleteConfirm(true); }}
                                     className="p-2 bg-black/40 backdrop-blur-md text-white hover:bg-red-600 rounded-xl transition-all border border-white/20 cursor-pointer"
-                                    title="حذف المقال"
+                                    title="حذف"
                                   >
                                     <Trash2 size={13} />
                                   </button>
@@ -676,18 +751,20 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                               </div>
                             )}
 
-                            {/* Title + Author at bottom */}
+                            {/* Title & Author Info at bottom */}
                             <div className="absolute bottom-4 right-4 left-4 z-10">
-                              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                                <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-md border bg-purple-500/20 border-purple-400/30 text-purple-200">
+                              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                                <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest backdrop-blur-md border bg-white/20 border-white/30 text-white">
                                   <Calendar size={11} />
                                   <span>{timeAgo(currentItem.timestamp || currentItem.created_at)}</span>
                                 </div>
                               </div>
 
-                              <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md line-clamp-3">
-                                {articleTitle}
-                              </h1>
+                              {displayTitle && (
+                                <h1 className="text-lg sm:text-xl md:text-2xl font-black text-white leading-tight tracking-tight drop-shadow-md line-clamp-2 mb-1">
+                                  {displayTitle}
+                                </h1>
+                              )}
 
                               <div
                                 className="flex items-center gap-2 mt-2 cursor-pointer group/pub"
@@ -697,9 +774,9 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                                 <img
                                   src={currentItem.authorAvatar || pubAvatar || 'https://ui-avatars.com/api/?background=random'}
                                   alt={currentItem.authorName}
-                                  className="w-6 h-6 rounded-lg object-cover border border-white/30 shadow-sm group-hover/pub:ring-2 group-hover/pub:ring-purple-400"
+                                  className="w-7 h-7 rounded-xl object-cover border border-white/30 shadow-sm group-hover/pub:ring-2 group-hover/pub:ring-blue-400"
                                 />
-                                <p className="text-xs sm:text-sm text-white/95 font-black group-hover/pub:text-purple-200 transition-colors">{currentItem.authorName || 'كاتب مهني'}</p>
+                                <p className="text-xs sm:text-sm text-white/95 font-black group-hover/pub:text-blue-200 transition-colors">{currentItem.authorName || 'مستخدم ProLink'}</p>
                                 <span className="text-[10px] font-bold text-white/60">• {currentItem.authorTitle || 'عضو مهني'}</span>
                               </div>
                             </div>
@@ -709,93 +786,25 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                         {/* Scroll progress line */}
                         <div className="h-1 w-full bg-slate-100 dark:bg-slate-800 shrink-0 overflow-hidden">
                           <div
-                            className="h-full bg-gradient-to-r from-purple-500 via-pink-500 to-rose-400 transition-all duration-150"
+                            className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 transition-all duration-150"
                             style={{ width: `${Math.max(6, scrollProgress)}%` }}
                           />
                         </div>
 
-                        {/* Scrollable Article Content */}
+                        {/* Scrollable Post Content */}
                         <div
                           ref={scrollContainerRef}
                           onScroll={onScroll}
                           className="flex-1 min-h-0 overflow-y-auto pro-scrollbar overscroll-y-contain p-4 sm:p-5 space-y-4"
                           style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
                         >
-                          <div className="bg-slate-50 dark:bg-slate-800/60 p-4 sm:p-5 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
-                            {currentItem.content ? (
-                              <BilingualSmartText text={currentItem.content} className="space-y-3" paragraphClassName="!text-slate-900 dark:!text-slate-100 font-medium text-sm sm:text-base leading-relaxed" />
-                            ) : (
-                              <p className="text-slate-400 italic">لا يوجد نص إضافي.</p>
-                            )}
-                          </div>
-                          <div className="h-2" />
-                        </div>
-                      </>
-                    );
-                  }
-
-                  // ── 📝 Article WITHOUT image: elegant typographic header ──
-                  if (isArticle && !postDirectImage) {
-                    const rawContent = currentItem.content || '';
-                    const articleTitleMatch = rawContent.match(/^#\s+(.+)/m);
-                    const articleTitle = articleTitleMatch ? articleTitleMatch[1] : (currentItem.title || '');
-
-                    return (
-                      <>
-                        {/* Elegant article header without image */}
-                        <div className="shrink-0 p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-br from-purple-50 via-white to-slate-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 z-10">
-                          <div className="flex items-start justify-between gap-3 mb-4">
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-700">
-                              <FileText size={11} />
-                              مقال مهني ✍️
-                            </span>
-                            {(isPostOwner || isPostAdmin) && (
-                              <div className="flex items-center gap-1">
-                                {onEditPost && (
-                                  <button onClick={(e) => { e.stopPropagation(); onEditPost(currentItem); }} className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all border border-blue-200/60 dark:border-blue-800/50 cursor-pointer" title="تعديل"><Edit2 size={13} /></button>
-                                )}
-                                {onDeletePost && (
-                                  <button onClick={(e) => { e.stopPropagation(); setShowPostDeleteConfirm(true); }} className="p-1.5 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all border border-red-200/60 dark:border-red-800/50 cursor-pointer" title="حذف"><Trash2 size={13} /></button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          {articleTitle && (
-                            <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-tight mb-4 tracking-tight">
-                              {articleTitle}
-                            </h1>
-                          )}
-                          <div className="flex items-center gap-3 cursor-pointer group/author" onClick={handleOpenPublisher} title="عرض الملف المهني">
-                            <img
-                              src={currentItem.authorAvatar || pubAvatar || 'https://ui-avatars.com/api/?background=random'}
-                              alt={currentItem.authorName}
-                              className="w-10 h-10 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm group-hover/author:ring-2 group-hover/author:ring-purple-500 transition-all shrink-0"
-                            />
-                            <div className="min-w-0">
-                              <h3 className="font-black text-slate-900 dark:text-white text-sm leading-tight truncate group-hover/author:text-purple-600 transition-colors">
-                                {currentItem.authorName || 'كاتب مهني'}
-                              </h3>
-                              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400 font-bold">
-                                <span className="truncate">{currentItem.authorTitle || 'عضو مهني'}</span>
-                                <span>•</span>
-                                <span className="flex items-center gap-1 shrink-0"><Clock size={10} /> {timeAgo(currentItem.timestamp || currentItem.created_at)}</span>
-                              </div>
+                          {/* Video player if exists */}
+                          {hasVideo && (
+                            <div className="w-full rounded-2xl overflow-hidden bg-black aspect-video shadow-md">
+                              <video src={currentItem.videoUrl} controls className="w-full h-full object-contain" />
                             </div>
-                          </div>
-                        </div>
+                          )}
 
-                        {/* Scroll progress */}
-                        <div className="h-1 w-full bg-slate-100 dark:bg-slate-800 shrink-0 overflow-hidden">
-                          <div className="h-full bg-gradient-to-r from-purple-500 via-pink-500 to-rose-400 transition-all duration-150" style={{ width: `${Math.max(6, scrollProgress)}%` }} />
-                        </div>
-
-                        {/* Scrollable content */}
-                        <div
-                          ref={scrollContainerRef}
-                          onScroll={onScroll}
-                          className="flex-1 min-h-0 overflow-y-auto pro-scrollbar overscroll-y-contain p-4 sm:p-5 space-y-4"
-                          style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
-                        >
                           <div className="bg-slate-50 dark:bg-slate-800/60 p-4 sm:p-5 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
                             {currentItem.content ? (
                               <BilingualSmartText text={currentItem.content} className="space-y-3" paragraphClassName="!text-slate-900 dark:!text-slate-100 font-medium text-sm sm:text-base leading-relaxed" />
@@ -809,20 +818,43 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     );
                   }
 
-                  // ── 💼 Regular Post (non-article) ──
+                  // ── 📝 في حال عدم وجود صورة: رأس أنيق بتصميم فاخر بدون أي صورة مكسورة ──
                   return (
                     <>
-                      {/* Top Bar with Publisher Info and Action Buttons */}
-                      <div className="shrink-0 p-4 border-b border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10 flex items-center justify-between gap-3">
-                        <div
-                          onClick={handleOpenPublisher}
-                          className="flex items-center gap-3 cursor-pointer group/author min-w-0"
-                          title="عرض الملف المهني للناشر"
-                        >
+                      <div className="shrink-0 p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-br from-blue-50/70 via-white to-slate-50 dark:from-slate-900 dark:via-slate-900 dark:to-slate-800 z-10">
+                        <div className="flex items-start justify-between gap-3 mb-4">
+                          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black border ${
+                            isArticle 
+                              ? 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700'
+                              : 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700'
+                          }`}>
+                            {isArticle ? <FileText size={11} /> : <Briefcase size={11} />}
+                            {isArticle ? 'مقال مهني ✍️' : 'منشور مهني 💼'}
+                          </span>
+
+                          {(isPostOwner || isPostAdmin) && (
+                            <div className="flex items-center gap-1">
+                              {onEditPost && (
+                                <button onClick={(e) => { e.stopPropagation(); onEditPost(currentItem); }} className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all border border-blue-200/60 dark:border-blue-800/50 cursor-pointer" title="تعديل"><Edit2 size={13} /></button>
+                              )}
+                              {onDeletePost && (
+                                <button onClick={(e) => { e.stopPropagation(); setShowPostDeleteConfirm(true); }} className="p-1.5 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all border border-red-200/60 dark:border-red-800/50 cursor-pointer" title="حذف"><Trash2 size={13} /></button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                        {displayTitle && (
+                          <h1 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-tight mb-4 tracking-tight">
+                            {displayTitle}
+                          </h1>
+                        )}
+
+                        <div className="flex items-center gap-3 cursor-pointer group/author" onClick={handleOpenPublisher} title="عرض الملف المهني">
                           <img
                             src={currentItem.authorAvatar || pubAvatar || 'https://ui-avatars.com/api/?background=random'}
                             alt={currentItem.authorName}
-                            className="w-11 h-11 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm group-hover/author:ring-2 group-hover/author:ring-blue-500 transition-all shrink-0"
+                            className="w-10 h-10 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm group-hover/author:ring-2 group-hover/author:ring-blue-500 transition-all shrink-0"
                           />
                           <div className="min-w-0">
                             <h3 className="font-black text-slate-900 dark:text-white text-sm leading-tight truncate group-hover/author:text-blue-600 transition-colors">
@@ -835,64 +867,27 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                             </div>
                           </div>
                         </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-[9px] font-black px-2.5 py-1 rounded-full border bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800">
-                            منشور مهني 💼
-                          </span>
-
-                          {(isPostOwner || isPostAdmin) && (
-                            <div className="flex items-center gap-1">
-                              {onEditPost && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); onEditPost(currentItem); }}
-                                  className="p-1.5 bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white rounded-xl transition-all border border-blue-200/60 dark:border-blue-800/50 cursor-pointer"
-                                  title="تعديل المنشور"
-                                >
-                                  <Edit2 size={13} />
-                                </button>
-                              )}
-                              {onDeletePost && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setShowPostDeleteConfirm(true); }}
-                                  className="p-1.5 bg-red-50 dark:bg-red-950/60 text-red-600 dark:text-red-400 hover:bg-red-600 hover:text-white rounded-xl transition-all border border-red-200/60 dark:border-red-800/50 cursor-pointer"
-                                  title="حذف المنشور"
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
                       </div>
 
-                      {/* Scrollable Post Body */}
+                      {/* Scroll progress */}
+                      <div className="h-1 w-full bg-slate-100 dark:bg-slate-800 shrink-0 overflow-hidden">
+                        <div className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 transition-all duration-150" style={{ width: `${Math.max(6, scrollProgress)}%` }} />
+                      </div>
+
+                      {/* Scrollable content */}
                       <div
                         ref={scrollContainerRef}
                         onScroll={onScroll}
                         className="flex-1 min-h-0 overflow-y-auto pro-scrollbar overscroll-y-contain p-4 sm:p-5 space-y-4"
                         style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
                       >
-                        {/* Full Image Display */}
-                        {postDirectImage && (
-                          <div className="w-full rounded-2xl overflow-hidden bg-slate-100 dark:bg-slate-950 border border-slate-200/80 dark:border-slate-800 flex items-center justify-center p-1 sm:p-2 shadow-inner">
-                            <img
-                              src={postDirectImage}
-                              alt={currentItem.authorName || 'صورة المنشور'}
-                              className="w-full h-auto max-h-[65vh] object-contain rounded-xl"
-                              onError={(e) => handleImageError(e, AMAL_NEWS_IMAGE)}
-                            />
-                          </div>
-                        )}
-
-                        {/* Video Player */}
+                        {/* Video player if exists */}
                         {hasVideo && (
                           <div className="w-full rounded-2xl overflow-hidden bg-black aspect-video shadow-md">
                             <video src={currentItem.videoUrl} controls className="w-full h-full object-contain" />
                           </div>
                         )}
 
-                        {/* Post Content Text */}
                         <div className="bg-slate-50 dark:bg-slate-800/60 p-4 sm:p-5 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
                           {currentItem.content ? (
                             <BilingualSmartText text={currentItem.content} className="space-y-3" paragraphClassName="!text-slate-900 dark:!text-slate-100 font-medium text-sm sm:text-base leading-relaxed" />
@@ -900,6 +895,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                             <p className="text-slate-400 italic">لا يوجد نص إضافي.</p>
                           )}
                         </div>
+                        <div className="h-2" />
                       </div>
                     </>
                   );

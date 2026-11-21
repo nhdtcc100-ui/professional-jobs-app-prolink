@@ -213,11 +213,21 @@ export function MissionsView({
         setIncomingApplications([]);
       }
 
-      const { data: sent } = await (supabase as any)
+      let sentRes = await (supabase as any)
         .from('job_applications')
-        .select('*, jobs(id, title, company, description, requirements, employer_id, user_id, image_url, location, salary, jobType)')
+        .select('*, jobs(id, title, company, description, requirements, employer_id, image_url, location, salary, jobType)')
         .eq('applicant_id', appUser.id)
         .order('created_at', { ascending: false });
+
+      if (sentRes.error) {
+        sentRes = await (supabase as any)
+          .from('job_applications')
+          .select('*')
+          .eq('applicant_id', appUser.id)
+          .order('created_at', { ascending: false });
+      }
+
+      const sent = sentRes.data;
 
       if (sent) {
         setSentApplications((sent as any[]).map((app: any) => {

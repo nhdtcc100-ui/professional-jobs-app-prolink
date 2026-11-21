@@ -266,7 +266,7 @@ function ApplicationsListViewContent({
     }
   };
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'pending' | 'approved' | 'rejected'>('pending');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [selectedAppIndex, setSelectedAppIndex] = useState<number | null>(null);
   const [highlightedAppId, setHighlightedAppId] = useState<string | null>(null);
   const detailContainerRef = React.useRef<HTMLDivElement>(null);
@@ -278,6 +278,8 @@ function ApplicationsListViewContent({
   const [editEducation, setEditEducation] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+
+  const safeApps = Array.isArray(incomingApplications) ? incomingApplications : [];
 
   const openEditModal = (app: any) => {
     setEditingApp(app);
@@ -326,6 +328,30 @@ function ApplicationsListViewContent({
       };
     }
   }, [selectedAppIndex]);
+
+  // 🛡️ الاستماع لأحداث العودة للطلب أو الربط العميق من الإشعارات أو الملف الشخصي
+  useEffect(() => {
+    const handleDeepLink = (e: any) => {
+      const appId = e.detail?.appId;
+      if (!appId || !safeApps.length) return;
+      const targetApp = safeApps.find(a => a.id === appId);
+      if (targetApp) {
+        setStatusFilter('all');
+        setHighlightedAppId(appId);
+        setTimeout(() => {
+          const el = document.getElementById(`app-card-${appId}`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 150);
+      }
+    };
+
+    window.addEventListener('prolink_open_sent_applications', handleDeepLink);
+    window.addEventListener('prolink_open_incoming_applications', handleDeepLink);
+    return () => {
+      window.removeEventListener('prolink_open_sent_applications', handleDeepLink);
+      window.removeEventListener('prolink_open_incoming_applications', handleDeepLink);
+    };
+  }, [safeApps]);
 
   // CV open/download: signed URLs for private buckets, data:/blob: handled natively.
   const handleOpenApplicantCV = async (cvUrl: string, _name?: string) => {
@@ -439,15 +465,37 @@ function ApplicationsListViewContent({
   const [interviewDate, setInterviewDate] = useState('');
   const [interviewTime, setInterviewTime] = useState('');
 
-  const safeApps = Array.isArray(incomingApplications) ? incomingApplications : [];
+  const isApproved = (st?: string) => {
+    const s = (st || '').toLowerCase().trim();
+    return s === 'approved' || s === 'accepted';
+  };
+  const isRejected = (st?: string) => {
+    const s = (st || '').toLowerCase().trim();
+    return s === 'rejected' || s === 'declined' || s === 'refused';
+  };
+  const isPending = (st?: string) => {
+    const s = (st || '').toLowerCase().trim();
+    return !s || s === 'pending' || s === 'under_review' || s === 'reviewing' || s === 'new';
+  };
+
+  const pendingCount = safeApps.filter(a => isPending(a.status)).length;
+  const approvedCount = safeApps.filter(a => isApproved(a.status)).length;
+  const rejectedCount = safeApps.filter(a => isRejected(a.status)).length;
 
   const filteredApps = safeApps.filter(app => {
     if (!app) return false;
     const name = (app.applicant_data?.name || (app as any).applicantName || '').toLowerCase();
+    const company = ((app as any).company || (app.jobs as any)?.company || (app as any).job?.company || (app as any).employer_name || '').toLowerCase();
     const title = (app.job?.title || app.jobs?.title || (app as any).jobTitle || '').toLowerCase();
+    const employer = ((app as any).employer_name || (app as any).employerName || '').toLowerCase();
     const query = (searchQuery || '').toLowerCase();
-    const matchesSearch = !query || name.includes(query) || title.includes(query);
-    const matchesStatus = app.status === statusFilter;
+    const matchesSearch = !query || name.includes(query) || title.includes(query) || company.includes(query) || employer.includes(query);
+
+    let matchesStatus = true;
+    if (statusFilter === 'approved') matchesStatus = isApproved(app.status);
+    else if (statusFilter === 'rejected') matchesStatus = isRejected(app.status);
+    else if (statusFilter === 'pending') matchesStatus = isPending(app.status);
+
     return matchesSearch && matchesStatus;
   });
 
@@ -559,7 +607,13 @@ function ApplicationsListViewContent({
             </p>
           </div>
           <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full text-[10px] font-black border border-blue-100 dark:border-blue-800/40">
-            {statusFilter === 'pending' ? `قيد المراجعة (${filteredApps.length})` : statusFilter === 'approved' ? `المقبولين (${filteredApps.length})` : `المرفوضين (${filteredApps.length})`}
+            {statusFilter === 'all'
+              ? `الكل (${filteredApps.length})`
+              : statusFilter === 'pending'
+                ? (isSentView ? `قيد الانتظار (${filteredApps.length})` : `قيد المراجعة (${filteredApps.length})`)
+                : statusFilter === 'approved'
+                  ? (isSentView ? `المقبولة (${filteredApps.length})` : `المقبولين (${filteredApps.length})`)
+                  : (isSentView ? `المعتذر عنها (${filteredApps.length})` : `المرفوضين (${filteredApps.length})`)}
           </span>
         </div>
 
@@ -568,14 +622,18 @@ function ApplicationsListViewContent({
           <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">تصفية الحالات:</p>
           <div className="flex gap-2 items-center flex-wrap w-full overflow-x-auto pb-1">
             {[
-              { id: 'pending', label: 'قيد المراجعة' },
-              { id: 'approved', label: 'المقبولين' },
-              { id: 'rejected', label: 'المرفوضين' }
+              { id: 'all', label: `الكل (${safeApps.length})` },
+              { id: 'pending', label: isSentView ? `قيد الانتظار (${pendingCount})` : `قيد المراجعة (${pendingCount})` },
+              { id: 'approved', label: isSentView ? `المقبولة (${approvedCount})` : `المقبولين (${approvedCount})` },
+              { id: 'rejected', label: isSentView ? `المعتذر عنها (${rejectedCount})` : `المرفوضين (${rejectedCount})` }
             ].map(f => (
               <button
                 key={f.id}
-                onClick={() => setStatusFilter(f.id as any)}
-                className={`flex-1 sm:flex-none min-w-[90px] text-center px-5 py-2.5 rounded-2xl text-[11px] font-black transition-all ${statusFilter === f.id
+                onClick={() => {
+                  setStatusFilter(f.id as any);
+                  setSelectedAppIndex(null);
+                }}
+                className={`flex-1 sm:flex-none min-w-[90px] text-center px-4 py-2.5 rounded-2xl text-[11px] font-black transition-all cursor-pointer ${statusFilter === f.id
                   ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
                   : 'bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}

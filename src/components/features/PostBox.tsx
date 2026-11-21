@@ -79,6 +79,8 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const isPostingRef = useRef(false);
   const uploadedImageUrlRef = useRef<string | null>(null);
+  const compactBase64Ref = useRef<string | null>(null);
+  const backgroundUploadPromiseRef = useRef<Promise<any> | null>(null);
 
   // Job Posting specialized state
   const [showJobForm, setShowJobForm] = useState(false);
@@ -101,58 +103,54 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
   const isEmployer = isJobPoster(currentUser);
   const isSeeker = isJobSeeker(currentUser);
 
-  // 📸 تجهيز الصورة فور اختيارها — مخطط الملف الشخصي والغلاف تماماً:
-  //   1. معاينة 0ms فورية عبر URL.createObjectURL (بدون FileReader ثقيل)
-  //   2. رفع فوري في الخلفية بدون أي تأخير على UI thread
-  //   3. بدون snapshotFile الثقيل الذي يستغرق 30 ثانية على الموبايل
+  // 📸 تجهيز الصورة فور اختيارها — المخطط الهندسي الفوري كمخطط تليجرام/واتساب:
+  //   1. معاينة 0ms فورية عبر URL.createObjectURL
+  //   2. ضغط كـ Base64 مسبق في الذاكرة RAM خلال 30ms كصمام أمان فوري
+  //   3. بدء الرفع فوراً في الخلفية لـ Storage
   const prepareImageFile = async (file: File) => {
     if (!file || file.size === 0) {
       addToast("الملف فارغ، يرجى اختيار صورة صالحة", "error");
       return;
     }
 
-    // ✅ خطوة 1: معاينة 0ms فورية (نفس مخطط الملف الشخصي)
+    // ✅ 1. معاينة 0ms فورية
     const preview = URL.createObjectURL(file);
     setAttachment(preview);
     setSelectedFile(file);
     setUploadType(prev => prev === 'article' ? 'article' : 'photo');
     uploadedImageUrlRef.current = null;
+    compactBase64Ref.current = null;
 
-    // ✅ خطوة 2: رفع فوري في الخلفية — بدون حجب UI thread
+    // ✅ 2. تجهيز Base64 مضغوط وفوري بالخلفية RAM كنسخة سريعة جاهزة دائماً
+    imageService.compactBase64(preview, 720, 0.72)
+      .then(b64 => {
+        if (b64) compactBase64Ref.current = b64;
+      })
+      .catch(() => {});
+
+    // ✅ 3. رفع فوري متوازي لـ Storage
     const targetUserId = currentUser?.id || appUser?.id;
     if (targetUserId) {
       setIsUploadingMedia(true);
-      mobileUploadService.uploadFile(file, 'post-image', targetUserId)
+      const uploadTask = mobileUploadService.uploadFile(file, 'post-image', targetUserId)
         .then(res => res.uploadPromise)
         .then(url => {
           if (url) uploadedImageUrlRef.current = url;
+          return url;
         })
         .catch(err => {
           console.warn('[PostBox] Background pre-upload warn:', err);
+          return null;
         })
         .finally(() => {
           setIsUploadingMedia(false);
         });
+      backgroundUploadPromiseRef.current = uploadTask;
     }
   };
 
-  const triggerUpload = async () => {
-    try {
-      if (typeof (window as any)?.Capacitor !== 'undefined' && (window as any).Capacitor.isNativePlatform()) {
-        const file = await pickImageFromGallery();
-        if (file) {
-          await prepareImageFile(file);
-        } else {
-          fileInputRef.current?.click();
-        }
-      } else {
-        fileInputRef.current?.click();
-      }
-    } catch (err: any) {
-      if (!err?.message?.includes('cancel') && !err?.message?.includes('User cancel')) {
-        fileInputRef.current?.click();
-      }
-    }
+  const triggerUpload = () => {
+    fileInputRef.current?.click();
   };
 
   const handlePostJob = async () => {
@@ -257,29 +255,31 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       let finalImageUrl: string | null = uploadedImageUrlRef.current || null;
       let finalVideoUrl: string | null = null;
 
-      // 🚀 Handle Image Upload on Share (مخطط رفع صورة المنشور — طبق الأصل لمخطط الغلاف والصورة الشخصية)
+      // 🚀 مخطط هندسي فوري كمخطط تليجرام/واتساب: لا انتظار دقيقة أو دقيقتين أبداً
       if ((postType === 'photo' || postType === 'article') && (postSelectedFile || postAttachment)) {
-        if (!finalImageUrl) {
+        // إذا كان رفع Storage قيد التنفيذ بالخلفية، ننتظر كحد أقصى 1.2 ثانية فقط
+        if (!finalImageUrl && backgroundUploadPromiseRef.current) {
           try {
-            if (postSelectedFile) {
-              const uploadRes = await mobileUploadService.uploadFile(postSelectedFile, 'post-image', appUser.id);
-              const storageUrl = await uploadRes.uploadPromise;
-              if (storageUrl) {
-                finalImageUrl = storageUrl;
-              }
-            }
-          } catch (uploadErr) {
-            console.warn('[PostBox] Image upload fallback to compact Base64:', uploadErr);
-          }
+            await Promise.race([
+              backgroundUploadPromiseRef.current,
+              new Promise((r) => setTimeout(r, 1200))
+            ]);
+            finalImageUrl = uploadedImageUrlRef.current || null;
+          } catch (_) {}
         }
 
-        // 🛡️ إذا لم يتوفر Storage URL، ضغط المعاينة كـ Base64 صغير وخفيف
+        // إذا لم ينتهِ Storage بعد 1.2 ثانية، استخدم فوراً نسخة Base64 الخفيفة الجاهزة بالـ RAM
+        if (!finalImageUrl) {
+          finalImageUrl = compactBase64Ref.current;
+        }
+
+        // إذا لم تكن جاهزة، استخرج Base64 سريع في أقل من 50ms من المعاينة
         if (!finalImageUrl && postAttachment) {
           if (!postAttachment.startsWith('blob:') && postAttachment.length <= 200_000) {
             finalImageUrl = postAttachment;
           } else {
             try {
-              finalImageUrl = await imageService.compactBase64(postAttachment, 600, 0.72);
+              finalImageUrl = await imageService.compactBase64(postAttachment, 640, 0.70);
             } catch {
               finalImageUrl = null;
             }

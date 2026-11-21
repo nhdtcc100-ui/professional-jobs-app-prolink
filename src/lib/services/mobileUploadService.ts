@@ -55,7 +55,7 @@ const IMAGE_MAX_DIM = 1000;   // px
 const IMAGE_QUALITY = 0.82;
 const THUMB_MAX_DIM = 400;    // px – compact Base64 thumbnail (crisp on mobile retina)
 const THUMB_QUALITY = 0.75;
-const UPLOAD_TIMEOUT = 20_000;  // ⚡ 20s max per bucket attempt — نفس المهلة المستخدمة للغلاف والصورة الشخصية لمنع أي تايم آوت على شبكات الموبايل
+const UPLOAD_TIMEOUT = 4_000;  // ⚡ 4s max per bucket attempt — استجابة سريعة جداً بدون تعليق دقيقة أو دقيقتين
 
 const IMAGE_BUCKETS: Record<string, string[]> = {
   avatar: ['profiles', 'images'],
@@ -513,21 +513,19 @@ export const mobileUploadService = {
 
     emit({ type, phase: 'reading', percent: 5 });
 
-    // Snapshot immediately
-    let workingFile: File;
-    try { workingFile = await snapshotFile(file); }
-    catch { workingFile = file; }
-
-    // Instant preview
+    // Instant 0ms preview from original file
     let preview: string | null = null;
     if (type !== 'cv') {
-      try { preview = URL.createObjectURL(workingFile); } catch { }
+      try { preview = URL.createObjectURL(file); } catch { }
     }
 
     emit({ type, phase: 'compressing', percent: 20, preview: preview ?? undefined });
 
     const uploadPromise = (async (): Promise<string> => {
       try {
+        let workingFile: File;
+        try { workingFile = await snapshotFile(file); }
+        catch { workingFile = file; }
         if (type === 'cv') {
           emit({ type, phase: 'uploading', percent: 40 });
           const { data: url, error } = await cvService.uploadCV(userId, workingFile, userContext);
