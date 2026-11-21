@@ -750,9 +750,9 @@ function ApplicationsListViewContent({
                             )}
                             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
                             <div className="absolute top-3 left-3 text-[10px] font-black text-white bg-black/40 backdrop-blur-md px-3 py-1 rounded-xl flex items-center gap-1">
-                              {app.status === 'approved' && <><CheckCircle size={12} className="text-emerald-400" /> <span>مقبول</span></>}
-                              {app.status === 'rejected' && <><XCircle size={12} className="text-red-400" /> <span>معتذر عنه</span></>}
-                              {(!app.status || app.status === 'pending') && <><Clock size={12} className="text-amber-400" /> <span>قيد الانتظار</span></>}
+                              {isApproved(app.status) && <><CheckCircle size={12} className="text-emerald-400" /> <span>{isSentView ? 'تم القبول' : 'مقبول'}</span></>}
+                              {isRejected(app.status) && <><XCircle size={12} className="text-red-400" /> <span>{isSentView ? 'معتذر عنه' : 'مرفوض'}</span></>}
+                              {isPending(app.status) && <><Clock size={12} className="text-amber-400" /> <span>{isSentView ? 'قيد الانتظار' : 'قيد المراجعة'}</span></>}
                             </div>
                           </div>
                         )}
@@ -773,12 +773,12 @@ function ApplicationsListViewContent({
                               } ${isHighlighted ? 'border-blue-500 scale-105' : 'border-white dark:border-slate-700'}`}
                               alt=""
                             />
-                            <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white dark:border-slate-700 flex items-center justify-center shadow-sm ${app.status === 'approved' ? 'bg-emerald-500' :
-                              app.status === 'rejected' ? 'bg-red-500' :
+                            <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-white dark:border-slate-700 flex items-center justify-center shadow-sm ${isApproved(app.status) ? 'bg-emerald-500' :
+                              isRejected(app.status) ? 'bg-red-500' :
                                 'bg-amber-500'
                               }`}>
-                              {app.status === 'approved' ? <CheckCircle size={10} className="text-white" /> :
-                                app.status === 'rejected' ? <XCircle size={10} className="text-white" /> :
+                              {isApproved(app.status) ? <CheckCircle size={10} className="text-white" /> :
+                                isRejected(app.status) ? <XCircle size={10} className="text-white" /> :
                                   <Clock size={10} className="text-white" />}
                             </div>
                           </div>
@@ -804,17 +804,17 @@ function ApplicationsListViewContent({
                               {/* Status badge for sent applications */}
                               {isSentView && (
                                 <div className="mt-1.5 mb-1 flex items-center gap-1.5 flex-wrap">
-                                  {app.status === 'approved' && (
+                                  {isApproved(app.status) && (
                                     <span className="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 rounded-xl text-[10px] font-black">
                                       <CheckCircle size={12} /> تم قبول طلبك بنجاح 🎉
                                     </span>
                                   )}
-                                  {app.status === 'rejected' && (
+                                  {isRejected(app.status) && (
                                     <span className="inline-flex items-center gap-1 px-3 py-1 bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300 rounded-xl text-[10px] font-black">
                                       <XCircle size={12} /> تم الاعتذار عن الطلب 😔
                                     </span>
                                   )}
-                                  {(!app.status || app.status === 'pending') && (
+                                  {isPending(app.status) && (
                                     <span className="inline-flex items-center gap-1 px-3 py-1 bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 rounded-xl text-[10px] font-black">
                                       <Clock size={12} /> قيد المراجعة والانتظار ⏳
                                     </span>
@@ -1185,11 +1185,11 @@ function ApplicationsListViewContent({
                 // 🏢 عند isSentView (باحث عن عمل يعرض طلباته) → headerInfo = بيانات صاحب العمل
                 // 👤 عند !isSentView (صاحب العمل يعرض الطلبات الواردة) → headerInfo = بيانات المتقدم
                 const headerInfo = isSentView ? resolveEmployer(app) : resolved;
-                const statusBadge = app.status === 'approved'
-                  ? { label: 'مقبول', cls: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' }
-                  : app.status === 'rejected'
-                    ? { label: 'مرفوض', cls: 'bg-red-500/15 border-red-500/30 text-red-600 dark:text-red-400' }
-                    : { label: 'قيد المراجعة', cls: 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400' };
+                const statusBadge = isApproved(app.status)
+                  ? { label: isSentView ? 'تم قبول طلبك 🎉' : 'مقبول', cls: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' }
+                  : isRejected(app.status)
+                    ? { label: isSentView ? 'تم الاعتذار 😔' : 'مرفوض', cls: 'bg-red-500/15 border-red-500/30 text-red-600 dark:text-red-400' }
+                    : { label: isSentView ? 'قيد الانتظار ⏳' : 'قيد المراجعة', cls: 'bg-amber-500/15 border-amber-500/30 text-amber-600 dark:text-amber-400' };
 
                 return (
                   <motion.div
@@ -1222,9 +1222,9 @@ function ApplicationsListViewContent({
                                 referrerPolicy="no-referrer"
                                 alt=""
                               />
-                              <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-white ${app.status === 'approved' ? 'bg-emerald-500' : app.status === 'rejected' ? 'bg-red-500' : 'bg-amber-500'
+                              <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-white ${isApproved(app.status) ? 'bg-emerald-500' : isRejected(app.status) ? 'bg-red-500' : 'bg-amber-500'
                                 }`}>
-                                {app.status === 'approved' ? <CheckCircle size={12} /> : app.status === 'rejected' ? <XCircle size={12} /> : <Clock size={12} />}
+                                {isApproved(app.status) ? <CheckCircle size={12} /> : isRejected(app.status) ? <XCircle size={12} /> : <Clock size={12} />}
                               </div>
                             </div>
                             <div>
@@ -1701,7 +1701,7 @@ function ApplicationsListViewContent({
 
                           <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-5 md:p-6 border border-slate-200/80 dark:border-slate-800 shadow-xl space-y-4">
                             {/* Status Card Banner */}
-                            {app.status === 'approved' && (
+                            {isApproved(app.status) && (
                               <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md">
                                   <CheckCircle size={20} />
@@ -1717,7 +1717,7 @@ function ApplicationsListViewContent({
                               </div>
                             )}
 
-                            {app.status === 'rejected' && (
+                            {isRejected(app.status) && (
                               <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800/50 flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-md">
                                   <XCircle size={20} />
@@ -1733,7 +1733,7 @@ function ApplicationsListViewContent({
                               </div>
                             )}
 
-                            {(!app.status || app.status === 'pending') && (
+                            {isPending(app.status) && (
                               <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-md">
                                   <Clock size={20} />

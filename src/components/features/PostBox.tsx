@@ -113,6 +113,8 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       return;
     }
 
+    const targetUserId = currentUser?.id || 'anonymous';
+
     // ✅ 1. معاينة 0ms فورية
     const preview = URL.createObjectURL(file);
     setAttachment(preview);
@@ -147,6 +149,34 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
           if (ctx) {
             ctx.drawImage(img, 0, 0, w, h);
             compactBase64Ref.current = canvas.toDataURL('image/jpeg', 0.72);
+
+            // 🚀 هندسة تيليجرام: رفع ملف مضغوط فائق الخفة (~40KB) إلى Storage خلال <400ms بدلاً من رفع ملف 15MB
+            canvas.toBlob((compBlob) => {
+              if (compBlob && compBlob.size > 0 && targetUserId) {
+                const compFile = new File([compBlob], (file.name || 'photo.jpg').replace(/\.[^.]+$/, '.jpg'), {
+                  type: 'image/jpeg',
+                  lastModified: Date.now()
+                });
+                (compFile as any).__isSnapshot = true;
+                (compFile as any).__isCompressed = true;
+
+                setIsUploadingMedia(true);
+                const uploadTask = mobileUploadService.uploadFile(compFile, 'post-image', targetUserId)
+                  .then(res => res.uploadPromise)
+                  .then(url => {
+                    if (url) uploadedImageUrlRef.current = url;
+                    return url;
+                  })
+                  .catch(err => {
+                    console.warn('[PostBox] Background pre-upload warn:', err);
+                    return null;
+                  })
+                  .finally(() => {
+                    setIsUploadingMedia(false);
+                  });
+                backgroundUploadPromiseRef.current = uploadTask;
+              }
+            }, 'image/jpeg', 0.80);
           }
         } catch (canvasErr) {
           console.warn('[PostBox] Fast canvas scale note:', canvasErr);
@@ -155,9 +185,8 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
       img.src = preview;
     } catch { /* تجاهل — رفع الـ Storage بالخلفية سيعمل */ }
 
-    // ✅ 4. رفع فوري متوازي لـ Storage في الخلفية
-    const targetUserId = currentUser?.id || appUser?.id;
-    if (targetUserId) {
+    // بديل احتياطي فوري إذا لم يبدأ الـ Canvas blob
+    if (!backgroundUploadPromiseRef.current && targetUserId) {
       setIsUploadingMedia(true);
       const uploadTask = mobileUploadService.uploadFile(file, 'post-image', targetUserId)
         .then(res => res.uploadPromise)
@@ -360,6 +389,7 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
         finalVideoUrl = await imageService.uploadVideo(postSelectedFile, appUser.id);
       }
 
+      // 🛡️ نرسل حصراً الأعمدة المعتمدة في جدول posts بقاعدة البيانات لتفادي خطأ PGRST204
       const postPayload = {
         id:            newPostId,
         author_id:     appUser.id,
@@ -372,7 +402,6 @@ export const PostBox: React.FC<PostBoxProps> = ({ avatar, appUser, addToast, sea
         image_url:     (postType === 'photo' || postType === 'article') ? finalImageUrl : null,
         video_url:     postType === 'video' ? (finalVideoUrl || null) : (postVideoUrl || null),
         likes_count:   0,
-        post_type:     isRealArticle ? 'article' : 'photo',
       };
 
       const { data: newPost, error } = await postService.createPost(postPayload);
