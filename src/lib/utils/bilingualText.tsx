@@ -32,12 +32,26 @@ export function isArabicText(text: string): boolean {
 /**
  * Splits dense or mixed text into separate Arabic and English lines/paragraphs
  * so that English flows naturally LTR from the left and Arabic flows RTL from the right.
+ * Preserves 100% of the sentences without fragmentation or truncating clauses.
  */
 export function splitBilingualText(rawText: string): BilingualSegment[] {
   if (!rawText) return [];
 
-  // Normalize newlines and HTML tags
-  const cleanRaw = rawText.replace(/<[^>]*>?/gm, '').replace(/\r\n/g, '\n');
+  // Normalize newlines and HTML tags cleanly without dropping words or collapsing lines
+  const cleanRaw = rawText
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<[^>]*>?/gm, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>');
+
   const rawLines = cleanRaw.split('\n');
   const segments: BilingualSegment[] = [];
 
@@ -47,75 +61,17 @@ export function splitBilingualText(rawText: string): BilingualSegment[] {
       return;
     }
 
-    const hasArabic = ARABIC_CHAR_REGEX.test(trimmed);
-    const englishWords = trimmed.match(/[a-zA-Z]{2,}/g) || [];
-    const hasSubstantialEnglish = englishWords.length >= 2;
-
-    // If line has a mix of significant Arabic and English, separate them into distinct lines
-    if (hasArabic && hasSubstantialEnglish) {
-      const subChunks = breakMixedLine(trimmed);
-      subChunks.forEach((chunk, chunkIdx) => {
-        const chunkTrimmed = chunk.trim();
-        if (!chunkTrimmed) return;
-        const isAr = isArabicText(chunkTrimmed);
-        segments.push({
-          id: `${lineIdx}-${chunkIdx}`,
-          text: chunkTrimmed,
-          dir: isAr ? 'rtl' : 'ltr',
-          align: isAr ? 'text-right' : 'text-left',
-          isArabic: isAr
-        });
-      });
-    } else {
-      const isAr = isArabicText(trimmed);
-      segments.push({
-        id: `${lineIdx}-0`,
-        text: trimmed,
-        dir: isAr ? 'rtl' : 'ltr',
-        align: isAr ? 'text-right' : 'text-left',
-        isArabic: isAr
-      });
-    }
+    const isAr = isArabicText(trimmed);
+    segments.push({
+      id: `${lineIdx}-${segments.length}`,
+      text: trimmed,
+      dir: isAr ? 'rtl' : 'ltr',
+      align: isAr ? 'text-right' : 'text-left',
+      isArabic: isAr
+    });
   });
 
   return segments;
-}
-
-/**
- * Breaks a single line that mixes Arabic and English sentences/clauses
- */
-function breakMixedLine(line: string): string[] {
-  // 1. Split on punctuation delimiters that often separate clauses: (: | - • | . | !)
-  // Example: "المتطلبات: Requirements: 3 years experience" -> "المتطلبات:", "Requirements: 3 years experience"
-  const delimiterPattern = /(?<=[.:؛!؟\-\n•|])\s+(?=[A-Za-z\u0600-\u06FF])/;
-  const initialChunks = line.split(delimiterPattern);
-  const result: string[] = [];
-
-  for (const chunk of initialChunks) {
-    const hasAr = ARABIC_CHAR_REGEX.test(chunk);
-    const englishMatches = chunk.match(/([a-zA-Z][a-zA-Z0-9+#/.,\s-]{4,}[a-zA-Z0-9])/g);
-
-    if (hasAr && englishMatches && englishMatches.some(m => m.trim().split(/\s+/).length >= 2)) {
-      // Extract English phrases of 2+ words or significant length
-      let remaining = chunk;
-      for (const engPhrase of englishMatches) {
-        if (engPhrase.trim().split(/\s+/).length >= 2 || engPhrase.length >= 10) {
-          const idx = remaining.indexOf(engPhrase);
-          if (idx !== -1) {
-            const before = remaining.substring(0, idx).trim();
-            if (before) result.push(before);
-            result.push(engPhrase.trim());
-            remaining = remaining.substring(idx + engPhrase.length).trim();
-          }
-        }
-      }
-      if (remaining) result.push(remaining);
-    } else {
-      result.push(chunk);
-    }
-  }
-
-  return result.filter(c => c.trim().length > 0);
 }
 
 /**

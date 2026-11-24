@@ -49,6 +49,9 @@ export const HomeServicesSection: React.FC<HomeServicesSectionProps> = ({
     if (mockDataService.isEnabled()) {
       const bundle = mockDataService.getBundle();
       let candidates = bundle.users.filter(u => u.role === 'freelancer' || u.role === 'seeker');
+      if (appUser?.id) {
+        candidates = candidates.filter(u => u.id !== appUser.id);
+      }
       if (keyword.trim()) {
         const k = keyword.trim().toLowerCase();
         candidates = candidates.filter(u => 
@@ -77,11 +80,17 @@ export const HomeServicesSection: React.FC<HomeServicesSectionProps> = ({
       let query = (supabase as any)
         .from('profiles')
         .select(
-          'id, name, avatar_url, title, specialty, location, is_available, role, is_pro, display_title, bio, is_active, phone',
+          'id, name, avatar_url, title, specialty, location, is_available, role, is_pro, display_title, bio, is_active, phone, website, cv_url',
           { count: 'exact' }
         )
         .eq('role', 'freelancer')
-        .not('is_active', 'eq', false)
+        .not('is_active', 'eq', false);
+
+      if (appUser?.id) {
+        query = query.neq('id', appUser.id);
+      }
+
+      query = query
         .order('is_available', { ascending: false })
         .order('is_pro', { ascending: false })
         .order('created_at', { ascending: false })
@@ -107,8 +116,11 @@ export const HomeServicesSection: React.FC<HomeServicesSectionProps> = ({
       const mapped: AppUser[] = (data || []).map((p: any) => ({
         id: p.id,
         name: p.name || 'مجهول',
-        email: '',
+        email: p.email || '',
         avatar: p.avatar_url || '',
+        phone: p.phone || '',
+        website: p.website || '',
+        cvUrl: p.cv_url || '',
         role: 'freelancer',
         isPro: p.is_pro || false,
         is_pro: p.is_pro || false,
@@ -118,7 +130,7 @@ export const HomeServicesSection: React.FC<HomeServicesSectionProps> = ({
         location: p.location || '',
         isAvailable: Boolean(p.is_available || p.open_to === 'work'),
         bio: p.bio || '',
-      }));
+      })).filter((u: any) => !appUser?.id || u.id !== appUser.id);
 
       if (reset) {
         setProviders(mapped);

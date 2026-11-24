@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   FileText, Download, CheckCircle, XCircle, Clock, Search, ExternalLink,
@@ -278,8 +279,11 @@ function ApplicationsListViewContent({
   const [editEducation, setEditEducation] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [appToDeleteId, setAppToDeleteId] = useState<string | null>(null);
+  const [deletedAppIds, setDeletedAppIds] = useState<Set<string>>(new Set());
 
-  const safeApps = Array.isArray(incomingApplications) ? incomingApplications : [];
+  const rawApps = Array.isArray(incomingApplications) ? incomingApplications : [];
+  const safeApps = rawApps.filter(a => a && !deletedAppIds.has(a.id));
 
   const openEditModal = (app: any) => {
     setEditingApp(app);
@@ -937,14 +941,13 @@ function ApplicationsListViewContent({
                               )}
 
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (window.confirm('هل أنت متأكد من رغبتك في سحب / مسح هذا الطلب نهائياً؟')) {
-                                    onDeleteApplication(app.id);
-                                  }
+                                  setAppToDeleteId(app.id);
                                 }}
                                 className="py-2.5 px-3 bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400 rounded-xl text-[10px] font-black hover:bg-red-100 transition-all flex items-center justify-center gap-1.5 active:scale-95 border border-red-200/50 dark:border-red-800/40 cursor-pointer"
-                                title="سحب أو مسح الطلب نهائياً"
+                                title="سحب الطلب نهائياً"
                               >
                                 <Trash2 size={13} />
                                 <span>سحب</span>
@@ -1663,11 +1666,10 @@ function ApplicationsListViewContent({
                                 </button>
                               )}
                               <button
-                                onClick={() => {
-                                  onDeleteApplication(app.id);
-                                  if (filteredApps.length <= 1) {
-                                    setSelectedAppIndex(null);
-                                  }
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAppToDeleteId(app.id);
                                 }}
                                 className="flex-1 py-3.5 bg-red-50 dark:bg-red-900/20 hover:bg-red-500 hover:text-white text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/40 rounded-2xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
                               >
@@ -1795,11 +1797,9 @@ function ApplicationsListViewContent({
                               {/* Withdraw / Delete My Application */}
                               <button
                                 type="button"
-                                onClick={() => {
-                                  if (window.confirm('هل أنت متأكد من رغبتك في سحب / مسح هذا الطلب نهائياً؟')) {
-                                    onDeleteApplication(app.id);
-                                    setSelectedAppIndex(null);
-                                  }
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAppToDeleteId(app.id);
                                 }}
                                 className="py-3.5 px-4 bg-red-50 dark:bg-red-950/30 hover:bg-red-600 hover:text-white text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/40 rounded-2xl text-xs font-black transition-all flex items-center justify-center gap-1.5 active:scale-95 cursor-pointer"
                                 title="سحب الطلب نهائياً"
@@ -1875,6 +1875,70 @@ function ApplicationsListViewContent({
           />
         )}
       </AnimatePresence>
+
+      {/* ── Custom Withdraw / Delete Application Confirmation Modal (مطابق تماماً لحذف الوظائف في الرئيسية) ── */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {appToDeleteId && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[500] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6"
+              onClick={() => setAppToDeleteId(null)}
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl space-y-4 border border-slate-100 dark:border-slate-800"
+              >
+                <div className="w-14 h-14 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
+                  <Trash2 size={26} />
+                </div>
+
+                <div>
+                  <h3 className="font-black text-lg text-slate-900 dark:text-white">
+                    {isSentView ? 'تأكيد سحب الطلب' : 'تأكيد حذف الطلب'}
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed font-bold">
+                    {isSentView 
+                      ? 'هل أنت متأكد من رغبتك في سحب هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء.' 
+                      : 'هل أنت متأكد من رغبتك في حذف هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء.'}
+                  </p>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setAppToDeleteId(null)}
+                    className="flex-1 py-3 rounded-2xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-black text-xs transition-all active:scale-95"
+                  >
+                    إلغاء
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const id = appToDeleteId;
+                      setAppToDeleteId(null);
+                      setSelectedAppIndex(null);
+                      // ⚡ حذف تفاؤلي فوري في الذاكرة بدون رفرش (0ms latency)
+                      setDeletedAppIds(prev => new Set(prev).add(id));
+                      await onDeleteApplication(id);
+                    }}
+                    className="flex-1 py-3 rounded-2xl bg-red-600 hover:bg-red-700 text-white font-black text-xs transition-all shadow-lg shadow-red-500/25 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Trash2 size={14} />
+                    <span>{isSentView ? 'سحب الطلب' : 'حذف الطلب'}</span>
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
     </div>
   );

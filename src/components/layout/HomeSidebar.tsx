@@ -1,5 +1,5 @@
 import React from 'react';
-import { Info, ArrowLeft, Globe, Sparkles, Building2, ShieldCheck, X, Calendar, Wrench } from 'lucide-react';
+import { Info, ArrowLeft, Globe, Sparkles, Building2, ShieldCheck, X, Calendar, Wrench, Headphones } from 'lucide-react';
 import { GlassCard } from '../ui';
 import { AppUser } from '../../types';
 import { preloadTab } from '../../lib/lazyPreload';
@@ -52,6 +52,17 @@ export const HomeSidebar: React.FC<HomeSidebarProps> = ({ appUser, setSelectedPr
     }
   };
 
+  const handleOpenSupport = () => {
+    if (setActiveTab) {
+      setActiveTab('about');
+    } else {
+      window.dispatchEvent(new CustomEvent('setTab', { detail: 'about' }));
+    }
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('prolink_open_support_tab'));
+    }, 50);
+  };
+
   const handleOpenServices = () => {
     if (onOpenServices) {
       onOpenServices();
@@ -101,7 +112,7 @@ export const HomeSidebar: React.FC<HomeSidebarProps> = ({ appUser, setSelectedPr
               <Info size={22} />
             </div>
             <div>
-              <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">نبذة عن المنصة</h3>
+              <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">عن المنصة</h3>
               <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest mt-0.5">منظومة التوظيف الرقمية</p>
             </div>
           </div>
@@ -113,7 +124,7 @@ export const HomeSidebar: React.FC<HomeSidebarProps> = ({ appUser, setSelectedPr
               </p>
               <div className="h-0.5 w-full bg-gradient-to-l from-blue-600/50 to-transparent rounded-full mb-2" />
               <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500 leading-relaxed">
-                تعرّف على الرؤية، سياسة الخصوصية، وأدوات الدعم المتاحة.
+                تعرّف على الرؤية، سياسة الخصوصية، ومميزات المنصة.
               </p>
             </div>
           </div>
@@ -122,9 +133,41 @@ export const HomeSidebar: React.FC<HomeSidebarProps> = ({ appUser, setSelectedPr
             onClick={handleOpenAboutPage}
             onMouseEnter={() => preloadTab('about')}
             onPointerDown={handleOpenAboutPage}
-            className="w-full flex items-center justify-between p-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all text-xs font-black"
+            className="w-full flex items-center justify-between p-3.5 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl shadow-lg shadow-blue-500/20 active:scale-95 transition-all text-xs font-black cursor-pointer"
           >
-            <span className="uppercase tracking-wider">عرض التفاصيل الكاملة</span>
+            <span className="uppercase tracking-wider">عرض التفاصيل</span>
+            <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
+          </button>
+        </div>
+      </GlassCard>
+
+      {/* ── Support Section Card (قسم الدعم) ── */}
+      <GlassCard className="rounded-[2.5rem] border-none shadow-[0_15px_40px_rgba(10,102,194,0.08)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.3)] overflow-hidden bg-white/70 dark:bg-slate-900/40 backdrop-blur-xl border border-white/20 dark:border-slate-800/50 group">
+        <div className="p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-500/25 group-hover:scale-105 transition-transform">
+              <Headphones size={22} />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">قسم الدعم</h3>
+              <p className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mt-0.5">مساعدة وتواصل مباشر</p>
+            </div>
+          </div>
+          
+          <div className="space-y-3 py-1">
+            <div className="bg-slate-50/70 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-100 dark:border-slate-700/50">
+              <p className="text-[11px] font-black text-slate-700 dark:text-slate-300 leading-relaxed">
+                فريق الدعم الفني متواجد لمساعدتك في أي استفسار أو مشكلة تواجهك داخل المنصة.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleOpenSupport}
+            onMouseEnter={() => preloadTab('about')}
+            className="w-full flex items-center justify-between p-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-2xl shadow-lg shadow-emerald-500/20 active:scale-95 transition-all text-xs font-black cursor-pointer"
+          >
+            <span className="uppercase tracking-wider">تواصل مع قسم الدعم</span>
             <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
           </button>
         </div>

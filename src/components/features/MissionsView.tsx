@@ -516,14 +516,18 @@ export function MissionsView({
   };
 
   const handleDeleteApplication = async (appId: string) => {
-    if (!window.confirm('هل أنت متأكد؟')) return;
+    // ⚡ تحديث فوري فائق السرعة يزيل الطلب من القائمة بدون الحاجة لأي رفرش
+    setSentApplications(prev => prev.filter(a => a.id !== appId));
+    setIncomingApplications(prev => prev.filter(a => a.id !== appId));
+
     try {
       const { error } = await supabase.from('job_applications').delete().eq('id', appId);
       if (error) throw error;
-      fetchApplications();
-      addToast('تم حذف الطلب');
+      addToast('تم سحب الطلب بنجاح', 'success');
     } catch (e: any) {
-      addToast('خطأ: ' + e.message, 'error');
+      console.error('Error deleting application:', e);
+      addToast('تعذر سحب الطلب، يرجى المحاولة مرة أخرى', 'error');
+      fetchApplications();
     }
   };
 

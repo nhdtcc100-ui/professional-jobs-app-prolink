@@ -214,9 +214,11 @@ export const newsService = {
           if (seenLinks.has(link)) return;
           seenLinks.add(link);
 
-          const content = this.cleanText(textEl?.innerHTML || '');
+          const rawHtml = textEl?.innerHTML || '';
+          const rawPlain = textEl?.textContent || '';
+          const content = this.cleanText(rawHtml.length >= rawPlain.length ? rawHtml : rawPlain);
           const rawTitle = textEl?.textContent?.split('\n').filter(t => t.trim().length > 0)[0] || 'فرصة وظيفية وإعلان جديد';
-          const title = rawTitle.slice(0, 100).trim();
+          const title = rawTitle.slice(0, 120).trim();
 
           let thumbnail = '';
           if (photoEl) {
@@ -435,11 +437,21 @@ export const newsService = {
 
   cleanText(html: string): string {
     if (!html) return '';
-    let cleaned = html.replace(/\r/g, '').replace(/<p[^>]*>/gi, '\n\n').replace(/<br\s*\/?>/gi, '\n');
-    cleaned = cleaned.replace(/<[^>]*>?/gm, ' ');
-    cleaned = cleaned.replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-    cleaned = cleaned.replace(/[ \t]+/g, ' ');
-    cleaned = cleaned.replace(/\n\s*\n\s*\n+/g, '\n\n');
+    let cleaned = html
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .replace(/<p[^>]*>/gi, '\n\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]*>?/gm, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n\s*\n\s*\n+/g, '\n\n');
     return cleaned.trim();
   },
 
@@ -449,7 +461,15 @@ export const newsService = {
       const items = Array.from(doc.querySelectorAll('item, entry')).slice(0, 80);
       return items.map(el => {
         const get = (tag: string) => el.querySelector(tag)?.textContent?.trim() || '';
-        const rawContent = get('description') || get('content') || get('summary') || '';
+        
+        // 🌟 استخراج المحتوى الكامل أولاً (content:encoded / encoded) لتفادي النصوص المقصوصة
+        const encodedContent = 
+          el.getElementsByTagNameNS('*', 'encoded')[0]?.textContent?.trim() ||
+          el.getElementsByTagName('content:encoded')[0]?.textContent?.trim() ||
+          el.querySelector('encoded')?.textContent?.trim() ||
+          '';
+
+        const rawContent = encodedContent || get('content') || get('description') || get('summary') || '';
         const link = get('link') || el.querySelector('link')?.getAttribute('href') || '#';
         const title = this.cleanText(get('title'));
 
@@ -466,7 +486,7 @@ export const newsService = {
             el.querySelector('enclosure[type^="image"]')?.getAttribute('url') ||
             el.querySelector('enclosure')?.getAttribute('url') ||
             el.querySelector('media\\:thumbnail')?.getAttribute('url') ||
-            this.extractFirstImage(rawContent) || ''
+            this.extractFirstImage(encodedContent || rawContent) || ''
           ),
           source: source,
           region: 'iraq' as const,

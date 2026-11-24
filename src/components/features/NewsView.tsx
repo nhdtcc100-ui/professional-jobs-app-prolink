@@ -47,14 +47,19 @@ const parseRSS = (xml: string, source: string, baseRegion: NewsItem['region']): 
       const get = (tag: string) => el.querySelector(tag)?.textContent?.trim() || '';
       const title = newsService.cleanText(get('title'));
       const link  = get('link') || el.querySelector('guid')?.textContent?.trim() || '#';
-      const desc  = newsService.cleanText(get('content:encoded') || get('description') || get('content') || '');
+      const encoded = 
+        el.getElementsByTagNameNS('*', 'encoded')[0]?.textContent?.trim() ||
+        el.getElementsByTagName('content:encoded')[0]?.textContent?.trim() ||
+        el.querySelector('encoded')?.textContent?.trim() ||
+        '';
+      const desc  = newsService.cleanText(encoded || get('content') || get('description') || '');
       const date  = get('pubDate') || get('dc:date') || get('published') || new Date().toISOString();
       const thumb = newsService.proxyImage(
         el.querySelector('media\\:content')?.getAttribute('url') ||
         el.querySelector('enclosure[type^="image"]')?.getAttribute('url') ||
         el.querySelector('enclosure')?.getAttribute('url') ||
         el.querySelector('media\\:thumbnail')?.getAttribute('url') ||
-        newsService.extractFirstImage(desc) || ''
+        newsService.extractFirstImage(encoded || desc) || ''
       );
       
       return {
@@ -118,7 +123,7 @@ const fetchFeed = async (feed: { url: string; region: NewsItem['region']; label:
         if (data?.status === 'ok' && Array.isArray(data?.items) && data.items.length > 0) {
           items = data.items.map((item: any) => {
             const title = newsService.cleanText(item.title || '');
-            const desc = newsService.cleanText(item.description || item.content || '');
+            const desc = newsService.cleanText(item.content || item.description || '');
             const rawThumb = item.thumbnail || item.enclosure?.link || newsService.extractFirstImage(desc) || '';
             return {
               id: Math.random().toString(36).substr(2, 9),
@@ -715,8 +720,8 @@ const DEFAULT_SOURCES_LIST: NewsSourceItem[] = [
                 title: newsService.cleanText(a.title || a.name || ''),
                 link: a.url || a.link || '#',
                 pubDate: a.publishedAt || a.pubDate || new Date().toISOString(),
-                content: newsService.cleanText(a.description || a.content || ''),
-                description: newsService.cleanText(a.description || a.content || ''),
+                content: newsService.cleanText(a.content || a.description || ''),
+                description: newsService.cleanText(a.content || a.description || ''),
                 author: a.source?.name || a.author || src.name,
                 thumbnail: a.urlToImage || a.thumbnail || a.image || APP_PLACEHOLDER,
                 region: 'arab' as const,

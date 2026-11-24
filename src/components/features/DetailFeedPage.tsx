@@ -909,8 +909,8 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                     touchAction: 'pan-y',
                   }}
                 >
-                  <div className="bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs">
-                    <BilingualSmartText text={currentItem.content || currentItem.description || ''} className="space-y-3" paragraphClassName="!text-black dark:!text-slate-100 font-medium" />
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-4 sm:p-6 rounded-2xl border border-slate-100 dark:border-slate-800 text-sm leading-relaxed shadow-xs whitespace-pre-wrap break-words">
+                    <BilingualSmartText text={currentItem.content || currentItem.description || ''} className="space-y-4" paragraphClassName="!text-black dark:!text-slate-100 font-medium text-sm sm:text-base leading-relaxed" />
                   </div>
                   <div className="h-2" />
                 </div>

@@ -98,6 +98,7 @@ export function ModernProfileView({
       }
     });
   }, [effectiveUserId, role]);
+
   const [isAvailable, setIsAvailable] = useState<boolean>(
     Boolean((profile as any)?.is_available || (profile as any)?.isAvailable || (profile as any)?.open_to === 'work')
   );
@@ -190,6 +191,22 @@ export function ModernProfileView({
   const isAdmin = Boolean(isUserAdmin(appUser) || appUser?.isAdmin || (appUser as any)?.is_admin);
 
   const targetUserId = profile?.id || effectiveUserId;
+
+  // جلب بيانات الاتصال (الهاتف، الموقع، السيرة) إذا لم تكن متوفرة في الملف الممرر (خصوصاً عند الدخول من سوق المهن)
+  useEffect(() => {
+    if (targetUserId && (!phone || !cvUrl)) {
+      (supabase as any)
+        .from('profiles')
+        .select('phone, website, cv_url')
+        .eq('id', targetUserId)
+        .maybeSingle()
+        .then(({ data }: any) => {
+          if (data?.phone && !phone) setPhone(data.phone);
+          if (data?.cv_url && !cvUrl) setCvUrl(data.cv_url);
+        })
+        .catch(() => {});
+    }
+  }, [targetUserId, phone, cvUrl]);
 
   const fetchProfilePosts = useCallback(async () => {
     if (!targetUserId) return;
@@ -1033,7 +1050,7 @@ export function ModernProfileView({
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="p-3.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 rounded-2xl shadow-lg flex items-center justify-between text-white gap-3 border border-blue-400/30 mb-2"
+          className="p-3.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 rounded-2xl shadow-lg flex items-center justify-between text-white gap-3 border border-blue-400/30 mb-2 flex-wrap"
         >
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
@@ -1041,17 +1058,33 @@ export function ModernProfileView({
             </div>
             <div className="min-w-0">
               <p className="text-xs font-black truncate">أنت تتصفح ملف مزود الخدمة: {returnToServiceUser.name || profile?.name || 'المهني'}</p>
-              <p className="text-[10px] text-blue-100 font-bold truncate">انقر هنا للعودة لمكانه في سوق الخدمات والمهن</p>
+              <p className="text-[10px] text-blue-100 font-bold truncate">تواصل معه مباشرة أو ارجع لسوق الخدمات والمهن</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => onBack?.()}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-white text-blue-700 hover:bg-blue-50 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
-          >
-            <span>العودة لسوق الخدمات</span>
-            <ArrowRight size={14} />
-          </button>
+          <div className="flex items-center gap-2 mr-auto">
+            <button
+              type="button"
+              onClick={() => openContactMenu({
+                phone: phone || returnToServiceUser.phone,
+                name: returnToServiceUser.name || profile?.name,
+                website: (profile as any)?.website || returnToServiceUser.website,
+                cvUrl: cvUrl || returnToServiceUser.cvUrl,
+              })}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-black shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
+              title="تواصل: واتساب / اتصال"
+            >
+              <Phone size={14} />
+              <span>تواصل معه</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => onBack?.()}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-white text-blue-700 hover:bg-blue-50 rounded-xl text-xs font-black shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
+            >
+              <span>العودة لسوق الخدمات</span>
+              <ArrowRight size={14} />
+            </button>
+          </div>
         </motion.div>
       )}
 
@@ -1065,6 +1098,19 @@ export function ModernProfileView({
           >
             <ArrowRight size={15} />
             <span>رجوع</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => openContactMenu({
+              phone,
+              name: profile?.name,
+              website: (profile as any)?.website,
+              cvUrl: (profile as any)?.cv_url || profile?.cvUrl,
+            })}
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md shadow-emerald-500/20 transition-all active:scale-95 cursor-pointer"
+          >
+            <Phone size={14} />
+            <span>تواصل: واتساب / اتصال</span>
           </button>
         </div>
       )}
@@ -1509,12 +1555,10 @@ export function ModernProfileView({
             </div>
           </button>
         ) : (
-          phone && (
-            <button type="button" onClick={() => openContactMenu({ phone, name: profile?.name, website: (profile as any)?.website, cvUrl: (profile as any)?.cv_url || profile?.cvUrl })}
-              className="w-full py-4.5 sm:py-5 rounded-2xl sm:rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base sm:text-lg transition-all shadow-xl shadow-emerald-500/25 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer">
-              <Phone size={20} /><span>تواصل: واتساب / اتصال</span>
-            </button>
-          )
+          <button type="button" onClick={() => openContactMenu({ phone, name: profile?.name, website: (profile as any)?.website, cvUrl: (profile as any)?.cv_url || profile?.cvUrl })}
+            className="w-full py-4.5 sm:py-5 rounded-2xl sm:rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-base sm:text-lg transition-all shadow-xl shadow-emerald-500/25 active:scale-[0.98] flex items-center justify-center gap-2 cursor-pointer">
+            <Phone size={20} /><span>تواصل: واتساب / اتصال</span>
+          </button>
         )}
       </motion.div>
 

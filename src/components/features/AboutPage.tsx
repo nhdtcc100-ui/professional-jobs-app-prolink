@@ -78,7 +78,12 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
       if (e?.detail?.handle) setTelegramHandle(e.detail.handle);
     };
     window.addEventListener('prolink_telegram_handle_changed', onHandleChange);
-    return () => window.removeEventListener('prolink_telegram_handle_changed', onHandleChange);
+    const onOpenSupport = () => setActiveTab('support');
+    window.addEventListener('prolink_open_support_tab', onOpenSupport);
+    return () => {
+      window.removeEventListener('prolink_telegram_handle_changed', onHandleChange);
+      window.removeEventListener('prolink_open_support_tab', onOpenSupport);
+    };
   }, []);
   const bottomRef = useRef<HTMLDivElement>(null);
 

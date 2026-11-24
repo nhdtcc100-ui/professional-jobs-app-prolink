@@ -7,6 +7,7 @@ import {
 import { supabase } from '../../../lib/supabase';
 import { AppUser } from '../../../types';
 import { mockDataService } from '../../../lib/services/mockDataService';
+import { openContactMenu } from '../../../lib/utils/contact';
 
 interface ServicesViewProps {
   appUser: AppUser | null;
@@ -129,11 +130,20 @@ const ServiceCard: React.FC<{
                   onRequireAuth('سجّل الدخول للتواصل مع مزودي الخدمات 💬');
                   return;
                 }
-                onUserClick(provider);
+                if (provider.phone || (provider as any)?.website) {
+                  openContactMenu({
+                    phone: provider.phone,
+                    name: provider.name,
+                    website: (provider as any)?.website,
+                    cvUrl: (provider as any)?.cv_url || provider.cvUrl
+                  });
+                } else {
+                  onUserClick(provider);
+                }
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-800 hover:text-white rounded-xl border border-slate-100 dark:border-slate-600 text-xs font-black transition-all active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-600 hover:text-white rounded-xl border border-emerald-100 dark:border-emerald-800/50 text-xs font-black transition-all active:scale-95"
             >
-              <MessageSquare size={11} />
+              <Phone size={11} />
               تواصل
             </button>
           </div>
@@ -216,8 +226,9 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
       setLoading(true);
       const bundle = mockDataService.getBundle();
       let candidates = bundle.users.filter(u => u.role === 'freelancer' || u.role === 'seeker');
-      if (appUser && (appUser.role === 'freelancer' || appUser.role === 'seeker')) {
-        candidates = [appUser, ...candidates.filter(u => u.id !== appUser.id)];
+      // استبعاد الملف الشخصي للمستخدم الحالي لأن المستخدم هو الذي يبحث
+      if (appUser?.id) {
+        candidates = candidates.filter(u => u.id !== appUser.id);
       }
       if (debouncedTitle.trim()) {
         const t = debouncedTitle.trim().toLowerCase();
@@ -250,7 +261,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
       setLoading(false);
       return;
     }
-    const cacheKey = `${debouncedTitle.trim()}_${debouncedLocation.trim()}_${currentPage}`;
+    const cacheKey = `${debouncedTitle.trim()}_${debouncedLocation.trim()}_${currentPage}_${appUser?.id || 'anon'}`;
 
     // إذا كانت الصفحة الأولى وموجودة في الكاش، اعرضها فوراً 0ms دون أي انتظار
     if (reset && searchCacheRef.current.has(cacheKey)) {
@@ -272,13 +283,18 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
     try {
       let query = (supabase as any)
         .from('profiles')
-        .select('id, name, avatar_url, title, specialty, location, is_available, role, is_pro, display_title, bio, is_active', { count: 'exact' })
+        .select('id, name, avatar_url, title, specialty, location, is_available, role, is_pro, display_title, bio, is_active, phone, website, cv_url', { count: 'exact' })
         .in('role', ['freelancer', 'seeker', 'job_seeker'])
         .not('is_active', 'eq', false)
         .order('is_available', { ascending: false })
         .order('is_pro', { ascending: false })
         .order('created_at', { ascending: false })
         .range(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE - 1);
+
+      // استبعاد حساب المستخدم الحالي من البحث في سوق المهن
+      if (appUser?.id) {
+        query = query.neq('id', appUser.id);
+      }
 
       if (debouncedTitle.trim()) {
         const titleTerm = debouncedTitle.trim();
@@ -301,8 +317,11 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
         return {
           id: p.id,
           name: p.name || 'مجهول',
-          email: '',
+          email: p.email || '',
           avatar: p.avatar_url || '',
+          phone: p.phone || '',
+          website: p.website || '',
+          cvUrl: p.cv_url || '',
           role: (isFreelancer ? 'freelancer' : 'seeker') as any,
           isPro: p.is_pro || false,
           is_pro: p.is_pro || false,
@@ -313,7 +332,7 @@ export const ServicesView: React.FC<ServicesViewProps> = ({ appUser, onUserClick
           isAvailable: Boolean(p.is_available || p.open_to === 'work'),
           bio: p.bio || '',
         };
-      });
+      }).filter((u: AppUser) => !appUser?.id || u.id !== appUser.id);
 
       // حفظ في الكاش
       searchCacheRef.current.set(cacheKey, { data: mapped, count: count || 0 });

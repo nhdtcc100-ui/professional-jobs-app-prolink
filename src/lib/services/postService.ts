@@ -1,4 +1,4 @@
-﻿import { supabase } from '../supabase';
+import { supabase } from '../supabase';
 import { Post, AppUser } from '../../types';
 import { sanitizeInput, sanitizeComment } from '../security/inputValidator';
 import { canUserPostAndInteract } from '../utils/roleUtils';

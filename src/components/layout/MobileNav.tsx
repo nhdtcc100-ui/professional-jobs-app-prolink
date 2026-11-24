@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useRef, startTransition } from 're
 import { motion, AnimatePresence, MotionConfig } from 'motion/react';
 import {
   Home, Briefcase, Globe, MessageSquare, MoreHorizontal,
-  Users, Info, LogOut, Shield, Phone, Building2, Moon, Sun, Wrench, LogIn, Settings, Palette
+  Users, Info, LogOut, Shield, Phone, Building2, Moon, Sun, Wrench, LogIn, Settings, Palette, Headphones
 } from 'lucide-react';
 import { AppUser } from '../../types';
 import { useAppContext } from '../../contexts/AppContext';
@@ -230,10 +230,24 @@ export const MobileNav: React.FC<MobileNavProps> = ({
 
     list.push({
       id: 'about',
-      label: 'عن منصة عمل أولاً',
+      label: 'عن المنصة',
       icon: Info,
       color: 'text-amber-500',
       onClick: () => setActiveTab('about'),
+      preload: () => preloadTab('about'),
+    });
+
+    list.push({
+      id: 'support',
+      label: 'قسم الدعم الفني 🎧',
+      icon: Headphones,
+      color: 'text-emerald-500',
+      onClick: () => {
+        setActiveTab('about');
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('prolink_open_support_tab'));
+        }, 50);
+      },
       preload: () => preloadTab('about'),
     });
 
