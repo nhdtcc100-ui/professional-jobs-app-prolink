@@ -292,6 +292,7 @@ function App() {
     type: 'job' | 'news' | 'post';
     items: any[];
     initialIndex: number;
+    prevTab?: string;
   } | null>(null);
   // 🔙 يتذكر التبويب السابق قبل فتح الملف الشخصي من سوق الخدمات أو غيرها
   const [profileReturnTab, setProfileReturnTab] = useState<string>('home');
@@ -335,6 +336,20 @@ function App() {
       setActiveTab('profile');
     }
   }, [selectedProfile, setActiveTab]);
+
+  // 🛡️ Ensure opening MY OWN profile clears any residual visitor return banners & selectedProfile state
+  useEffect(() => {
+    if (activeTab === 'profile' && (!selectedProfile || selectedProfile.id === appUser?.id)) {
+      if (selectedProfile && selectedProfile.id === appUser?.id) {
+        setSelectedProfile(null);
+      }
+      setReturnToJob(null);
+      setReturnToServiceUser(null);
+      setReturnToDetailFeed(null);
+      setReturnToApplications(null);
+      setProfileReturnTab('home');
+    }
+  }, [activeTab, selectedProfile, appUser?.id, setSelectedProfile]);
 
   // 🔗 viewUserProfile event — dispatched by components to open a profile
   useEffect(() => {
@@ -1580,6 +1595,29 @@ function App() {
                 </motion.div>
               )}
 
+              {activeTab === 'support' && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.18, ease: 'easeOut' }}
+                  className="pb-safe-bottom px-1 md:px-0"
+                >
+                  <Suspense fallback={<TabSkeleton />}>
+                    <AboutPage 
+                      onBack={() => setActiveTab('home')} 
+                      appUser={appUser}
+                      initialTab="support"
+                      supportOnly={true}
+                      onOpenChat={(supportUser: any) => {
+                        setSelectedChat(supportUser);
+                        setActiveTab('messages');
+                      }}
+                    />
+                  </Suspense>
+                </motion.div>
+              )}
+
               {activeTab === 'about' && (
                 <motion.div
                   initial={{ opacity: 0, y: 8 }}
@@ -1601,8 +1639,13 @@ function App() {
                 </motion.div>
               )}
 
-              {activeTab === 'profile' && (selectedProfile || appUser) && (
+              {activeTab === 'profile' && (selectedProfile || appUser) && (() => {
+                const isViewingOwnProfile = !selectedProfile || selectedProfile.id === appUser?.id;
+                const activeProfileUser = isViewingOwnProfile ? appUser! : selectedProfile!;
+                const profileKey = activeProfileUser?.id || 'me';
+                return (
                 <motion.div
+                  key={`profile-view-${profileKey}`}
                   initial={{ opacity: 0, x: -32, scale: 0.98 }}
                   animate={{ opacity: 1, x: 0, scale: 1 }}
                   exit={{ opacity: 0, x: 32, scale: 0.98 }}
@@ -1615,12 +1658,13 @@ function App() {
                 >
                   <Suspense fallback={<TabSkeleton />}>
                     <ProfilePage
-                      profile={selectedProfile || appUser!}
-                      isMe={(selectedProfile?.id || appUser?.id) === appUser?.id}
+                      key={`profile-page-${profileKey}`}
+                      profile={activeProfileUser}
+                      isMe={isViewingOwnProfile}
                       isEditing={isEditingProfile}
                       user={user || appUser}
-                      returnToJob={returnToJob}
-                      returnToServiceUser={returnToServiceUser}
+                      returnToJob={isViewingOwnProfile ? null : returnToJob}
+                      returnToServiceUser={isViewingOwnProfile ? null : returnToServiceUser}
                       onReturnToJob={(job: any) => {
                         setSelectedProfile(null);
                         setActiveTab('jobs');
@@ -1629,8 +1673,11 @@ function App() {
                       }}
                       onBack={() => {
                         if (returnToDetailFeed) {
+                          const prevTab = returnToDetailFeed.prevTab || 'home';
+                          const savedFeed = { type: returnToDetailFeed.type, items: returnToDetailFeed.items, initialIndex: returnToDetailFeed.initialIndex };
                           setSelectedProfile(null);
-                          setDetailFeed(returnToDetailFeed);
+                          setActiveTab(prevTab);
+                          setDetailFeed(savedFeed);
                           setReturnToDetailFeed(null);
                         } else if (returnToJob) {
                           setSelectedProfile(null);
@@ -1685,10 +1732,10 @@ function App() {
                       }}
                       isConnected={connections.some(c =>
                         c.status === 'accepted' &&
-                        ((c.requesterId === appUser?.id && c.recipientId === (selectedProfile || appUser)?.id) ||
-                          (c.requesterId === (selectedProfile || appUser)?.id && c.recipientId === appUser?.id))
+                        ((c.requesterId === appUser?.id && c.recipientId === activeProfileUser?.id) ||
+                          (c.requesterId === activeProfileUser?.id && c.recipientId === appUser?.id))
                       )}
-                      onSyncSignal={() => handleSyncSignal(selectedProfile || appUser!)}
+                      onSyncSignal={() => handleSyncSignal(activeProfileUser!)}
                       handleRelocatePost={handleEchoPost}
                       setRelocatingPost={setRelocatingPost}
                       addToast={addToast}
@@ -1697,10 +1744,12 @@ function App() {
                       onAddComment={handleAddComment}
                       setAppUser={(updated: any) => {
                         setAppUser(updated as any);
-                        setSelectedProfile(updated as any);
+                        if (selectedProfile && selectedProfile.id === updated?.id) {
+                          setSelectedProfile(null);
+                        }
                       }}
                       onMessageClick={() => {
-                        setSelectedChat(selectedProfile || appUser);
+                        setSelectedChat(activeProfileUser);
                         setActiveTab('messages');
                         setSelectedProfile(null);
                       }}
@@ -1710,13 +1759,16 @@ function App() {
                         if (appUser) {
                           const merged = { ...appUser, ...updates };
                           setAppUser(merged as any);
-                          setSelectedProfile(merged as any);
+                          if (selectedProfile && selectedProfile.id === appUser.id) {
+                            setSelectedProfile(null);
+                          }
                         }
                       }}
                     />
                   </Suspense>
                 </motion.div>
-              )}
+                );
+              })()}
 
               {/* ─── Settings Page ─── */}
               {activeTab === 'settings' && appUser && (
@@ -1843,7 +1895,8 @@ function App() {
                 setReturnToDetailFeed({
                   type: detailFeed.type,
                   items: detailFeed.items,
-                  initialIndex: typeof itemIndex === 'number' ? itemIndex : detailFeed.initialIndex
+                  initialIndex: typeof itemIndex === 'number' ? itemIndex : detailFeed.initialIndex,
+                  prevTab: activeTab,
                 });
               }
               setDetailFeed(null);

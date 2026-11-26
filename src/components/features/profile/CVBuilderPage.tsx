@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft, ArrowRight, Printer, CheckCircle2, Sparkles, Plus, Trash2,
@@ -9,6 +9,7 @@ import {
 import { AppUser, WorkExperience } from '../../../types';
 import { profileService } from '../../../lib/services/profileService';
 import { sanitizeInput } from '../../../lib/security/inputValidator';
+import { resolveSyncedProfileFields } from '../../../lib/utils/profileCvSync';
 
 interface CVBuilderPageProps {
   appUser: AppUser;
@@ -49,26 +50,50 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const printAreaRef = useRef<HTMLDivElement>(null);
 
-  // 0. Resolve saved CV data from database or localStorage
-  const savedCvData = (appUser as any)?.cv_data || (appUser as any)?.cvData;
+  // 0. Resolve synchronized Profile ⟷ CV fields (Last Edit Wins & full auto-fill from Profile)
+  const initialResolved = useMemo(() => resolveSyncedProfileFields(appUser), [appUser]);
+  const savedCvData = initialResolved.savedCvData;
 
   // 1. Personal & Contact Info
-  const [fullName, setFullName] = useState(savedCvData?.name || appUser.name || '');
-  const [title, setTitle] = useState(savedCvData?.title || appUser.title || appUser.displayTitle || '');
-  const [phone, setPhone] = useState(savedCvData?.phone || appUser.phone || '');
-  const [email, setEmail] = useState(savedCvData?.email || appUser.email || '');
-  const [location, setLocation] = useState(savedCvData?.location || appUser.location || '');
-  const [bio, setBio] = useState(savedCvData?.bio || appUser.bio || '');
+  const [fullName, setFullName] = useState(initialResolved.name);
+  const [title, setTitle] = useState(initialResolved.title);
+  const [phone, setPhone] = useState(initialResolved.phone);
+  const [email, setEmail] = useState(initialResolved.email);
+  const [location, setLocation] = useState(initialResolved.location);
+  const [bio, setBio] = useState(initialResolved.bio);
 
   // 2. Education
-  const [education, setEducation] = useState(savedCvData?.education || appUser.education || '');
+  const [education, setEducation] = useState(initialResolved.education);
 
   // 3. Skills
-  const [skills, setSkills] = useState<string[]>(() => {
-    if (Array.isArray(savedCvData?.skills) && savedCvData.skills.length > 0) return [...savedCvData.skills];
-    return Array.isArray(appUser.skills) ? [...appUser.skills] : [];
-  });
+  const [skills, setSkills] = useState<string[]>(initialResolved.skills);
   const [newSkillInput, setNewSkillInput] = useState('');
+
+  // Keep CV editor fields synchronized whenever appUser changes from Profile or DB refresh
+  useEffect(() => {
+    const resolved = resolveSyncedProfileFields(appUser);
+    setFullName(resolved.name);
+    setTitle(resolved.title);
+    setPhone(resolved.phone);
+    setEmail(resolved.email);
+    setLocation(resolved.location);
+    setBio(resolved.bio);
+    setEducation(resolved.education);
+    if (resolved.skills.length > 0) setSkills(resolved.skills);
+  }, [
+    appUser?.id,
+    appUser?.name,
+    appUser?.title,
+    (appUser as any)?.displayTitle,
+    (appUser as any)?.display_title,
+    appUser?.phone,
+    appUser?.email,
+    appUser?.location,
+    appUser?.bio,
+    appUser?.education,
+    (appUser as any)?.updated_at,
+    (appUser as any)?.cv_updated_at,
+  ]);
 
   // 4. Languages
   const [languages, setLanguages] = useState<LanguageItem[]>(() => {
@@ -215,6 +240,7 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
         `• ${e.role} لدى ${e.company} (${e.duration}):\n  ${e.tasks}${e.skills ? `\n  [المهارات: ${e.skills}]` : ''}`
       ).join('\n\n');
 
+      const now = new Date().toISOString();
       const fullCVBundle = {
         name: sanitizeInput(fullName, 100),
         title: sanitizeInput(title, 120),
@@ -228,7 +254,7 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
         languagesList: languages,
         workExperiences: experiences,
         experienceText: formattedExpText,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
         isATSVerified: true
       };
 
@@ -237,23 +263,22 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
       localStorage.setItem(`prolink_ats_experiences_${appUser.id}`, JSON.stringify(experiences));
       localStorage.setItem(`prolink_ats_languages_${appUser.id}`, JSON.stringify(languages));
 
-      // 2. Update Supabase profiles table with complete cv_data payload
+      // 2. Update Supabase profiles table with complete cv_data & synchronized profile columns
       const profileUpdates: any = {
         name: fullCVBundle.name,
         title: fullCVBundle.title,
         display_title: fullCVBundle.title,
+        displayTitle: fullCVBundle.title,
         bio: fullCVBundle.bio,
         location: fullCVBundle.location,
+        phone: fullCVBundle.phone,
         education: fullCVBundle.education,
         skills: fullCVBundle.skills,
         experience: fullCVBundle.experienceText,
-        work_experiences: experiences,
         cv_data: fullCVBundle,
         cv_template: 'standard_ats',
-        cv_updated_at: new Date().toISOString(),
+        cv_updated_at: now,
       };
-
-      if (phone) profileUpdates.phone = fullCVBundle.phone;
 
       const res = await profileService.updateProfile(appUser.id, profileUpdates);
       if (res?.error) {
@@ -269,8 +294,10 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
             name: fullCVBundle.name,
             title: fullCVBundle.title,
             displayTitle: fullCVBundle.title,
+            display_title: fullCVBundle.title,
             bio: fullCVBundle.bio,
             location: fullCVBundle.location,
+            phone: fullCVBundle.phone,
             education: fullCVBundle.education,
             skills: fullCVBundle.skills,
             languages: fullCVBundle.languages,
@@ -278,6 +305,8 @@ export const CVBuilderPage: React.FC<CVBuilderPageProps> = ({
             experience: fullCVBundle.experienceText,
             cv_data: fullCVBundle,
             cvData: fullCVBundle,
+            cv_updated_at: now,
+            updated_at: now,
           };
           try {
             localStorage.setItem('prolink_cached_user', JSON.stringify(updated));

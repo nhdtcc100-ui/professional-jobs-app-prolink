@@ -243,10 +243,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({
       icon: Headphones,
       color: 'text-emerald-500',
       onClick: () => {
-        setActiveTab('about');
-        setTimeout(() => {
-          window.dispatchEvent(new CustomEvent('prolink_open_support_tab'));
-        }, 50);
+        setActiveTab('support');
       },
       preload: () => preloadTab('about'),
     });
@@ -644,8 +641,8 @@ export const MobileNav: React.FC<MobileNavProps> = ({
                         onMouseEnter={() => preloadTab('profile')}
                         onPointerDown={() => preloadTab('profile')}
                         onClick={() => {
-                          // ⚡ Urgent — navigate to profile immediately
-                          setSelectedProfile(appUser);
+                          // ⚡ Urgent — navigate to own profile cleanly without visitor state
+                          setSelectedProfile(null);
                           setActiveTab('profile');
                           setShowMobileMenu(false);
                           setShowNotifications?.(false);

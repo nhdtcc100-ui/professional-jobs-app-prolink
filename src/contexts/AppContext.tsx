@@ -149,6 +149,42 @@ export const mapProfile = (p: any): any => {
   );
   // ✅ is_active: treat NULL/undefined as active (default), only false = banned
   const isActive = p.is_active !== false;
+  // ✅ Safe local CV cache reconciliation per user ID (never mixes users)
+  let resolvedCvData = p.cv_data || null;
+  if (p.id && typeof window !== 'undefined') {
+    try {
+      const lsRaw = localStorage.getItem(`prolink_ats_cv_${p.id}`);
+      if (lsRaw) {
+        const lsCv = JSON.parse(lsRaw);
+        const dbCvTs = Date.parse(p.cv_data?.updatedAt || p.cv_updated_at || '') || 0;
+        const lsCvTs = Date.parse(lsCv?.updatedAt || '') || 0;
+        if (!resolvedCvData || (lsCv && lsCvTs > dbCvTs)) {
+          resolvedCvData = lsCv;
+        }
+      }
+    } catch {}
+  }
+
+  const profileUpdatedTs = Date.parse(p.updated_at || '') || 0;
+  const cvUpdatedTs = Date.parse(resolvedCvData?.updatedAt || p.cv_updated_at || '') || 0;
+  const isProfileNewer = profileUpdatedTs > cvUpdatedTs + 1500;
+
+  const resolvedTitle = isProfileNewer
+    ? (p.title || p.display_title || p.job_title || p.headline || p.profession || resolvedCvData?.title || '')
+    : (p.title || resolvedCvData?.title || p.display_title || p.job_title || p.headline || p.profession || '');
+  const resolvedDisplayTitle = p.display_title || resolvedTitle || p.displayTitle || '';
+
+  if (resolvedCvData && isProfileNewer) {
+    resolvedCvData = {
+      ...resolvedCvData,
+      name: p.name || resolvedCvData.name || '',
+      title: resolvedTitle,
+      location: p.location !== undefined ? p.location : (resolvedCvData.location || ''),
+      bio: p.bio !== undefined ? p.bio : (resolvedCvData.bio || ''),
+      phone: p.phone !== undefined ? p.phone : (resolvedCvData.phone || ''),
+    };
+  }
+
   return {
     ...p,
     id: p.id,
@@ -156,8 +192,8 @@ export const mapProfile = (p: any): any => {
       ? p.name
       : (p.full_name || p.display_name || p.raw_user_meta_data?.full_name || p.raw_user_meta_data?.name || p.user_metadata?.full_name || p.user_metadata?.name || (p.email ? p.email.split('@')[0] : '') || p.name || 'مستخدم'),
     email: p.email || '',
-    title: p.title || p.job_title || p.headline || p.profession || '',
-    job_title: p.title || p.job_title || p.headline || p.profession || '',
+    title: resolvedTitle,
+    job_title: resolvedTitle,
     avatar: p.avatar_url || p.avatar || p.photo_url || p.image_url || null,
     avatar_url: p.avatar_url || p.avatar || p.photo_url || p.image_url || null,
     role: p.role ?? '',  // لا تضع قيمة افتراضية — القيمة الفارغة مهمة لتحديد needsRole
@@ -165,21 +201,21 @@ export const mapProfile = (p: any): any => {
     location: p.location || '',
     companyName: p.company_name || p.companyName || '',
     phone: p.phone || '',
-    skills: p.skills || [],
-    languages: p.languages || [],
+    skills: (Array.isArray(p.skills) && p.skills.length > 0) ? p.skills : (resolvedCvData?.skills || []),
+    languages: (Array.isArray(p.languages) && p.languages.length > 0) ? p.languages : (resolvedCvData?.languages || []),
     workExperiences: (Array.isArray(p.work_experiences) && p.work_experiences.length > 0)
       ? p.work_experiences
       : (Array.isArray(p.workExperiences) && p.workExperiences.length > 0)
         ? p.workExperiences
-        : (Array.isArray(p.cv_data?.workExperiences) && p.cv_data.workExperiences.length > 0)
-          ? p.cv_data.workExperiences
-          : (Array.isArray(p.cv_data?.work_experiences) && p.cv_data.work_experiences.length > 0)
-            ? p.cv_data.work_experiences
+        : (Array.isArray(resolvedCvData?.workExperiences) && resolvedCvData.workExperiences.length > 0)
+          ? resolvedCvData.workExperiences
+          : (Array.isArray(resolvedCvData?.work_experiences) && resolvedCvData.work_experiences.length > 0)
+            ? resolvedCvData.work_experiences
             : [],
-    cv_data: p.cv_data || null,
-    cvData: p.cv_data || null,
-    experience: p.experience || '',
-    education: p.education || '',
+    cv_data: resolvedCvData,
+    cvData: resolvedCvData,
+    experience: p.experience || resolvedCvData?.experienceText || '',
+    education: p.education || resolvedCvData?.education || '',
     isPro: p.is_pro || false,
     is_pro: p.is_pro || false,
     isAdmin: isTargetAdmin,
@@ -197,8 +233,8 @@ export const mapProfile = (p: any): any => {
     open_to: p.open_to || (p.is_available ? 'work' : 'none'),
     isAvailable: Boolean(p.is_available || p.open_to === 'work'),
     is_available: Boolean(p.is_available || p.open_to === 'work'),
-    displayTitle: p.display_title || p.displayTitle || '',
-    display_title: p.display_title || p.displayTitle || '',
+    displayTitle: resolvedDisplayTitle,
+    display_title: resolvedDisplayTitle,
     freelancerType: p.freelancer_type || p.freelancerType || null,
     freelancer_type: p.freelancer_type || p.freelancerType || null,
     specialty: p.specialty || '',
@@ -807,6 +843,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // ── Persist active tab: default to news upon app start/open ──────────
+  const [selectedProfile, setSelectedProfile] = useState<AppUser | null>(null);
   const [activeTab, setActiveTabRaw] = useState<string>(() => {
     try { return localStorage.getItem('prolink_active_tab') || 'news'; } catch { return 'news'; }
   });
@@ -821,6 +858,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       featureGateRef.current.notify(gateMessages[tab]);
       return;
     }
+    if (tab !== 'profile') {
+      setSelectedProfile(null);
+    }
     try { localStorage.setItem('prolink_active_tab', tab); } catch {}
     setActiveTabRaw(tab);
   }, []);
@@ -828,7 +868,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const searchQuery = _searchQuery;
   // Wrap setter so every search query is sanitised before storing
   const setSearchQuery = useCallback((q: string) => _setSearchQuery(sanitizeInput(q)), []);
-  const [selectedProfile, setSelectedProfile] = useState<AppUser | null>(null);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [toasts, setToasts] = useState<{ id: number, message: string, type: 'success' | 'error' | 'info' | 'warning' }[]>([]);
   const [showNotifications, setShowNotifications] = useState(false);

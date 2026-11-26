@@ -54,13 +54,10 @@ export const HomeSidebar: React.FC<HomeSidebarProps> = ({ appUser, setSelectedPr
 
   const handleOpenSupport = () => {
     if (setActiveTab) {
-      setActiveTab('about');
+      setActiveTab('support');
     } else {
-      window.dispatchEvent(new CustomEvent('setTab', { detail: 'about' }));
+      window.dispatchEvent(new CustomEvent('setTab', { detail: 'support' }));
     }
-    setTimeout(() => {
-      window.dispatchEvent(new CustomEvent('prolink_open_support_tab'));
-    }, 50);
   };
 
   const handleOpenServices = () => {

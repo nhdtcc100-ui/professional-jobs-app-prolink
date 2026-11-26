@@ -31,6 +31,7 @@ export const preloadTab = (tab: string) => {
       loadGroupsView();
       break;
     case 'about':
+    case 'support':
       loadAboutPage();
       break;
     case 'profile':

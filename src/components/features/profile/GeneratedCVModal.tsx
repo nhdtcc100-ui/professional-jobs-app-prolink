@@ -10,6 +10,7 @@ import { Share } from '@capacitor/share';
 import { Capacitor } from '@capacitor/core';
 import { useAppContext } from '../../../contexts/AppContext';
 import { supabase } from '../../../lib/supabase';
+import { resolveSyncedProfileFields } from '../../../lib/utils/profileCvSync';
 
 export interface GeneratedCVModalProps {
   isOpen: boolean;
@@ -37,9 +38,13 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
   const [dbProfile, setDbProfile] = useState<any>(null);
 
   // 🔄 Always fetch complete profile from database for the applicant/target user
-  // This guarantees any employer or viewer sees 100% of the CV (experiences, skills, languages, education)
+  // Reset dbProfile first whenever targetUserId changes to prevent cross-user flash
   useEffect(() => {
-    if (!isOpen || !targetUserId) return;
+    if (!isOpen || !targetUserId) {
+      setDbProfile(null);
+      return;
+    }
+    setDbProfile(null);
     let cancelled = false;
     supabase
       .from('profiles')
@@ -86,26 +91,30 @@ export const GeneratedCVModal: React.FC<GeneratedCVModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Resolve merged profile fields
-  // 0. Resolve saved CV data from database or props
-  const savedCvData = dbProfile?.cv_data || (applicantData as any)?.cv_data || (user as any)?.cv_data || (applicantData as any)?.cvData || (user as any)?.cvData || (applicantData as any)?.atsCV || (user as any)?.atsCV;
+  // Resolve merged & synchronized profile/CV fields (respecting Last-Edit-Wins without cross-user leakage)
+  const mergedSourceUser = useMemo(() => {
+    if (isOwner && appUser) {
+      return { ...user, ...dbProfile, ...appUser };
+    }
+    return { ...user, ...dbProfile };
+  }, [isOwner, appUser, user, dbProfile]);
 
-  const fullName = applicantData?.name || savedCvData?.name || savedCvData?.fullName || dbProfile?.name || dbProfile?.full_name || user?.name || user?.fullName || 'محترف ProLink';
-  const title = applicantData?.title || savedCvData?.title || dbProfile?.title || dbProfile?.job_title || dbProfile?.headline || user?.title || user?.displayTitle || user?.display_title || user?.specialty || user?.headline || 'متخصص مهني';
-  const location = applicantData?.location || savedCvData?.location || dbProfile?.location || user?.location || 'العراق';
-  const phone = applicantData?.phone || savedCvData?.phone || dbProfile?.phone || user?.phone || '';
-  const email = applicantData?.email || savedCvData?.email || dbProfile?.email || user?.email || '';
-  const bio = applicantData?.bio || savedCvData?.bio || savedCvData?.summary || dbProfile?.bio || user?.bio || '';
-  const education = applicantData?.education || savedCvData?.education || savedCvData?.educationText || dbProfile?.education || user?.education || '';
+  const syncedFields = useMemo(
+    () => resolveSyncedProfileFields(mergedSourceUser, applicantData),
+    [mergedSourceUser, applicantData]
+  );
+
+  const savedCvData = syncedFields.savedCvData;
+  const fullName = syncedFields.name || 'محترف ProLink';
+  const title = syncedFields.title || 'متخصص مهني';
+  const location = syncedFields.location || 'العراق';
+  const phone = syncedFields.phone || '';
+  const email = syncedFields.email || '';
+  const bio = syncedFields.bio || '';
+  const education = syncedFields.education || '';
 
   // Resolve skills
-  const skills: string[] = useMemo(() => {
-    if (Array.isArray(savedCvData?.skills) && savedCvData.skills.length > 0) return savedCvData.skills;
-    if (Array.isArray(dbProfile?.skills) && dbProfile.skills.length > 0) return dbProfile.skills;
-    if (Array.isArray(applicantData?.skills) && applicantData.skills.length > 0) return applicantData.skills;
-    if (Array.isArray(user?.skills) && user.skills.length > 0) return user.skills;
-    return [];
-  }, [applicantData?.skills, user?.skills, savedCvData?.skills, dbProfile?.skills]);
+  const skills: string[] = syncedFields.skills;
 
   // Helper to normalize any language representation
   const parseLanguageItem = (l: any, i: number) => {

@@ -40,6 +40,8 @@ interface AboutPageProps {
   onBack?: () => void;
   appUser?: any;
   onOpenChat?: (targetUser: any) => void;
+  initialTab?: 'overview' | 'terms' | 'labor' | 'privacy' | 'support';
+  supportOnly?: boolean;
 }
 
 interface SupportMessage {
@@ -59,10 +61,10 @@ const SUPPORT_TABLE = 'support_messages';
 /* ─────────────────────────────────────────────────────────────
    Component
 ───────────────────────────────────────────────────────────── */
-export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
+export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser, initialTab, supportOnly = false }) => {
   const { allUsers = [], platformSettings, canUseSupportChat } = useAppContext();
   type Tab = 'overview' | 'terms' | 'labor' | 'privacy' | 'support';
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab || (supportOnly ? 'support' : 'overview'));
 
   /* ── Support chat state ────────────────────────────────── */
   const [chatMsg, setChatMsg]         = useState('');
@@ -310,58 +312,86 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onBack, appUser }) => {
   return (
     <div className="max-w-4xl mx-auto px-4 py-6 space-y-6 min-h-screen" dir="rtl">
 
-      {/* ── Top Banner ──────────────────────────────────────── */}
-      <div className="relative p-8 md:p-12 rounded-[2.5rem] bg-gradient-to-br from-blue-600 via-indigo-700 to-purple-800 overflow-hidden border-0 shadow-2xl">
-        <div className="absolute -left-12 -bottom-12 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute right-1/4 -top-12 w-48 h-48 bg-blue-400/20 rounded-full blur-2xl pointer-events-none" />
-        <div className="relative z-10 space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-black text-white">
-              <Sparkles size={14} className="text-amber-300 animate-pulse" />
-              منصة عمل أولاً
+      {/* ── Top Header / Hero Banner ── */}
+      {supportOnly ? (
+        <div className="relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-emerald-600 via-teal-700 to-slate-900 p-6 md:p-8 text-white shadow-xl">
+          <div className="flex items-center justify-between mb-4">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-black text-white">
+              <HeadphonesIcon size={14} className="text-emerald-300" />
+              قسم الدعم الفني
             </div>
             {onBack && (
               <button
                 onClick={onBack}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-black text-white transition-colors"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-black text-white transition-colors cursor-pointer active:scale-95"
               >
                 <ArrowRight size={14} />
-                العودة
+                العودة للرئيسية
               </button>
             )}
           </div>
-          <h1 className="text-3xl md:text-5xl font-black tracking-tight leading-tight text-white">
-            منصة عمل أولاً — التوظيف الذكي
+          <h1 className="text-2xl md:text-4xl font-black tracking-tight leading-tight text-white mb-2">
+            مركز المساعدة والدعم المباشر 🎧
           </h1>
-          <p className="text-sm md:text-base font-medium text-blue-100/90 max-w-2xl leading-relaxed">
-            المنصة الذكية الأولى للربط المباشر بين أصحاب العمل والباحثين عن الفرص عبر تقنيات المطابقة الدقيقة وتجارب التواصل اللحظي.
+          <p className="text-xs md:text-sm font-medium text-emerald-100/90 max-w-xl leading-relaxed">
+            فريق الدعم الفني متاح للإجابة على استفساراتكم وحل مشكلات التوظيف والمراسلة مباشرة عبر الشات الفوري أو واتساب وتيليجرام.
           </p>
-          <div className="pt-4 flex flex-wrap gap-4 text-xs font-bold text-blue-100">
-            <span className="flex items-center gap-1.5"><Globe2 size={15} /> تغطية شاملة للمحافظات</span>
-            <span className="flex items-center gap-1.5"><ShieldCheck size={15} /> توثيق الحسابات والأدوار</span>
-            <span className="flex items-center gap-1.5"><Zap size={15} /> بحث بالرادار الدائري</span>
+        </div>
+      ) : (
+        <div className="relative p-8 md:p-12 rounded-[2.5rem] bg-gradient-to-br from-blue-600 via-indigo-700 to-purple-800 overflow-hidden border-0 shadow-2xl">
+          <div className="absolute -left-12 -bottom-12 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute right-1/4 -top-12 w-48 h-48 bg-blue-400/20 rounded-full blur-2xl pointer-events-none" />
+          <div className="relative z-10 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/15 backdrop-blur-md border border-white/20 text-xs font-black text-white">
+                <Sparkles size={14} className="text-amber-300 animate-pulse" />
+                منصة عمل أولاً
+              </div>
+              {onBack && (
+                <button
+                  onClick={onBack}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-black text-white transition-colors"
+                >
+                  <ArrowRight size={14} />
+                  العودة
+                </button>
+              )}
+            </div>
+            <h1 className="text-3xl md:text-5xl font-black tracking-tight leading-tight text-white">
+              منصة عمل أولاً — التوظيف الذكي
+            </h1>
+            <p className="text-sm md:text-base font-medium text-blue-100/90 max-w-2xl leading-relaxed">
+              المنصة الذكية الأولى للربط المباشر بين أصحاب العمل والباحثين عن الفرص عبر تقنيات المطابقة الدقيقة وتجارب التواصل اللحظي.
+            </p>
+            <div className="pt-4 flex flex-wrap gap-4 text-xs font-bold text-blue-100">
+              <span className="flex items-center gap-1.5"><Globe2 size={15} /> تغطية شاملة للمحافظات</span>
+              <span className="flex items-center gap-1.5"><ShieldCheck size={15} /> توثيق الحسابات والأدوار</span>
+              <span className="flex items-center gap-1.5"><Zap size={15} /> بحث بالرادار الدائري</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* ── Tab Bar ────────────────────────────────────────── */}
-      <div className="flex gap-1 p-1.5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setActiveTab(t.id)}
-            className={`flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-xl text-[11px] font-black transition-all flex-1 min-w-0 ${
-              activeTab === t.id
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                : 'text-slate-500 dark:text-slate-400 hover:text-blue-600 hover:bg-slate-50 dark:hover:bg-slate-700'
-            }`}
-          >
-            <t.icon size={15} className="shrink-0" />
-            {/* Label: visible on md+, hidden on mobile (icon-only) */}
-            <span className="hidden md:block truncate">{t.label}</span>
-          </button>
-        ))}
-      </div>
+      {/* ── Tab Bar (Hidden in direct Support mode) ────────────────────────────────────────── */}
+      {!supportOnly && (
+        <div className="flex gap-1 p-1.5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setActiveTab(t.id)}
+              className={`flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-xl text-[11px] font-black transition-all flex-1 min-w-0 ${
+                activeTab === t.id
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-blue-600 hover:bg-slate-50 dark:hover:bg-slate-700'
+              }`}
+            >
+              <t.icon size={15} className="shrink-0" />
+              {/* Label: visible on md+, hidden on mobile (icon-only) */}
+              <span className="hidden md:block truncate">{t.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ── Tab Content ──────────────────────────────────────  */}
       <AnimatePresence mode="wait">

@@ -382,33 +382,51 @@ export const profileService = {
       }
     } catch (_) {}
 
-    try {
-      const res = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`, {
-        method: 'PATCH',
-        headers: {
-          'apikey': supabaseAnonKey,
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-          'Prefer': 'return=representation',
-        },
-        body: JSON.stringify({ ...dbUpdates, updated_at: new Date().toISOString() }),
-      });
+    const nowIso = new Date().toISOString();
+    const safeDbUpdates: Record<string, any> = { ...dbUpdates, updated_at: nowIso };
 
-      if (res.ok) {
-        const rows = await res.json().catch(() => []);
-        if (Array.isArray(rows) && rows.length > 0) {
-          result = { data: rows, error: null };
+    // Schema-resilient REST PATCH: automatically strips any unmigrated optional column on PGRST204
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        const res = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseAnonKey,
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation',
+          },
+          body: JSON.stringify(safeDbUpdates),
+        });
+
+        if (res.ok) {
+          const rows = await res.json().catch(() => []);
+          if (Array.isArray(rows) && rows.length > 0) {
+            result = { data: rows, error: null };
+          }
+          break;
         }
+
+        const errJson = await res.json().catch(() => null);
+        const errMsg = String(errJson?.message || errJson?.details || '');
+        const missingColMatch = errMsg.match(/Could not find the '([^']+)' column/i);
+        if (res.status === 400 && missingColMatch?.[1] && safeDbUpdates[missingColMatch[1]] !== undefined) {
+          logger.warn(`[profileService] Stripping unmigrated column '${missingColMatch[1]}' and retrying PATCH`);
+          delete safeDbUpdates[missingColMatch[1]];
+          continue;
+        }
+        break;
+      } catch (fetchErr) {
+        logger.warn('[profileService] Direct REST PATCH failed, falling back to client:', fetchErr);
+        break;
       }
-    } catch (fetchErr) {
-      logger.warn('[profileService] Direct REST PATCH failed, falling back to client:', fetchErr);
     }
 
     // 2. Client fallback only if direct REST didn't return rows
     if (!result || !result.data || result.data.length === 0) {
       try {
         result = await Promise.race([
-          supabase.from('profiles').update(dbUpdates).eq('id', userId).select('id'),
+          supabase.from('profiles').update(safeDbUpdates).eq('id', userId).select('id'),
           new Promise((_, reject) => setTimeout(() => reject(new Error('TIMEOUT_DB_UPDATE')), 4000))
         ]);
       } catch (dbErr) {
@@ -416,15 +434,22 @@ export const profileService = {
       }
     }
 
-    // 💾 Always update local cache so avatar and CV updates are never lost
+    // 💾 Always update local cache so profile, CV, avatar updates are never lost on refresh
     try {
       const cached = localStorage.getItem('prolink_cached_user');
       if (cached) {
         const parsed = JSON.parse(cached);
         if (parsed && (parsed.id === userId || !parsed.id)) {
+          const syncedTitle = updates.title !== undefined ? updates.title : (updates.display_title !== undefined ? updates.display_title : parsed.title);
           const updatedCached = {
             ...parsed,
             ...updates,
+            title: syncedTitle,
+            displayTitle: updates.displayTitle || updates.display_title || syncedTitle || parsed.displayTitle,
+            display_title: updates.display_title || updates.displayTitle || syncedTitle || parsed.display_title,
+            cv_data: updates.cv_data || updates.cvData || parsed.cv_data,
+            cvData: updates.cv_data || updates.cvData || parsed.cvData,
+            updated_at: nowIso,
             avatar: updates.avatar || updates.avatar_url || parsed.avatar,
             avatar_url: updates.avatar || updates.avatar_url || parsed.avatar_url,
             coverUrl: updates.coverUrl || updates.cover_url || parsed.coverUrl,

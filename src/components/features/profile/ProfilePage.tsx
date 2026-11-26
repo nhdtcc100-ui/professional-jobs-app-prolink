@@ -37,6 +37,7 @@ export function ProfilePage({
   onCallClick,
   returnToJob,
   onReturnToJob,
+  returnToServiceUser,
 }: ProfilePageProps) {
   return (
     <ModernProfileView
@@ -51,6 +52,7 @@ export function ProfilePage({
       showCallButton={!isMe}
       returnToJob={returnToJob}
       onReturnToJob={onReturnToJob}
+      returnToServiceUser={returnToServiceUser}
     />
   );
 }

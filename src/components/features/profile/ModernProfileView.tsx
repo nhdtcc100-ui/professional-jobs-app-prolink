@@ -23,6 +23,7 @@ import { PostNewsCard } from '../PostNewsCard';
 import { DetailFeedPage } from '../DetailFeedPage';
 import { GeneratedCVModal } from './GeneratedCVModal';
 import { CVBuilderPage } from './CVBuilderPage';
+import { buildProfileWithSyncedCv } from '../../../lib/utils/profileCvSync';
 
 interface ModernProfileViewProps {
   profile: AppUser;
@@ -53,22 +54,24 @@ export function ModernProfileView({
   onReturnToJob,
   returnToServiceUser,
 }: ModernProfileViewProps) {
-  const effectiveUserId = user?.id || profile?.id;
+  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast, appUser, handleDeletePost, canUseMessaging, canUseAccountSwitch } = useAppContext();
+  const activeProfile = isMe ? (appUser || profile) : profile;
+  const effectiveUserId = isMe ? (appUser?.id || user?.id || profile?.id) : profile?.id;
   // ─── Form State ───────────────────────────────────────────────────────────────
   const [profilePostDetail, setProfilePostDetail] = useState<{ items: any[]; index: number } | null>(null);
-  const [name, setName] = useState(profile?.name || '');
-  const [title, setTitle] = useState(profile?.display_title || profile?.title || (profile as any)?.industry || '');
-  const [location, setLocation] = useState(profile?.location || '');
-  const [bio, setBio] = useState(profile?.bio || '');
-  const [phone, setPhone] = useState(profile?.phone || '');
+  const [name, setName] = useState(activeProfile?.name || '');
+  const [title, setTitle] = useState(activeProfile?.title || (activeProfile as any)?.display_title || (activeProfile as any)?.displayTitle || (activeProfile as any)?.industry || '');
+  const [location, setLocation] = useState(activeProfile?.location || '');
+  const [bio, setBio] = useState(activeProfile?.bio || '');
+  const [phone, setPhone] = useState(activeProfile?.phone || '');
   const [avatar, setAvatar] = useState(
-    profile?.avatar || (profile as any)?.avatar_url ||
-    `https://ui-avatars.com/api/?name=${encodeURIComponent(profile?.name || 'User')}&background=0a66c2&color=fff`
+    activeProfile?.avatar || (activeProfile as any)?.avatar_url ||
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(activeProfile?.name || 'User')}&background=0a66c2&color=fff`
   );
-  const [coverUrl, setCoverUrl] = useState((profile as any)?.cover_url || (profile as any)?.coverUrl || '');
-  const [cvUrl, setCvUrl] = useState(profile?.cvUrl || (profile as any)?.cv_url || '');
+  const [coverUrl, setCoverUrl] = useState((activeProfile as any)?.cover_url || (activeProfile as any)?.coverUrl || '');
+  const [cvUrl, setCvUrl] = useState(activeProfile?.cvUrl || (activeProfile as any)?.cv_url || '');
   const [role, setRole] = useState<'seeker' | 'employer' | 'freelancer'>(
-    (profile?.role as any) || ((profile as any)?.account_type as any) || 'seeker'
+    (activeProfile?.role as any) || ((activeProfile as any)?.account_type as any) || 'seeker'
   );
   const [savingRole, setSavingRole] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
@@ -76,15 +79,16 @@ export function ModernProfileView({
   const [roleReason, setRoleReason] = useState('');
   const [isSendingRoleRequest, setIsSendingRoleRequest] = useState(false);
   const [pendingRoleRequest, setPendingRoleRequest] = useState<any>(() => {
+    if (!isMe) return null;
     try {
       const saved = localStorage.getItem('prolink_pending_role_req');
       return saved ? JSON.parse(saved) : null;
     } catch { return null; }
   });
 
-  // Check for pending role change request from DB on mount or when role updates
+  // Check for pending role change request from DB on mount or when role updates (own profile only)
   useEffect(() => {
-    if (!effectiveUserId) return;
+    if (!isMe || !effectiveUserId) return;
     profileService.fetchPendingRoleChangeRequest(effectiveUserId).then(({ pending, request }) => {
       if (pending && request) {
         if (request.requested_role === role) {
@@ -97,7 +101,7 @@ export function ModernProfileView({
         setPendingRoleRequest(null);
       }
     });
-  }, [effectiveUserId, role]);
+  }, [isMe, effectiveUserId, role]);
 
   const [isAvailable, setIsAvailable] = useState<boolean>(
     Boolean((profile as any)?.is_available || (profile as any)?.isAvailable || (profile as any)?.open_to === 'work')
@@ -139,15 +143,70 @@ export function ModernProfileView({
     }
   };
 
-  // Keep state in sync with profile prop changes (prevents Mobile State loss)
-  React.useEffect(() => {
-    const cUrl = (profile as any)?.cover_url || (profile as any)?.coverUrl;
-    if (cUrl && cUrl !== coverUrl) setCoverUrl(cUrl);
-    const aUrl = profile?.avatar || (profile as any)?.avatar_url;
-    if (aUrl && aUrl !== avatar) setAvatar(aUrl);
-    const r = (profile?.role as any) || ((profile as any)?.account_type as any);
-    if (r && r !== role) setRole(r);
-  }, [profile]);
+  // 🛡️ Strict Profile Isolation & Bi-directional CV Sync:
+  // Always reset & synchronize ALL fields when switching between profiles or updating own profile/CV
+  useEffect(() => {
+    const src = isMe ? (appUser || profile) : profile;
+    if (!src) return;
+    setName(src.name || '');
+    setTitle(src.title || (src as any)?.display_title || (src as any)?.displayTitle || (src as any)?.industry || '');
+    setLocation(src.location || '');
+    setBio(src.bio || '');
+    setPhone(src.phone || '');
+    setAvatar(
+      src.avatar || (src as any)?.avatar_url ||
+      `https://ui-avatars.com/api/?name=${encodeURIComponent(src.name || 'User')}&background=0a66c2&color=fff`
+    );
+    setCoverUrl((src as any)?.cover_url || (src as any)?.coverUrl || '');
+    setCvUrl(src.cvUrl || (src as any)?.cv_url || '');
+    setRole((src.role as any) || ((src as any)?.account_type as any) || 'seeker');
+  }, [
+    isMe,
+    profile?.id,
+    profile?.name,
+    profile?.title,
+    (profile as any)?.display_title,
+    profile?.location,
+    profile?.bio,
+    profile?.phone,
+    profile?.avatar,
+    (profile as any)?.avatar_url,
+    (profile as any)?.coverUrl,
+    (profile as any)?.cover_url,
+    profile?.cvUrl,
+    (profile as any)?.cv_url,
+    profile?.role,
+    appUser?.id,
+    appUser?.name,
+    appUser?.title,
+    (appUser as any)?.display_title,
+    appUser?.location,
+    appUser?.bio,
+    appUser?.phone,
+    appUser?.avatar,
+    (appUser as any)?.avatar_url,
+    (appUser as any)?.coverUrl,
+    (appUser as any)?.cover_url,
+    appUser?.cvUrl,
+    (appUser as any)?.cv_url,
+    appUser?.role,
+  ]);
+
+  // 🔄 Immediate listener when CVBuilder saves changes for current user
+  useEffect(() => {
+    if (!isMe) return;
+    const onCvUpdated = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail) return;
+      if (detail.name !== undefined) setName(detail.name);
+      if (detail.title !== undefined) setTitle(detail.title);
+      if (detail.location !== undefined) setLocation(detail.location);
+      if (detail.bio !== undefined) setBio(detail.bio);
+      if (detail.phone !== undefined) setPhone(detail.phone);
+    };
+    window.addEventListener('prolink_cv_updated', onCvUpdated);
+    return () => window.removeEventListener('prolink_cv_updated', onCvUpdated);
+  }, [isMe]);
 
   // ─── Password State ──────────────────────────────────────────────────────────
   const [currentPassword, setCurrentPassword] = useState('');
@@ -181,7 +240,6 @@ export function ModernProfileView({
 
   // ─── Profile Tabs & Posts State ──────────────────────────────────────────────
   const [activeProfileTab, setActiveProfileTab] = useState<'info' | 'posts'>('info');
-  const { posts: allContextPosts, allUsers: contextUsers, setPosts: setContextPosts, setActiveTab, addToast: contextAddToast, appUser, handleDeletePost, canUseMessaging, canUseAccountSwitch } = useAppContext();
   const notify = useCallback((msg: string, type: any = 'success') => {
     if (typeof addToast === 'function') addToast(msg, type);
     else if (typeof contextAddToast === 'function') contextAddToast(msg, type);
@@ -192,21 +250,29 @@ export function ModernProfileView({
 
   const targetUserId = profile?.id || effectiveUserId;
 
-  // جلب بيانات الاتصال (الهاتف، الموقع، السيرة) إذا لم تكن متوفرة في الملف الممرر (خصوصاً عند الدخول من سوق المهن)
+  // جلب بيانات الاتصال والتفاصيل العامة للزوار فقط (دون المساس بملف المستخدم الحالي أثناء التعديل)
   useEffect(() => {
-    if (targetUserId && (!phone || !cvUrl)) {
-      (supabase as any)
-        .from('profiles')
-        .select('phone, website, cv_url')
-        .eq('id', targetUserId)
-        .maybeSingle()
-        .then(({ data }: any) => {
-          if (data?.phone && !phone) setPhone(data.phone);
-          if (data?.cv_url && !cvUrl) setCvUrl(data.cv_url);
-        })
-        .catch(() => {});
-    }
-  }, [targetUserId, phone, cvUrl]);
+    if (isMe || !targetUserId) return;
+    let active = true;
+    (supabase as any)
+      .from('profiles')
+      .select('name, title, display_title, bio, location, phone, website, cv_url, avatar_url, cover_url')
+      .eq('id', targetUserId)
+      .maybeSingle()
+      .then(({ data }: any) => {
+        if (!active || !data) return;
+        if (data.name) setName(data.name);
+        if (data.title || data.display_title) setTitle(data.title || data.display_title);
+        if (data.bio !== undefined && data.bio !== null) setBio(data.bio);
+        if (data.location !== undefined && data.location !== null) setLocation(data.location);
+        if (data.phone) setPhone(data.phone);
+        if (data.cv_url) setCvUrl(data.cv_url);
+        if (data.avatar_url) setAvatar(data.avatar_url);
+        if (data.cover_url) setCoverUrl(data.cover_url);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [isMe, targetUserId]);
 
   const fetchProfilePosts = useCallback(async () => {
     if (!targetUserId) return;
@@ -723,20 +789,39 @@ export function ModernProfileView({
     }
   };
 
-  // ─── 3. Save Personal Info ────────────────────────────────────────────────────
+  // ─── 3. Save Personal Info (مع مزامنة ثنائية تلقائية مع السيرة الذاتية) ──────
   const handleSavePersonalInfo = async () => {
-    if (!effectiveUserId) { addToast('يرجى تسجيل الدخول أولاً', 'error'); return; }
+    if (!isMe || !effectiveUserId) { addToast('يرجى تسجيل الدخول أولاً', 'error'); return; }
     if (!name.trim()) { addToast('الاسم لا يمكن أن يكون فارغاً', 'error'); return; }
     try {
       setSavingInfo(true);
       const updates = {
-        name: name.trim(), title: title.trim(), display_title: title.trim(),
-        location: location.trim(), bio: bio.trim(),
+        name: name.trim(),
+        title: title.trim(),
+        display_title: title.trim(),
+        displayTitle: title.trim(),
+        location: location.trim(),
+        bio: bio.trim(),
       };
-      const { error } = await profileService.updateProfile(effectiveUserId, updates);
+      const { dbUpdates, syncedCvData, now } = buildProfileWithSyncedCv(
+        effectiveUserId,
+        appUser || profile,
+        updates
+      );
+      const { error } = await profileService.updateProfile(effectiveUserId, dbUpdates);
       if (error) throw error;
-      if (setAppUser) setAppUser((prev: any) => ({ ...prev, ...updates }));
-      addToast('✅ تم حفظ المعلومات الشخصية بنجاح!', 'success');
+      if (setAppUser) {
+        setAppUser((prev: any) => ({
+          ...prev,
+          ...updates,
+          cv_data: syncedCvData,
+          cvData: syncedCvData,
+          cv_updated_at: now,
+          updated_at: now,
+        }));
+      }
+      window.dispatchEvent(new CustomEvent('prolink_cv_updated', { detail: syncedCvData }));
+      addToast('✅ تم حفظ المعلومات الشخصية ومزامنة السيرة الذاتية بنجاح!', 'success');
     } catch (err: any) {
       addToast('فشل حفظ المعلومات: ' + (err?.message || ''), 'error');
     } finally {
@@ -744,15 +829,31 @@ export function ModernProfileView({
     }
   };
 
-  // ─── 4. Save Phone ────────────────────────────────────────────────────────────
+  // ─── 4. Save Phone (مع مزامنة ثنائية تلقائية مع السيرة الذاتية) ─────────────
   const handleSavePhone = async () => {
-    if (!effectiveUserId) { addToast('يرجى تسجيل الدخول أولاً', 'error'); return; }
+    if (!isMe || !effectiveUserId) { addToast('يرجى تسجيل الدخول أولاً', 'error'); return; }
     try {
       setSavingPhone(true);
-      const { error } = await profileService.updateProfile(effectiveUserId, { phone: phone.trim() });
+      const trimmedPhone = phone.trim();
+      const { dbUpdates, syncedCvData, now } = buildProfileWithSyncedCv(
+        effectiveUserId,
+        appUser || profile,
+        { phone: trimmedPhone }
+      );
+      const { error } = await profileService.updateProfile(effectiveUserId, dbUpdates);
       if (error) throw error;
-      if (setAppUser) setAppUser((prev: any) => ({ ...prev, phone: phone.trim() }));
-      addToast('✅ تم حفظ رقم الهاتف بنجاح!', 'success');
+      if (setAppUser) {
+        setAppUser((prev: any) => ({
+          ...prev,
+          phone: trimmedPhone,
+          cv_data: syncedCvData,
+          cvData: syncedCvData,
+          cv_updated_at: now,
+          updated_at: now,
+        }));
+      }
+      window.dispatchEvent(new CustomEvent('prolink_cv_updated', { detail: syncedCvData }));
+      addToast('✅ تم حفظ رقم الهاتف ومزامنته مع السيرة الذاتية بنجاح!', 'success');
     } catch (err: any) {
       addToast('فشل حفظ رقم الهاتف: ' + (err?.message || ''), 'error');
     } finally {
@@ -1007,10 +1108,11 @@ export function ModernProfileView({
   if (showCVBuilder) {
     return (
       <CVBuilderPage
+        key={`cv-builder-${effectiveUserId || 'me'}`}
         appUser={isMe ? (appUser || profile) : profile}
         onBack={() => setShowCVBuilder(false)}
         addToast={addToast}
-        setAppUser={setAppUser}
+        setAppUser={isMe ? setAppUser : undefined}
       />
     );
   }
@@ -2169,9 +2271,10 @@ export function ModernProfileView({
 
       {/* ── Platform Generated CV Modal ── */}
       <GeneratedCVModal
+        key={`gen-cv-${targetUserId || 'me'}`}
         isOpen={showGeneratedCV}
         onClose={() => setShowGeneratedCV(false)}
-        user={profile}
+        user={isMe ? (appUser || profile) : profile}
       />
 
     </div>

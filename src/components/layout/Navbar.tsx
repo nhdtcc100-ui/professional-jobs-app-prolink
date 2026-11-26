@@ -201,7 +201,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="relative group">
               <div
                 className="flex items-center gap-2 p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all cursor-pointer"
-                onClick={() => { setSelectedProfile(appUser); setIsEditingProfile(false); setActiveTab('profile'); }}
+                onClick={() => { setSelectedProfile(null); setIsEditingProfile(false); setActiveTab('profile'); }}
               >
                 <img
                   src={appUser?.avatar || `https://ui-avatars.com/api/?name=${appUser?.name || 'User'}&background=random`}
@@ -224,8 +224,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <div
                     className="p-2 mb-2 bg-slate-50 dark:bg-slate-700/50 rounded-xl cursor-pointer"
                     onMouseEnter={() => preloadTab('profile')}
-                    onPointerDown={() => { setSelectedProfile(appUser); setActiveTab('profile'); }}
-                    onClick={(e) => { e.preventDefault(); setSelectedProfile(appUser); setActiveTab('profile'); }}
+                    onPointerDown={() => { setSelectedProfile(null); setActiveTab('profile'); }}
+                    onClick={(e) => { e.preventDefault(); setSelectedProfile(null); setActiveTab('profile'); }}
                   >
                     <p className="font-black text-xs text-slate-800 dark:text-white">{appUser?.name}</p>
                     <p className="text-[9px] text-slate-400 font-bold truncate">{appUser?.email}</p>
@@ -234,7 +234,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <NavDropdownItem
                     icon={<UserIcon size={14} />}
                     label="الملف الشخصي"
-                    onClick={() => { setSelectedProfile(appUser); setIsEditingProfile(false); setActiveTab('profile'); }}
+                    onClick={() => { setSelectedProfile(null); setIsEditingProfile(false); setActiveTab('profile'); }}
                   />
                   <NavDropdownItem
                     icon={<Settings size={14} />}
@@ -308,7 +308,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
               <div
                 className="relative group cursor-pointer"
-                onClick={() => { setSelectedProfile(appUser); setActiveTab('profile'); }}
+                onClick={() => { setSelectedProfile(null); setActiveTab('profile'); }}
               >
                 <div className="absolute -inset-1 bg-gradient-to-tr from-blue-600 to-indigo-600 rounded-2xl blur opacity-20 group-active:opacity-40 transition-opacity" />
                 <img
