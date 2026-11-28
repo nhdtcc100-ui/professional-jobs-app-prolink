@@ -7,7 +7,7 @@ import { safeTimeAgo } from '../../../lib/utils/formatDate';
 import { BilingualSmartText } from '../../../lib/utils/bilingualText';
 import { JobCandidatesPanel } from './JobCandidatesPanel';
 import { useAppContext } from '../../../contexts/AppContext';
-import { getJobCategory, cleanJobDescription } from '../../../lib/utils/jobCategoryUtils';
+import { getJobCategory, cleanJobDescription, isJobActive } from '../../../lib/utils/jobCategoryUtils';
 
 interface JobDetailModalProps {
   job: Job | null;
@@ -25,7 +25,7 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose, on
   const appUser = propAppUser || contextAppUser;
   const usersList = allUsers.length > 0 ? allUsers : contextAllUsers;
   const [applicationText, setApplicationText] = useState('');
-  const isActive = job?.is_active !== false;
+  const isActive = isJobActive(job);
 
   // 🛡️ Mobile & Browser Back-Button Handling
   React.useEffect(() => {
@@ -167,6 +167,8 @@ export const JobDetailModal: React.FC<JobDetailModalProps> = ({ job, onClose, on
           >
             {isPublisher ? (
               <span>أنت ناشر هذه الوظيفة 🏢 (لا يمكنك التقديم)</span>
+            ) : !isActive ? (
+              <span>التقديم مغلق حالياً على هذه الوظيفة 🔒</span>
             ) : (
               <>
                 <Send size={18} />

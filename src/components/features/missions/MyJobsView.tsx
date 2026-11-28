@@ -1,25 +1,44 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Briefcase, Trash2, MapPin, Users, Edit3, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import { Briefcase, Trash2, MapPin, Users, Edit3, Eye, ChevronDown, ChevronUp, Lock, Unlock, Loader2 } from 'lucide-react';
 import { AppUser, Job } from '../../../types';
 import { GlassCard } from '../../ui';
 import { JobCandidatesPanel } from './JobCandidatesPanel';
 import { useAppContext } from '../../../contexts/AppContext';
+import { isJobActive } from '../../../lib/utils/jobCategoryUtils';
 
 interface MyJobsViewProps {
   myPostedJobs: Job[];
   onDeleteJob: (jobId: string) => void;
   onEditJob: (job: Job) => void;
   onViewJob: (job: Job) => void;
+  onToggleJobActive?: (job: Job, nextActive: boolean) => Promise<void> | void;
   allUsers: AppUser[];
   onUserClick: (userId: string) => void;
 }
 
 export const MyJobsView: React.FC<MyJobsViewProps> = ({ 
-  myPostedJobs, onDeleteJob, onEditJob, onViewJob, allUsers, onUserClick 
+  myPostedJobs, onDeleteJob, onEditJob, onViewJob, onToggleJobActive, allUsers, onUserClick 
 }) => {
   const { appUser } = useAppContext();
   const [openCandidates, setOpenCandidates] = React.useState<Set<string>>(new Set());
+  const [togglingJobId, setTogglingJobId] = React.useState<string | null>(null);
+
+  const openJobsCount = React.useMemo(
+    () => myPostedJobs.filter(j => isJobActive(j)).length,
+    [myPostedJobs]
+  );
+
+  const handleToggleActive = async (job: Job) => {
+    if (!onToggleJobActive || togglingJobId) return;
+    const nextActive = !isJobActive(job);
+    setTogglingJobId(job.id);
+    try {
+      await onToggleJobActive(job, nextActive);
+    } finally {
+      setTogglingJobId(null);
+    }
+  };
 
   const toggleCandidates = (jobId: string) => {
     setOpenCandidates(prev => {
@@ -35,7 +54,9 @@ export const MyJobsView: React.FC<MyJobsViewProps> = ({
       <div className="bg-white dark:bg-slate-800 p-6 rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-sm flex items-center justify-between">
          <div>
             <h3 className="font-black text-slate-800 dark:text-white text-lg">إدارة وظائفي المنشورة</h3>
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mt-1">لديك {myPostedJobs.length} وظيفة نشطة حالياً</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-widest mt-1">
+              لديك {myPostedJobs.length} وظيفة ({openJobsCount} مفتوحة للتقديم • {myPostedJobs.length - openJobsCount} مغلقة)
+            </p>
          </div>
          <div className="w-12 h-12 bg-blue-50 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center text-[#0a66c2] dark:text-blue-400 shadow-inner border border-blue-100 dark:border-blue-800/50">
             <Briefcase size={24} />
@@ -58,6 +79,8 @@ export const MyJobsView: React.FC<MyJobsViewProps> = ({
           ) : (
             myPostedJobs.map((job, idx) => {
               const isOpen = openCandidates.has(job.id);
+              const isActive = isJobActive(job);
+              const isToggling = togglingJobId === job.id;
               return (
                 <motion.div
                   key={job.id}
@@ -66,7 +89,9 @@ export const MyJobsView: React.FC<MyJobsViewProps> = ({
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ delay: idx * 0.05 }}
                 >
-                  <GlassCard className="rounded-[2.5rem] border border-slate-100 dark:border-slate-700 shadow-sm hover:shadow-xl transition-all bg-white/90 dark:bg-slate-800/90 overflow-hidden w-full max-w-full box-border">
+                  <GlassCard className={`rounded-[2.5rem] border shadow-sm hover:shadow-xl transition-all bg-white/90 dark:bg-slate-800/90 overflow-hidden w-full max-w-full box-border ${
+                    isActive ? 'border-slate-100 dark:border-slate-700' : 'border-amber-200/80 dark:border-amber-800/40'
+                  }`}>
                     {/* ── بيانات الوظيفة ── */}
                     <div className="p-4 md:p-6 flex flex-col gap-4">
                       <div className="flex items-center gap-2 min-w-0 flex-1 w-full">
@@ -78,7 +103,17 @@ export const MyJobsView: React.FC<MyJobsViewProps> = ({
                            )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h4 className="font-black text-slate-800 dark:text-white text-sm truncate">{job.title}</h4>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-black text-slate-800 dark:text-white text-sm truncate">{job.title}</h4>
+                            <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-black border shrink-0 ${
+                              isActive
+                                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/40'
+                                : 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/40'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                              {isActive ? 'مفتوح للتقديم' : 'التقديم مغلق (الطلبات السابقة محفوظة)'}
+                            </span>
+                          </div>
                           <div className="flex flex-wrap items-center gap-2 mt-1">
                             <span className="flex items-center gap-1 text-[10px] font-bold text-slate-400 dark:text-slate-500">
                               <MapPin size={10} className="text-slate-300 dark:text-slate-600" /> {job.location || 'عن بُعد'}
@@ -92,6 +127,29 @@ export const MyJobsView: React.FC<MyJobsViewProps> = ({
                       
                       {/* Action Buttons - wrap on mobile */}
                       <div className="flex flex-wrap items-center gap-2 w-full md:w-auto shrink-0">
+                        {onToggleJobActive && (
+                          <button
+                            type="button"
+                            disabled={isToggling}
+                            onClick={() => handleToggleActive(job)}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border font-bold text-xs transition-all active:scale-95 flex-1 md:flex-none justify-center cursor-pointer disabled:opacity-50 ${
+                              isActive
+                                ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/50 hover:bg-amber-500 hover:text-white'
+                                : 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800/50 hover:bg-emerald-600 hover:text-white'
+                            }`}
+                            title={isActive ? 'إغلاق استقبال الطلبات الجديدة (مع بقاء الطلبات السابقة)' : 'إعادة فتح الوظيفة لاستقبال الطلبات'}
+                          >
+                            {isToggling ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : isActive ? (
+                              <Lock size={12} />
+                            ) : (
+                              <Unlock size={12} />
+                            )}
+                            <span>{isActive ? 'إغلاق التقديم' : 'إعادة فتح التقديم'}</span>
+                          </button>
+                        )}
+
                         {/* زر المرشحين */}
                         <button
                           onClick={() => toggleCandidates(job.id)}

@@ -209,3 +209,16 @@ export function encodeCategoryInDescription(description: string, category: strin
   const canonical = matchCategoryString(category) || category.trim();
   return `[CATEGORY:${canonical}] ${clean}`.trim();
 }
+
+/**
+ * Determines uniformly whether a job is currently open for applications.
+ * Prioritizes explicit boolean `is_active`, falling back to `status` only when `is_active` is nullish.
+ */
+export function isJobActive(job?: Partial<Job> | any): boolean {
+  if (!job) return true;
+  if (typeof job.is_active === 'boolean') return job.is_active;
+  if (job.is_active === 'false') return false;
+  if (job.is_active === 'true') return true;
+  if (job.status === 'closed') return false;
+  return true;
+}

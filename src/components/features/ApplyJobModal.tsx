@@ -7,6 +7,7 @@ import {
 import { Job, AppUser } from '../../types';
 import { jobService } from '../../lib/services/jobService';
 import { supabase } from '../../lib/supabase';
+import { isJobActive } from '../../lib/utils/jobCategoryUtils';
 
 interface ApplyJobModalProps {
   applyingJob: Job | null;
@@ -51,9 +52,18 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
 }) => {
   const [prevWorks, setPrevWorks] = useState<PrevWork[]>([]);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [applicantName, setApplicantName] = useState(appUser?.name || '');
+  const [applicantPhone, setApplicantPhone] = useState((appUser as any)?.phone || '');
+  const [applicantLocation, setApplicantLocation] = useState((appUser as any)?.location || '');
+  const [applicantTitle, setApplicantTitle] = useState((appUser as any)?.title || (appUser as any)?.headline || '');
 
   React.useEffect(() => {
     if (editingApplication) {
+      const d = editingApplication.applicant_data || {};
+      setApplicantName(d.name || appUser?.name || '');
+      setApplicantPhone(d.phone || (appUser as any)?.phone || '');
+      setApplicantLocation(d.location || (appUser as any)?.location || '');
+      setApplicantTitle(d.title || (appUser as any)?.title || (appUser as any)?.headline || '');
       if (editingApplication.cover_letter) setCvCoverLetter(editingApplication.cover_letter);
       if (editingApplication.experience || editingApplication.applicant_data?.experience) {
         setCvExperience(editingApplication.experience || editingApplication.applicant_data?.experience || '');
@@ -74,8 +84,13 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
           salary: pw.salary || '',
         })));
       }
+    } else if (appUser) {
+      setApplicantName(appUser.name || '');
+      setApplicantPhone((appUser as any).phone || '');
+      setApplicantLocation((appUser as any).location || '');
+      setApplicantTitle((appUser as any).title || (appUser as any).headline || '');
     }
-  }, [editingApplication]);
+  }, [editingApplication, applyingJob?.id]);
 
   const atsCV = React.useMemo(() => {
     try {
@@ -89,7 +104,8 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
 
   if (!applyingJob || !appUser) return null;
 
-  const publisher = (allUsers || []).find((u: any) => u.id === (applyingJob?.employer_id || (applyingJob as any)?.employerId));
+  const publisherId = applyingJob?.employer_id || (applyingJob as any)?.employerId;
+  const publisher = (allUsers || []).find((u: any) => u.id === publisherId && u.id !== appUser?.id) || null;
   const coverBannerUrl = applyingJob?.image_url || publisher?.coverUrl || (publisher as any)?.cover_url;
 
   const handleClose = () => {
@@ -113,6 +129,10 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
   const handleSubmit = async () => {
     if (!appUser || !applyingJob) return;
     if (!editingApplication) {
+      if (!isJobActive(applyingJob)) {
+        addToast('عذراً، تم إغلاق التقديم على هذه الوظيفة من قِبل صاحب العمل 🔒', 'error');
+        return;
+      }
       const isJobPub = !appUser.isAdmin && (appUser.id === applyingJob.employer_id || appUser.id === (applyingJob as any).employerId);
       if (isJobPub) {
         addToast('أنت ناشر هذه الوظيفة، لا يمكنك التقديم عليها 🏢', 'error');
@@ -171,21 +191,27 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
       const fullExperience = cvExperience + (formattedPrevWorks ? `\n\n--- خبرات سابقة ---\n${formattedPrevWorks}` : '');
 
       const applicantDataPayload: any = {
-        name: appUser.name,
-        avatar: appUser.avatar,
-        industry: (appUser as any).industry,
-        location: (appUser as any).location,
-        phone: (appUser as any).phone,
-        bio: (appUser as any).bio,
+        name: applicantName.trim() || appUser.name || (appUser as any).fullName || '',
+        avatar: appUser.avatar || '',
+        title: applicantTitle.trim() || (appUser as any).title || (appUser as any).headline || '',
+        industry: (appUser as any).industry || '',
+        location: applicantLocation.trim() || (appUser as any).location || '',
+        phone: applicantPhone.trim() || (appUser as any).phone || '',
+        email: appUser.email || '',
+        bio: (appUser as any).bio || '',
+        experience: fullExperience || (appUser as any).experience || '',
+        education: cvEducation || (appUser as any).education || '',
+        skills: appUser.skills || [],
+        cvUrl: cvUrl || '',
         prevWorks
       };
 
       const finalAtsCV = atsCV || {
-        fullName: appUser.name || (appUser as any).fullName || '',
-        title: (appUser as any).title || (appUser as any).headline || '',
+        fullName: applicantDataPayload.name || '',
+        title: applicantDataPayload.title || '',
         email: appUser.email || '',
-        phone: (appUser as any).phone || '',
-        location: (appUser as any).location || '',
+        phone: applicantDataPayload.phone || '',
+        location: applicantDataPayload.location || '',
         summary: (appUser as any).bio || '',
         experienceText: fullExperience || '',
         educationText: cvEducation || '',
@@ -263,10 +289,14 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
 
         clearTimeout(timeoutId);
         succeeded = true;
+        const mergedUpdatedApp = { ...editingApplication, ...updatePayload };
+        try {
+          window.dispatchEvent(new CustomEvent('prolink_application_updated', { detail: mergedUpdatedApp }));
+        } catch (_) {}
         addToast('تم حفظ التعديلات وإشعار صاحب العمل بنجاح! 🚀', 'success');
         setSubmitError(null);
         if (onEditSaved) {
-          onEditSaved({ ...editingApplication, ...updatePayload });
+          onEditSaved(mergedUpdatedApp);
         }
         setApplyingJob(null);
         return;
@@ -414,13 +444,24 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
           </div>
 
           <div className="flex items-center gap-3.5 relative z-10">
-            <div className="w-12 h-12 bg-white/15 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20 shadow-lg shrink-0">
-              <Briefcase size={22} className="text-white" />
-            </div>
+            {publisher?.avatar ? (
+              <img
+                src={publisher.avatar}
+                alt={publisher.name || applyingJob.company}
+                className="w-12 h-12 rounded-2xl object-cover border-2 border-white/30 shadow-lg shrink-0"
+              />
+            ) : (
+              <div className="w-12 h-12 bg-white/15 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20 shadow-lg shrink-0">
+                <Briefcase size={22} className="text-white" />
+              </div>
+            )}
             <div className="min-w-0 flex-1">
               <h2 className="text-base md:text-lg font-black tracking-tight leading-snug truncate text-white">{applyingJob.title}</h2>
               <p className="text-blue-100/90 text-xs font-bold flex items-center gap-1.5 truncate mt-0.5">
-                <MapPin size={11} className="text-blue-200 shrink-0" /> {applyingJob.company} • {applyingJob.location || 'عن بُعد'}
+                <MapPin size={11} className="text-blue-200 shrink-0" />
+                {publisher?.name && publisher.name !== applyingJob.company
+                  ? `${publisher.name} (${applyingJob.company})`
+                  : applyingJob.company} • {applyingJob.location || 'عن بُعد'}
               </p>
             </div>
           </div>
@@ -430,16 +471,16 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
         <div className="p-4 md:p-6 space-y-5 flex-1 overflow-y-auto custom-scrollbar">
 
           {/* Profile card */}
-          <div className="flex items-center gap-4 bg-slate-50 rounded-2xl p-4 border border-slate-100">
+          <div className="flex items-center gap-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-4 border border-slate-100 dark:border-slate-700/60">
             <img
-              src={appUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(appUser.name)}&background=random`}
-              className="w-13 h-12 w-12 rounded-full border-2 border-white shadow-md object-cover"
+              src={appUser.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(applicantName || appUser.name)}&background=random`}
+              className="w-12 h-12 rounded-full border-2 border-white shadow-md object-cover shrink-0"
               referrerPolicy="no-referrer"
             />
             <div className="flex-1 min-w-0">
-              <p className="font-black text-slate-800 text-sm truncate">{appUser.name}</p>
-              <p className="text-xs text-slate-500 font-medium truncate">
-                {(appUser as any).industry || (appUser as any).companyName || (appUser as any).bio?.slice(0, 40) || 'باحث عن عمل'}
+              <p className="font-black text-slate-800 dark:text-white text-sm truncate">{applicantName || appUser.name}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate">
+                {applicantTitle || (appUser as any).industry || (appUser as any).bio?.slice(0, 40) || 'باحث عن عمل'}
               </p>
             </div>
           </div>
@@ -462,19 +503,58 @@ export const ApplyJobModal: React.FC<ApplyJobModalProps> = ({
             </div>
           )}
 
-          {/* Auto-filled info summary */}
-          <div className="bg-blue-50/50 rounded-2xl p-4 space-y-3 border border-blue-100/60">
-            <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest">بياناتك تُرسل تلقائياً</p>
+          {/* Auto-filled & editable applicant contact summary */}
+          <div className="bg-blue-50/50 dark:bg-slate-800/50 rounded-2xl p-4 space-y-3 border border-blue-100/60 dark:border-slate-700/60">
+            <p className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest">
+              بياناتك المرسلة في الطلب (يمكنك مراجعتها وتعديلها)
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="bg-white dark:bg-slate-900 rounded-xl p-2.5 border border-slate-100 dark:border-slate-700">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">الاسم الكامل</label>
+                <input
+                  value={applicantName}
+                  onChange={e => setApplicantName(e.target.value)}
+                  placeholder="الاسم الكامل"
+                  className="w-full text-xs font-bold text-slate-800 dark:text-white bg-transparent outline-none"
+                />
+              </div>
+              <div className="bg-white dark:bg-slate-900 rounded-xl p-2.5 border border-slate-100 dark:border-slate-700">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">رقم الهاتف</label>
+                <input
+                  value={applicantPhone}
+                  onChange={e => setApplicantPhone(e.target.value)}
+                  placeholder="07xxxxxxxxx"
+                  dir="ltr"
+                  className="w-full text-xs font-bold text-slate-800 dark:text-white bg-transparent outline-none text-right"
+                />
+              </div>
+              <div className="bg-white dark:bg-slate-900 rounded-xl p-2.5 border border-slate-100 dark:border-slate-700">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">المسمى الوظيفي</label>
+                <input
+                  value={applicantTitle}
+                  onChange={e => setApplicantTitle(e.target.value)}
+                  placeholder="مثال: محاسب / مهندس برمجيات"
+                  className="w-full text-xs font-bold text-slate-800 dark:text-white bg-transparent outline-none"
+                />
+              </div>
+              <div className="bg-white dark:bg-slate-900 rounded-xl p-2.5 border border-slate-100 dark:border-slate-700">
+                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">الموقع / المحافظة</label>
+                <input
+                  value={applicantLocation}
+                  onChange={e => setApplicantLocation(e.target.value)}
+                  placeholder="بغداد / أربيل..."
+                  className="w-full text-xs font-bold text-slate-800 dark:text-white bg-transparent outline-none"
+                />
+              </div>
+            </div>
             <div className="grid grid-cols-2 gap-2.5">
               {[
-                { label: 'الموقع', value: (appUser as any).location },
+                { label: 'البريد الإلكتروني', value: appUser.email },
                 { label: 'القطاع', value: (appUser as any).industry },
-                { label: 'الموقع الإلكتروني', value: (appUser as any).website },
-                { label: 'البريد', value: appUser.email },
               ].map(item => (
-                <div key={item.label} className="bg-white rounded-xl p-3 border border-slate-100">
+                <div key={item.label} className="bg-white dark:bg-slate-900 rounded-xl p-3 border border-slate-100 dark:border-slate-700">
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{item.label}</p>
-                  <p className="text-xs font-bold text-slate-700 truncate">{item.value || 'غير محدد'}</p>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{item.value || 'غير محدد'}</p>
                 </div>
               ))}
             </div>

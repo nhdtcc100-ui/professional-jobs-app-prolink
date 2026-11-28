@@ -322,22 +322,39 @@ export const JobPostForm: React.FC<JobPostFormProps> = ({
         </div>
 
         {/* Section 5: Availability Status Toggle */}
-        <div className="flex items-center justify-between p-4 md:p-5 bg-slate-50 dark:bg-slate-900/60 rounded-2xl md:rounded-3xl border border-slate-100 dark:border-slate-700">
-          <div className="space-y-0.5">
-            <p className="text-xs md:text-sm font-black text-slate-800 dark:text-white">حالة فتح التقديم على الوظيفة</p>
-            <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500">
-              {formData.is_active ? 'التقديم مفتوح لاستقبال السير الذاتية فوراً' : 'التقديم متوقف ومغلق مؤقتاً'}
+        <div className={`flex items-center justify-between gap-3 p-4 md:p-5 rounded-2xl md:rounded-3xl border transition-colors ${
+          formData.is_active
+            ? 'bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200/80 dark:border-emerald-800/40'
+            : 'bg-slate-50 dark:bg-slate-900/60 border-slate-200/80 dark:border-slate-700'
+        }`}>
+          <div className="space-y-0.5 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-xs md:text-sm font-black text-slate-800 dark:text-white">حالة فتح التقديم على الوظيفة</p>
+              <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border ${
+                formData.is_active
+                  ? 'bg-emerald-500 text-white border-emerald-600 shadow-xs'
+                  : 'bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+              }`}>
+                {formData.is_active ? 'مفتوح للتقديم' : 'مغلق'}
+              </span>
+            </div>
+            <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+              {formData.is_active
+                ? 'التقديم مفتوح لاستقبال السير الذاتية والطلبات فوراً'
+                : 'التقديم متوقف مؤقتاً — الطلبات السابقة تبقى محفوظة ويمكنك متابعتها وإعادة الفتح بأي وقت'}
             </p>
           </div>
           <button
             type="button"
+            role="switch"
+            aria-checked={Boolean(formData.is_active)}
             onClick={() => setFormData({ ...formData, is_active: !formData.is_active })}
-            className={`relative w-13 h-7 rounded-full transition-all duration-300 focus:outline-none shadow-inner cursor-pointer ${
+            className={`relative shrink-0 w-14 h-7 rounded-full transition-all duration-300 focus:outline-none shadow-inner cursor-pointer ${
               formData.is_active ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-700'
             }`}
           >
             <span className={`absolute top-1 w-5 h-5 bg-white dark:bg-slate-100 rounded-full shadow-md transition-all duration-300 flex items-center justify-center ${
-              formData.is_active ? 'right-1 translate-x-6' : 'right-1'
+              formData.is_active ? 'left-1' : 'right-1'
             }`}>
               {formData.is_active 
                 ? <CheckCircle size={11} className="text-emerald-600" /> 

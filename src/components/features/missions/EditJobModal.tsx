@@ -3,10 +3,9 @@ import { motion, AnimatePresence } from "motion/react";
 import { ArrowRight, Briefcase, X } from "lucide-react";
 import { Job } from "../../../types";
 import { JobPostForm } from "./JobPostForm";
-import { supabase } from "../../../lib/supabase";
+import { jobService } from "../../../lib/services/jobService";
 import { useAppContext } from "../../../contexts/AppContext";
-import { getJobCategory, encodeCategoryInDescription } from "../../../lib/utils/jobCategoryUtils";
-import { withSessionRecovery } from "../../../lib/services/sessionRecovery";
+import { getJobCategory, isJobActive } from "../../../lib/utils/jobCategoryUtils";
 
 interface EditJobModalProps {
   job: Job | null;
@@ -24,11 +23,11 @@ export const EditJobModal = ({ job, onClose, onSuccess }: EditJobModalProps) => 
     requirements: job?.requirements || "",
     location: job?.location || "",
     salary: job?.salary || "",
-    jobType: job?.jobType || "full-time",
+    jobType: (job as any)?.job_type || job?.jobType || "دوام كامل",
     category: job ? getJobCategory(job) : "أخرى",
-    working_hours: (job as any)?.working_hours || "",
+    working_hours: (job as any)?.working_hours || (job as any)?.workingHours || "",
     imageUrl: (job as any)?.imageUrl || (job as any)?.image_url || "",
-    is_active: job?.is_active !== false,
+    is_active: isJobActive(job),
   });
 
   if (!job) return null;
@@ -44,35 +43,42 @@ export const EditJobModal = ({ job, onClose, onSuccess }: EditJobModalProps) => 
     }
     setIsPosting(true);
     try {
-      const descriptionWithCat = encodeCategoryInDescription(formData.description.trim(), formData.category.trim());
-      const payload: Record<string, any> = {
+      const { data, error } = await jobService.updateJob(
+        job.id,
+        appUser?.id || "",
+        formData,
+        Boolean(appUser?.isAdmin || (appUser as any)?.is_admin)
+      );
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error("تعذر حفظ التعديلات: تأكد من صلاحيات ملكية الوظيفة");
+      }
+
+      const savedRow = data[0] || {};
+      const mergedUpdatedJob: any = {
+        ...job,
+        ...savedRow,
         title: formData.title.trim(),
         company: formData.company.trim(),
-        description: descriptionWithCat,
+        description: savedRow.description || formData.description.trim(),
         requirements: formData.requirements.trim(),
-        location: formData.location.trim(),
+        location: formData.location.trim() || "عن بُعد",
         salary: formData.salary.trim(),
+        jobType: formData.jobType,
         job_type: formData.jobType,
+        category: formData.category.trim(),
         working_hours: formData.working_hours.trim(),
+        workingHours: formData.working_hours.trim(),
         image_url: formData.imageUrl.trim() || null,
-        is_active: formData.is_active,
-        updated_at: new Date().toISOString(),
+        is_active: Boolean(savedRow.is_active ?? formData.is_active),
       };
-      const { data, error } = await withSessionRecovery(async () => {
-        return (supabase as any)
-          .from("jobs")
-          .update(payload)
-          .eq("id", job.id)
-          .select()
-          .single();
-      });
-      if (error) throw error;
+
       addToast("تم تحديث الوظيفة بنجاح ✅");
-      if (onSuccess && data) onSuccess(data as Job);
-      if (refreshData) refreshData();
+      if (onSuccess) onSuccess(mergedUpdatedJob as Job);
+      if (refreshData) refreshData(true);
       onClose();
     } catch (err: any) {
-      addToast("فشل تحديث الوظيفة: " + err.message, "error");
+      addToast("فشل تحديث الوظيفة: " + (err?.message || "خطأ غير معروف"), "error");
     } finally {
       setIsPosting(false);
     }

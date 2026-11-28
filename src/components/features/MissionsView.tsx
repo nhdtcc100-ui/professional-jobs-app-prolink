@@ -26,7 +26,7 @@ import {
   AnalyticsDashboard,
 } from './missions';
 
-import { getJobCategory } from '../../lib/utils/jobCategoryUtils';
+import { getJobCategory, isJobActive } from '../../lib/utils/jobCategoryUtils';
 import { withSessionRecovery } from '../../lib/services/sessionRecovery';
 
 interface MissionsViewProps {
@@ -63,7 +63,7 @@ const EMPTY_COURSE_FORM: CoursePostFormData = {
 type MainTab = 'jobs' | 'courses';
 type JobSubTab = 'discover' | 'my-posts' | 'requests' | 'analytics';
 
-export function MissionsView({ 
+export function MissionsView({
   jobs, appUser, allUsers, addToast, messages, onApplyJob, setActiveTab, onPublisherClick,
   initialSelectedJob, onClearInitialJob, onViewJob
 }: MissionsViewProps) {
@@ -123,16 +123,16 @@ export function MissionsView({
   const markAllIncomingAsSeen = React.useCallback(() => {
     if (!appUser?.id || incomingApplications.length === 0) return;
     const allIds = incomingApplications.map(a => a.id);
-    
+
     setSeenAppIds(prev => {
       const hasUnseen = allIds.some(id => !prev.has(id));
       if (!hasUnseen) return prev; // 🛡️ CRITICAL: Stop infinite re-render loop if all are already seen
-      
+
       const updated = new Set([...prev, ...allIds]);
       try {
         localStorage.setItem(`prolink_seen_apps_${appUser.id}`, JSON.stringify(Array.from(updated)));
         window.dispatchEvent(new Event('prolink_seen_apps_updated'));
-      } catch (_) {}
+      } catch (_) { }
       return updated;
     });
 
@@ -215,7 +215,7 @@ export function MissionsView({
 
       let sentRes = await (supabase as any)
         .from('job_applications')
-        .select('*, jobs(id, title, company, description, requirements, employer_id, image_url, location, salary, jobType)')
+        .select('*, jobs(id, title, company, description, requirements, employer_id, image_url, location, salary, job_type, is_active)')
         .eq('applicant_id', appUser.id)
         .order('created_at', { ascending: false });
 
@@ -237,8 +237,26 @@ export function MissionsView({
           const companyName = job?.company || app.jobs?.company || empUser?.companyName || (empUser?.name ? `${empUser.name}` : 'شركة معتمدة');
           const employerName = empUser?.name || companyName;
           const employerCover = empUser?.coverUrl || (empUser as any)?.cover_url || job?.image_url || app.jobs?.image_url || null;
+          // 🛡️ ضمان توفر بيانات الباحث عن عمل كاملة عند عرض تفاصيل الطلب المرسل (للمراجعة أو التعديل)
+          const rawData = app.applicant_data || {};
+          const enrichedApplicantData = {
+            ...rawData,
+            name: rawData.name || appUser.name || (appUser as any).fullName || '',
+            avatar: rawData.avatar || appUser.avatar || '',
+            phone: rawData.phone || appUser.phone || '',
+            email: rawData.email || appUser.email || '',
+            location: rawData.location || appUser.location || '',
+            title: rawData.title || appUser.title || (appUser as any).headline || '',
+            industry: rawData.industry || appUser.industry || '',
+            bio: rawData.bio || appUser.bio || '',
+            experience: rawData.experience || app.experience || rawData.cv_data?.experienceText || (appUser as any).experience || '',
+            education: rawData.education || app.education || rawData.cv_data?.educationText || (appUser as any).education || '',
+            skills: rawData.skills || app.skills || rawData.cv_data?.skills || appUser.skills || [],
+            cvUrl: app.cv_url || rawData.cvUrl || rawData.cv_url || (appUser as any).cvUrl || (appUser as any).cv_url || '',
+          };
           return {
             ...app,
+            applicant_data: enrichedApplicantData,
             jobTitle: job?.title || app.jobs?.title || 'وظيفة مهنية',
             company: companyName,
             employer_id: empId,
@@ -316,10 +334,20 @@ export function MissionsView({
     };
     window.addEventListener('prolink_application_status_changed', onStatusChanged);
 
-    return () => { 
+    // ⚡ تحديث فوري عند تعديل طلب التقديم في نفس الجلسة
+    const onAppUpdated = (e: any) => {
+      const updated = e.detail;
+      if (updated?.id) {
+        setSentApplications(prev => prev.map(a => a.id === updated.id ? { ...a, ...updated } : a));
+      }
+    };
+    window.addEventListener('prolink_application_updated', onAppUpdated);
+
+    return () => {
       delete (window as any).refreshApplications;
       window.removeEventListener('prolink_application_sent', onAppSent);
       window.removeEventListener('prolink_application_status_changed', onStatusChanged);
+      window.removeEventListener('prolink_application_updated', onAppUpdated);
     };
   }, [fetchApplications]);
 
@@ -386,24 +414,34 @@ export function MissionsView({
         is_active: formData.is_active,
       };
 
-      const { error } = editingJobId
+      const res = editingJobId
         ? await jobService.updateJob(editingJobId, appUser.id, postData, isAdmin)
         : await jobService.postJob(postData);
 
+      const { data, error } = res as any;
       if (error) throw error;
+      if (editingJobId && (!data || data.length === 0)) {
+        throw new Error('تعذر حفظ تعديلات الوظيفة: تأكد من صلاحيات ملكية الإعلان');
+      }
 
       // ⚡ التحديث الفوري في الذاكرة والكاش لاستبدال القديم بالجديد فوراً
       if (editingJobId && setJobs) {
+        const savedRow = Array.isArray(data) && data[0] ? data[0] : {};
         setJobs(prev => prev.map(j => {
           if (j.id === editingJobId) {
             return {
               ...j,
+              ...savedRow,
               ...postData,
+              description: savedRow.description || postData.description,
               jobType: postData.jobType,
+              job_type: postData.jobType,
               category: postData.category,
               workingHours: postData.working_hours,
               working_hours: postData.working_hours,
               imageUrl: postData.imageUrl,
+              image_url: postData.imageUrl,
+              is_active: Boolean(savedRow.is_active ?? postData.is_active),
             };
           }
           return j;
@@ -414,7 +452,7 @@ export function MissionsView({
       setFormData({ ...EMPTY_JOB_FORM, company: appUser.companyName || '' });
       setShowPostForm(false);
       setEditingJobId(null);
-      if (refreshData) refreshData();
+      if (refreshData) refreshData(true);
     } catch (e: any) {
       addToast('فشل: ' + (e.message || 'خطأ غير معروف'), 'error');
     } finally {
@@ -480,12 +518,37 @@ export function MissionsView({
       salary: job.salary || '',
       jobType: (job as any).job_type || (job as any).jobType || 'دوام كامل',
       category: getJobCategory(job),
-      working_hours: job.working_hours || '',
-      imageUrl: job.image_url || '',
-      is_active: job.is_active !== false,
+      working_hours: job.working_hours || (job as any).workingHours || '',
+      imageUrl: job.image_url || (job as any).imageUrl || '',
+      is_active: isJobActive(job),
     });
     setEditingJobId(job.id);
     setShowPostForm(true);
+  };
+
+  const handleToggleJobActive = async (job: Job, nextActive: boolean) => {
+    if (!appUser?.id) { addToast('يجب تسجيل الدخول أولاً', 'error'); return; }
+    try {
+      const { data, error } = await jobService.toggleJobActive(job.id, appUser.id, nextActive, isAdmin);
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        throw new Error('تعذر تحديث حالة الوظيفة: تأكد من الصلاحيات');
+      }
+
+      const savedIsActive = typeof data[0]?.is_active === 'boolean' ? data[0].is_active : nextActive;
+      if (setJobs) {
+        setJobs(prev => prev.map(j => j.id === job.id ? { ...j, is_active: savedIsActive } : j));
+      }
+      addToast(
+        savedIsActive
+          ? '🔓 تم إعادة فتح التقديم على الوظيفة — يمكن للباحثين التقديم الآن'
+          : '🔒 تم إغلاق التقديم على الوظيفة — الطلبات السابقة ما زالت محفوظة في قسم الطلبات',
+        'success'
+      );
+      if (refreshData) refreshData(true);
+    } catch (err: any) {
+      addToast('تعذر تغيير حالة الوظيفة: ' + (err?.message || 'خطأ غير معروف'), 'error');
+    }
   };
 
   const calculateMatchScore = (jobRequirements: string) => {
@@ -554,7 +617,7 @@ export function MissionsView({
         try {
           const { data: dbApp } = await (supabase.from('job_applications') as any).select('applicant_id').eq('id', appId).maybeSingle();
           if (dbApp?.applicant_id) applicantId = dbApp.applicant_id;
-        } catch (_) {}
+        } catch (_) { }
       }
 
       if (applicantId) {
@@ -621,7 +684,7 @@ export function MissionsView({
 
   const handleQuickApply = async (job: Job) => {
     if (!appUser) return;
-    if (job.is_active === false) { addToast('هذه الوظيفة مغلقة حالياً للتقديم', 'error'); return; }
+    if (!isJobActive(job)) { addToast('هذه الوظيفة مغلقة حالياً للتقديم 🔒', 'error'); return; }
     if (!job.employer_id) { addToast('بيانات صاحب العمل مفقودة', 'error'); return; }
     try {
       addToast('جاري إرسال طلبك... ⚡');
@@ -692,28 +755,26 @@ export function MissionsView({
 
   return (
     <div className="space-y-6 pb-36 min-h-screen" dir="rtl">
-      
+
       {/* ── Main Tab Switcher: Jobs / Courses (Visible to Admins ONLY) ── */}
       {isAdmin && (
         <div className="flex gap-2 bg-white p-1.5 rounded-[1.5rem] border border-slate-100 dark:border-slate-700 shadow-xl dark:shadow-none backdrop-blur-md">
           <button
             onClick={() => setMainTab('jobs')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black transition-all active:scale-[0.98] ${
-              mainTab === 'jobs' 
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black transition-all active:scale-[0.98] ${mainTab === 'jobs'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                 : 'text-slate-900 dark:text-slate-400 hover:text-blue-600 dark:hover:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-700/50'
-            }`}
+              }`}
           >
             <Briefcase size={16} />
             <span>الوظائف</span>
           </button>
           <button
             onClick={() => setMainTab('courses')}
-            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black transition-all active:scale-[0.98] ${
-              mainTab === 'courses' 
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20' 
+            className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-black transition-all active:scale-[0.98] ${mainTab === 'courses'
+                ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                 : 'text-slate-900 dark:text-slate-400 hover:text-blue-600 dark:hover:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-700/50'
-            }`}
+              }`}
           >
             <BookOpen size={16} />
             <span>الدورات التدريبية 👑</span>
@@ -741,7 +802,7 @@ export function MissionsView({
 
               return (
                 <div className="relative group">
-                  <div 
+                  <div
                     className="flex gap-1.5 bg-white p-1.5 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-xl dark:shadow-none overflow-x-auto no-scrollbar scroll-smooth"
                     style={{ touchAction: 'pan-x pan-y' }}
                   >
@@ -749,17 +810,15 @@ export function MissionsView({
                       <button
                         key={tab.id}
                         onClick={() => setActiveSubTab(tab.id as any)}
-                        className={`relative flex-1 py-2.5 px-4 rounded-xl text-[10px] font-black transition-all active:scale-95 whitespace-nowrap flex items-center justify-center gap-2 ${
-                          activeSubTab === tab.id 
-                            ? 'bg-blue-600 text-white shadow-[0_10px_25px_rgba(37,99,235,0.3)] ring-2 ring-blue-600/10' 
+                        className={`relative flex-1 py-2.5 px-4 rounded-xl text-[10px] font-black transition-all active:scale-95 whitespace-nowrap flex items-center justify-center gap-2 ${activeSubTab === tab.id
+                            ? 'bg-blue-600 text-white shadow-[0_10px_25px_rgba(37,99,235,0.3)] ring-2 ring-blue-600/10'
                             : 'text-slate-900 dark:text-slate-400 hover:text-blue-600 dark:hover:text-slate-200 hover:bg-blue-50 dark:hover:bg-slate-700/30'
-                        }`}
+                          }`}
                       >
                         {tab.label}
                         {tab.badge !== undefined && tab.badge > 0 && (
-                          <span className={`absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[9px] font-black shadow-md border-2 border-white dark:border-slate-800 ${
-                            activeSubTab === tab.id ? 'bg-white text-blue-600' : 'bg-red-500 text-white'
-                          }`}>
+                          <span className={`absolute -top-1.5 -right-1.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[9px] font-black shadow-md border-2 border-white dark:border-slate-800 ${activeSubTab === tab.id ? 'bg-white text-blue-600' : 'bg-red-500 text-white'
+                            }`}>
                             {tab.badge}
                           </span>
                         )}
@@ -852,12 +911,13 @@ export function MissionsView({
                     </div>
                   ) : filteredJobs.map(({ job, score }, i) => (
                     <RecedeCard key={job.id}>
-                      <JobCard 
-                        job={job} 
-                        onClick={handleOpenJobDetail} 
-                        delay={Math.min(i * 0.02, 0.2)} 
+                      <JobCard
+                        job={job}
+                        onClick={handleOpenJobDetail}
+                        delay={Math.min(i * 0.02, 0.2)}
                         compact={filteredJobs.length >= 3}
                         matchScore={score > 0 ? score : calculateMatchScore(job.requirements || job.description || '')}
+                        onEditJob={handleEditJob}
                         onPublisherClick={onPublisherClick}
                         onDeleteJob={handleDeleteJob}
                       />
@@ -885,11 +945,12 @@ export function MissionsView({
                     <Plus size={16} /> إعلان وظيفة جديدة
                   </button>
                 </div>
-                <MyJobsView 
-                  myPostedJobs={myPostedJobs} 
-                  onDeleteJob={setJobToDelete} 
-                  onEditJob={handleEditJob} 
-                  onViewJob={handleOpenJobDetail} 
+                <MyJobsView
+                  myPostedJobs={myPostedJobs}
+                  onDeleteJob={setJobToDelete}
+                  onEditJob={handleEditJob}
+                  onViewJob={handleOpenJobDetail}
+                  onToggleJobActive={handleToggleJobActive}
                   allUsers={allUsers}
                   onUserClick={(userId: string) => {
                     const u = allUsers.find((x: AppUser) => x.id === userId);
@@ -934,19 +995,19 @@ export function MissionsView({
         {/* ── COURSES TAB (Admin Only) ── */}
         {mainTab === 'courses' && isAdmin && (
           <motion.div key="courses" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 10 }}>
-            <CoursesView 
+            <CoursesView
               appUser={appUser}
               allUsers={allUsers}
-              addToast={addToast} 
-              onPostCourse={() => { 
+              addToast={addToast}
+              onPostCourse={() => {
                 if (!appUser?.isAdmin) {
                   addToast('هذه الخاصية مخصصة للإدارة فقط', 'error');
                   return;
                 }
-                setEditingCourseId(null); 
-                setEditCourseData(null); 
-                setShowPostCourse(true); 
-              }} 
+                setEditingCourseId(null);
+                setEditCourseData(null);
+                setShowPostCourse(true);
+              }}
               onEditCourse={handleEditCourse}
               onOpenProfile={(user) => {
                 const event = new CustomEvent('viewUserProfile', { detail: user.id });
@@ -1000,9 +1061,9 @@ export function MissionsView({
             initialIndex={Math.max(0, (filteredJobs.length > 0 ? filteredJobs.map(r => r.job) : jobs).findIndex((j: any) => j.id === selectedJobDetails.id))}
             onClose={() => setSelectedJobDetails(null)}
             onApplyJob={(job) => {
-              if (job.is_active === false) { 
-                addToast('هذه الوظيفة مغلقة للتقديم', 'error'); 
-                return; 
+              if (!isJobActive(job)) {
+                addToast('هذه الوظيفة مغلقة للتقديم 🔒', 'error');
+                return;
               }
               setSelectedJobDetails(null);
               onApplyJob(job);

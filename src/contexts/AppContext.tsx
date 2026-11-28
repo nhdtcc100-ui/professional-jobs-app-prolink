@@ -7,7 +7,7 @@ import { callService } from '../lib/services/callService';
 import { sanitizeInput } from '../lib/utils/sanitize';
 import { isUserAdmin, canUserPostAndInteract } from '../lib/utils/roleUtils';
 import { platformSettingsService, PlatformPublicSettings } from '../lib/services/platformSettingsService';
-import { getJobCategory } from '../lib/utils/jobCategoryUtils';
+import { getJobCategory, isJobActive } from '../lib/utils/jobCategoryUtils';
 import { mockDataService } from '../lib/services/mockDataService';
 import { resetStuckLocksAndQueues, ensureFreshSession } from '../lib/services/sessionRecovery';
 
@@ -352,7 +352,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch { return []; }
   });
 
-  const [jobs, setJobs] = useState<Job[]>(() => {
+  const [jobs, setJobsRaw] = useState<Job[]>(() => {
     try {
       const c = localStorage.getItem('prolink_cached_jobs');
       const arr: Job[] = c ? JSON.parse(c) : [];
@@ -360,6 +360,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return del.length ? arr.filter(j => !del.includes(j.id)) : arr;
     } catch { return []; }
   });
+
+  const setJobs = useCallback((updater: React.SetStateAction<Job[]>) => {
+    setJobsRaw(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      try { localStorage.setItem('prolink_cached_jobs', JSON.stringify(next.slice(0, 60))); } catch {}
+      return next;
+    });
+  }, []);
 
   // 📊 إجمالي عدد منشورات المستخدم الحقيقي من قاعدة البيانات
   const [userTotalPostsCount, setUserTotalPostsCount] = useState<number>(() => {
@@ -1923,6 +1931,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addToast("حسابك محظور ولا يمكنك التقديم على وظائف 🚫", "error");
       return;
     }
+    if (!isJobActive(job)) {
+      addToast("عذراً، هذه الوظيفة مغلقة حالياً للتقديم 🔒", "error");
+      return;
+    }
     if (job.id.startsWith('mock-')) {
       addToast('✅ تم تقديم طلبك بنجاح على هذه الوظيفة!', 'success');
       return;
@@ -2440,6 +2452,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
           const mappedJob = {
             ...j,
+            jobType: j.job_type || j.jobType || 'دوام كامل',
+            working_hours: j.working_hours || j.workingHours || '',
+            workingHours: j.working_hours || j.workingHours || '',
             employerName: j.company,
             category: getJobCategory(j),
             postedAt: j.created_at ? { toDate: () => new Date(j.created_at) } : { toDate: () => new Date() }

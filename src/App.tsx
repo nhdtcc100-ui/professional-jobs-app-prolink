@@ -44,7 +44,7 @@ import { GuestBanner } from './components/common/GuestBanner';
 import { isJobPoster, canUserPostAndInteract } from './lib/utils/roleUtils';
 import { JobCategoriesCard } from './components/features/missions/JobCategoriesCard';
 import { HomeServicesSection } from './components/features/services/HomeServicesSection';
-import { getJobCategory, isJobInCategory } from './lib/utils/jobCategoryUtils';
+import { getJobCategory, isJobInCategory, isJobActive } from './lib/utils/jobCategoryUtils';
 import { useMobileBackButton } from './lib/hooks/useMobileBackButton';
 
 declare global {
@@ -84,7 +84,7 @@ function App() {
   const {
     user, appUser, loading, needsRole, authLoading, authMode, setAuthMode,
     pendingEmailVerification, setPendingEmailVerification,
-    posts, setPosts, jobs, allUsers, connections, notifications, messages, reports,
+    posts, setPosts, jobs, setJobs, allUsers, connections, notifications, messages, reports,
     activeTab, setActiveTab, searchQuery, setSearchQuery,
     canUseMessaging, canUseGroups, canUseNetwork,
     selectedProfile, setSelectedProfile, isEditingProfile, setIsEditingProfile,
@@ -1321,6 +1321,10 @@ function App() {
                           exitGuestMode();
                           return;
                         }
+                        if (!isJobActive(job)) {
+                          addToast('عذراً، تم إغلاق التقديم على هذه الوظيفة من قِبل صاحب العمل 🔒', 'error' as any);
+                          return;
+                        }
                         const isPublisher = !appUser.isAdmin && (appUser.id === job.employer_id || appUser.id === (job as any).employerId);
                         if (isPublisher) {
                           addToast('أنت ناشر هذه الوظيفة، لا يمكنك التقديم عليها 🏢', 'error' as any);
@@ -1870,6 +1874,10 @@ function App() {
                 exitGuestMode();
                 return;
               }
+              if (!isJobActive(job)) {
+                addToast('عذراً، تم إغلاق التقديم على هذه الوظيفة من قِبل صاحب العمل 🔒', 'error' as any);
+                return;
+              }
               const isPublisher = !appUser.isAdmin && (appUser.id === job.employer_id || appUser.id === (job as any).employerId);
               if (isPublisher) {
                 addToast('أنت ناشر هذه الوظيفة، لا يمكنك التقديم عليها 🏢', 'error' as any);
@@ -1957,7 +1965,22 @@ function App() {
         <EditJobModal
           job={editingFeedJob}
           onClose={() => setEditingFeedJob(null)}
-          onSuccess={() => setEditingFeedJob(null)}
+          onSuccess={(updatedJob: Job) => {
+            // ① تحديث jobs state فورًا بالكائن المُحدَّث (بدون انتظار refreshData)
+            setJobs((prev: Job[]) => prev.map(j => j.id === updatedJob.id ? { ...j, ...updatedJob } : j));
+            // ② تحديث detailFeed.items إذا كان مفتوحًا ويحتوي على نفس الوظيفة
+            setDetailFeed((prev: any) => {
+              if (!prev || prev.type !== 'job') return prev;
+              return {
+                ...prev,
+                items: prev.items.map((item: any) =>
+                  item.id === updatedJob.id ? { ...item, ...updatedJob } : item
+                ),
+              };
+            });
+            refreshData?.(true);
+            setEditingFeedJob(null);
+          }}
         />
       )}
 

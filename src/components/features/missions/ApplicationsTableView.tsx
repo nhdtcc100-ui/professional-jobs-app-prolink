@@ -383,21 +383,29 @@ function ApplicationsListViewContent({
     }
   };
 
-  // Helper to reliably retrieve complete applicant profile
+  // Helper to reliably retrieve complete applicant profile (including seeker fallbacks when isSentView=true)
   const resolveApplicant = (app: JobApplication) => {
-    const profile = (app as any).applicant || allUsers.find(u => u.id === app.applicant_id);
+    const profile = (app as any).applicant || allUsers.find(u => u.id === app.applicant_id) || (isSentView ? appUser : null);
     const data = app.applicant_data || {};
+    const cvData = (data as any).cv_data || (data as any).atsCV || {};
     return {
       ...(profile || {}),
       ...data,
       id: app.applicant_id || profile?.id || data.id,
       name: data.name || (app as any).applicantName || profile?.name || (profile as any)?.full_name || 'متقدم',
       avatar: data.avatar || profile?.avatar || (profile as any)?.avatar_url || '',
-      phone: data.phone || profile?.phone || '',
-      email: data.email || profile?.email || '',
-      location: data.location || profile?.location || '',
-      title: data.title || profile?.title || (profile as any)?.job_title || (profile as any)?.headline || '',
-      bio: data.bio || profile?.bio || '',
+      phone: data.phone || cvData.phone || profile?.phone || '',
+      email: data.email || cvData.email || profile?.email || '',
+      location: data.location || cvData.location || profile?.location || '',
+      title: data.title || cvData.title || profile?.title || (profile as any)?.job_title || (profile as any)?.headline || '',
+      bio: data.bio || cvData.summary || profile?.bio || '',
+      experience: data.experience || (app as any).experience || cvData.experienceText || (profile as any)?.experience || '',
+      education: data.education || (app as any).education || cvData.educationText || (profile as any)?.education || '',
+      skills: (Array.isArray(data.skills) && data.skills.length > 0 ? data.skills : null) ||
+              ((app as any).skills && (Array.isArray((app as any).skills) ? (app as any).skills.length > 0 : Boolean((app as any).skills)) ? (app as any).skills : null) ||
+              cvData.skills ||
+              profile?.skills ||
+              [],
       cvUrl: app.cv_url || data.cvUrl || data.cv_url || profile?.cvUrl || (profile as any)?.cv_url || '',
     };
   };
@@ -415,6 +423,9 @@ function ApplicationsListViewContent({
       cover: (app as any).employer_cover || empProfile?.coverUrl || (empProfile as any)?.cover_url || (app.jobs as any)?.image_url || '',
       companyName: empProfile?.companyName || jobCompany || '',
       title: empProfile?.title || empProfile?.displayTitle || (empProfile as any)?.job_title || '',
+      phone: empProfile?.phone || '',
+      email: empProfile?.email || '',
+      location: empProfile?.location || (app.jobs as any)?.location || '',
     };
   };
 
@@ -1185,8 +1196,8 @@ function ApplicationsListViewContent({
                 if (!app) return null;
                 const index = selectedAppIndex;
                 const resolved = resolveApplicant(app);
-                // 🏢 عند isSentView (باحث عن عمل يعرض طلباته) → headerInfo = بيانات صاحب العمل
-                // 👤 عند !isSentView (صاحب العمل يعرض الطلبات الواردة) → headerInfo = بيانات المتقدم
+                // 🏢 عند isSentView (باحث عن عمل يعرض طلباته) → headerInfo = بيانات صاحب العمل، بينما حقول التفاصيل أدناه = بيانات الباحث المرسلة للمراجعة والتعديل
+                // 👤 عند !isSentView (صاحب العمل يعرض الطلبات الواردة) → headerInfo وبيانات التواصل = بيانات المتقدم
                 const headerInfo = isSentView ? resolveEmployer(app) : resolved;
                 const statusBadge = isApproved(app.status)
                   ? { label: isSentView ? 'تم قبول طلبك 🎉' : 'مقبول', cls: 'bg-emerald-500/15 border-emerald-500/30 text-emerald-600 dark:text-emerald-400' }
@@ -1303,18 +1314,30 @@ function ApplicationsListViewContent({
                         </div>
                       </div>
 
-                      {/* 📞 Contact Info Cards (One-tap action) */}
+                      {/* 📞 Applicant Submitted Contact & Profile Info (Shows YOUR submitted data in isSentView for inspection & edit) */}
                       <section className="space-y-3">
-                        <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2 px-1">
-                          <User size={14} className="text-blue-600 dark:text-blue-400" />
-                          بيانات الاتصال والتواصل المباشر
-                        </h4>
+                        <div className="flex items-center justify-between gap-2 px-1">
+                          <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                            <User size={14} className="text-blue-600 dark:text-blue-400" />
+                            {isSentView ? 'بياناتك المرسلة في الطلب (للمراجعة والتعديل)' : 'بيانات الاتصال والتواصل المباشر'}
+                          </h4>
+                          {isSentView && (
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(app)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 hover:bg-blue-600 hover:text-white text-[10px] font-black border border-blue-200/60 dark:border-blue-800/40 transition-all cursor-pointer"
+                            >
+                              <Edit2 size={11} />
+                              <span>تعديل البيانات</span>
+                            </button>
+                          )}
+                        </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex items-center gap-3 shadow-sm">
                             <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 shadow-sm"><User size={18} /></div>
                             <div className="min-w-0 flex-1">
                               <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">الاسم الكامل</span>
-                              <span className="text-sm font-black text-slate-800 dark:text-white truncate block">{app.applicant_data?.name}</span>
+                              <span className="text-sm font-black text-slate-800 dark:text-white truncate block">{resolved.name || 'غير محدد'}</span>
                             </div>
                           </div>
 
@@ -1323,20 +1346,20 @@ function ApplicationsListViewContent({
                               <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 shadow-sm"><Phone size={18} /></div>
                               <div className="min-w-0">
                                 <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">رقم الهاتف</span>
-                                <span className="text-sm font-black text-slate-800 dark:text-white truncate block">{app.applicant_data?.phone || 'غير متوفر'}</span>
+                                <span className="text-sm font-black text-slate-800 dark:text-white truncate block" dir="ltr">{resolved.phone || 'غير متوفر'}</span>
                               </div>
                             </div>
-                            {app.applicant_data?.phone && (
+                            {!isSentView && resolved.phone && (
                               <div className="flex gap-1.5 shrink-0">
                                 <a
-                                  href={telUrl(app.applicant_data.phone)}
+                                  href={telUrl(resolved.phone)}
                                   className="p-2 bg-emerald-50 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500 hover:text-white rounded-xl transition-all shadow-sm"
                                   title="اتصال هاتفي"
                                 >
                                   <Phone size={14} />
                                 </a>
                                 <a
-                                  href={whatsappUrl(app.applicant_data.phone)}
+                                  href={whatsappUrl(resolved.phone)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="p-2 bg-green-50 dark:bg-green-900/40 text-green-600 dark:text-green-400 hover:bg-[#25D366] hover:text-white rounded-xl transition-all shadow-sm"
@@ -1353,12 +1376,12 @@ function ApplicationsListViewContent({
                               <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 shadow-sm"><Mail size={18} /></div>
                               <div className="min-w-0">
                                 <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">البريد الإلكتروني</span>
-                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate block">{app.applicant_data?.email || 'غير متوفر'}</span>
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate block">{resolved.email || 'غير متوفر'}</span>
                               </div>
                             </div>
-                            {app.applicant_data?.email && (
+                            {!isSentView && resolved.email && (
                               <a
-                                href={`mailto:${app.applicant_data.email}`}
+                                href={`mailto:${resolved.email}`}
                                 className="p-2 bg-amber-50 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-white rounded-xl transition-all shadow-sm shrink-0"
                                 title="إرسال بريد"
                               >
@@ -1371,9 +1394,19 @@ function ApplicationsListViewContent({
                             <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 shadow-sm"><MapPin size={18} /></div>
                             <div className="min-w-0 flex-1">
                               <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">الموقع السكني</span>
-                              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate block">{app.applicant_data?.location || 'غير محدد'}</span>
+                              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate block">{resolved.location || 'غير محدد'}</span>
                             </div>
                           </div>
+
+                          {resolved.title && (
+                            <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex items-center gap-3 shadow-sm sm:col-span-2">
+                              <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 shadow-sm"><Briefcase size={18} /></div>
+                              <div className="min-w-0 flex-1">
+                                <span className="block text-[9px] font-black text-slate-400 uppercase tracking-widest">المسمى الوظيفي</span>
+                                <span className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate block">{resolved.title}</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </section>
 
@@ -1390,26 +1423,38 @@ function ApplicationsListViewContent({
                         </section>
                       )}
 
-                      {/* 🏆 Experience & Skills */}
+                      {/* 🏆 Experience, Education & Skills */}
                       <section className="space-y-3">
                         <h4 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest flex items-center gap-2 px-1">
                           <Sparkles size={14} className="text-amber-500" />
-                          نبذة الخبرة والمهارات
+                          نبذة الخبرة والمؤهلات والمهارات
                         </h4>
-                        <div className="p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm">
-                          <span className="block text-[9px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                            <Clock size={11} /> خلاصة الخبرة العملية
-                          </span>
-                          <p className="text-sm font-medium text-slate-700 dark:text-slate-200 leading-relaxed">
-                            {app.applicant_data?.experience || 'لا توجد نبذة خبرة مسجلة.'}
-                          </p>
+                        <div className="p-5 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-4">
+                          <div>
+                            <span className="block text-[9px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                              <Clock size={11} /> خلاصة الخبرة العملية
+                            </span>
+                            <p className="text-sm font-medium text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                              {resolved.experience || 'لا توجد نبذة خبرة مسجلة.'}
+                            </p>
+                          </div>
+                          {resolved.education && (
+                            <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+                              <span className="block text-[9px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+                                <FileText size={11} /> المؤهل العلمي
+                              </span>
+                              <p className="text-sm font-medium text-slate-700 dark:text-slate-200 leading-relaxed">
+                                {resolved.education}
+                              </p>
+                            </div>
+                          )}
                         </div>
-                        {app.applicant_data?.skills && (
+                        {resolved.skills && (Array.isArray(resolved.skills) ? resolved.skills.length > 0 : Boolean(resolved.skills)) && (
                           <div className="flex flex-wrap gap-2 px-1">
-                            {(Array.isArray(app.applicant_data.skills)
-                              ? app.applicant_data.skills
-                              : typeof app.applicant_data.skills === 'string'
-                                ? app.applicant_data.skills.split(',')
+                            {(Array.isArray(resolved.skills)
+                              ? resolved.skills
+                              : typeof resolved.skills === 'string'
+                                ? resolved.skills.split(',')
                                 : []
                             ).map((s: any, i: number) => (
                               <span key={i} className="px-3 py-1.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl text-[10px] font-black shadow-md">{String(s).trim()}</span>

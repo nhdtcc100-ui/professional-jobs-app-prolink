@@ -11,7 +11,7 @@ import { useAppContext } from '../../../contexts/AppContext';
 import { safeTimeAgo } from '../../../lib/utils/formatDate';
 import { supabase } from '../../../lib/supabase';
 import { jobService } from '../../../lib/services/jobService';
-import { getJobCategory, cleanJobDescription } from '../../../lib/utils/jobCategoryUtils';
+import { getJobCategory, cleanJobDescription, isJobActive } from '../../../lib/utils/jobCategoryUtils';
 
 interface JobCardProps {
   job: Job;
@@ -36,7 +36,7 @@ export const JobCard = React.memo(({ job, onClick, delay = 0, compact = false, m
     rawCover = (job as any).employer_cover || (job as any).employerCover || employer?.coverUrl || (employer as any)?.cover_url || null;
   }
   const coverUrl = rawCover || 'https://images.unsplash.com/photo-1557683316-973673baf926?w=800&q=80';
-  const isActive = job.is_active !== false;
+  const isActive = isJobActive(job);
 
   // ── Bookmark state (localStorage) ──────────────────────────────
   const getSaved = () => {

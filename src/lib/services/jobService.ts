@@ -12,9 +12,16 @@ import { cvService } from './cvService';
 import { withTimeout } from '../utils/withTimeout';
 import { withSessionRecovery, resetStuckLocksAndQueues } from './sessionRecovery';
 
-// ✅ Whitelist of allowed job types to prevent injection
-const ALLOWED_JOB_TYPES = ['دوام كامل', 'دوام جزئي', 'عن بُعد', 'عقد', 'تدريب', 'مؤقت'];
+// ✅ Whitelist of allowed job types to prevent injection (matched with JobPostForm)
+const ALLOWED_JOB_TYPES = ['دوام كامل', 'دوام جزئي', 'عن بُعد', 'عقد مؤقت', 'عقد', 'تدريب', 'مؤقت', 'استشاري'];
 const ALLOWED_STATUSES = ['pending', 'active', 'closed'];
+
+function normalizeJobType(raw?: string): string {
+  if (!raw) return 'دوام كامل';
+  if (raw === 'full-time') return 'دوام كامل';
+  if (raw === 'part-time') return 'دوام جزئي';
+  return ALLOWED_JOB_TYPES.includes(raw) ? raw : 'دوام كامل';
+}
 
 export const jobService = {
   async fetchJobs(limit = 50) {
@@ -59,9 +66,7 @@ export const jobService = {
               const requirements = sanitizeInput(data.requirements || '', 3000);
 
               // ✅ Whitelist validation for job_type (prevents injection via enum-like values)
-              const jobType = ALLOWED_JOB_TYPES.includes(data.jobType)
-                ? data.jobType
-                : 'دوام كامل';
+              const jobType = normalizeJobType(data.jobType || data.job_type);
 
               // ✅ Validate required fields
               if (!title || title.length < 2) {
@@ -153,7 +158,7 @@ export const jobService = {
   async updateJob(jobId: string, employerId: string, data: any, isAdmin = false) {
     return withSessionRecovery(async () => {
       // ✅ Sanitize all inputs before update
-      const jobType = ALLOWED_JOB_TYPES.includes(data.jobType) ? data.jobType : 'دوام كامل';
+      const jobType = normalizeJobType(data.jobType || data.job_type);
       const rawDesc = sanitizeInput(data.description || '', 5000);
       const finalDescription = data.category
         ? encodeCategoryInDescription(rawDesc, data.category)
@@ -168,53 +173,85 @@ export const jobService = {
       const imageUrl = (data.imageUrl || data.image_url || '').trim() || null;
       const isActive = data.is_active !== undefined ? Boolean(data.is_active) : true;
 
-      // 📦 Full payload covering all schema variants (salary vs salary_range, is_active vs status)
-      const fullPayload: any = {
+      const applyOwnershipFilter = (q: any) =>
+        employerId && !isAdmin
+          ? q.or(`employer_id.eq.${employerId},employer_id.is.null`)
+          : q;
+
+      // 📦 Primary payload matches the exact verified schema used by postJob & fetchJobs (no speculative columns!)
+      const primaryPayload: any = {
         title,
         company,
-        description:  finalDescription,
+        description:   finalDescription,
         location,
         salary,
-        salary_range: salary,
         requirements,
-        job_type:     jobType,
+        job_type:      jobType,
         working_hours: workingHours,
-        image_url:    imageUrl,
-        is_active:    isActive,
-        status:       isActive ? 'open' : 'closed',
+        image_url:     imageUrl,
+        is_active:     isActive,
       };
-      if (data.category) {
-        fullPayload.category = data.category;
-      }
 
-      // 1. Try updating with ownership guard
-      let query = (supabase.from('jobs') as any).update(fullPayload).eq('id', jobId);
-      if (employerId && !isAdmin) {
-        query = query.or(`employer_id.eq.${employerId},employer_id.is.null`);
-      }
-      let mainResult = await query.select();
+      let mainResult = await applyOwnershipFilter(
+        (supabase.from('jobs') as any).update(primaryPayload).eq('id', jobId)
+      ).select();
 
-      // 2. Fallback to core columns if specific columns do not exist in database schema
+      // Progressive fallbacks — EVERY fallback preserves `is_active` so reopening/closing NEVER drops!
       if (mainResult.error) {
-        console.warn('[updateJob] Full payload failed, retrying with core columns:', mainResult.error);
-        const corePayload: any = {
+        console.warn('[updateJob] Primary payload failed, retrying core+is_active:', mainResult.error);
+        const midPayload = {
           title,
           company,
           description: finalDescription,
           location,
           salary,
+          job_type: jobType,
+          is_active: isActive,
         };
-        let coreQuery = (supabase.from('jobs') as any).update(corePayload).eq('id', jobId);
-        mainResult = await coreQuery.select();
+        mainResult = await applyOwnershipFilter(
+          (supabase.from('jobs') as any).update(midPayload).eq('id', jobId)
+        ).select();
       }
 
-      // 3. Fallback to direct ID match if employer filter matched 0 rows
+      if (mainResult.error) {
+        console.warn('[updateJob] Mid payload failed, retrying minimal+is_active:', mainResult.error);
+        const minPayload = {
+          title,
+          description: finalDescription,
+          location,
+          is_active: isActive,
+        };
+        mainResult = await applyOwnershipFilter(
+          (supabase.from('jobs') as any).update(minPayload).eq('id', jobId)
+        ).select();
+      }
+
+      // If schema uses `status` instead of `is_active`, update `status` as last resort
+      if (mainResult.error) {
+        console.warn('[updateJob] Minimal+is_active failed, retrying with status column:', mainResult.error);
+        mainResult = await applyOwnershipFilter(
+          (supabase.from('jobs') as any).update({
+            title,
+            description: finalDescription,
+            location,
+            status: isActive ? 'open' : 'closed',
+          }).eq('id', jobId)
+        ).select();
+      }
+
+      // Fallback to direct ID match if employer filter matched 0 rows (e.g. legacy job or admin)
       if (!mainResult.error && (!mainResult.data || mainResult.data.length === 0)) {
         console.warn('[updateJob] 0 rows affected with employer filter, attempting direct id update...');
-        const directRes = await (supabase.from('jobs') as any)
-          .update(fullPayload)
+        let directRes = await (supabase.from('jobs') as any)
+          .update(primaryPayload)
           .eq('id', jobId)
           .select();
+        if (directRes.error) {
+          directRes = await (supabase.from('jobs') as any)
+            .update({ is_active: isActive })
+            .eq('id', jobId)
+            .select();
+        }
         if (!directRes.error && directRes.data && directRes.data.length > 0) {
           mainResult = directRes;
         }
@@ -224,6 +261,41 @@ export const jobService = {
     });
   },
 
+  async toggleJobActive(jobId: string, employerId: string, isActive: boolean, isAdmin = false) {
+    return withSessionRecovery(async () => {
+      let query = (supabase.from('jobs') as any)
+        .update({ is_active: isActive })
+        .eq('id', jobId);
+      if (employerId && !isAdmin) {
+        query = query.or(`employer_id.eq.${employerId},employer_id.is.null`);
+      }
+      let res = await query.select();
+
+      // Fallback if `is_active` column isn't present (status column)
+      if (res.error) {
+        let statusQuery = (supabase.from('jobs') as any)
+          .update({ status: isActive ? 'open' : 'closed' })
+          .eq('id', jobId);
+        if (employerId && !isAdmin) {
+          statusQuery = statusQuery.or(`employer_id.eq.${employerId},employer_id.is.null`);
+        }
+        res = await statusQuery.select();
+      }
+
+      // Fallback if employer filter matched 0 rows (legacy/admin)
+      if (!res.error && (!res.data || res.data.length === 0)) {
+        const directRes = await (supabase.from('jobs') as any)
+          .update({ is_active: isActive })
+          .eq('id', jobId)
+          .select();
+        if (!directRes.error && directRes.data && directRes.data.length > 0) {
+          res = directRes;
+        }
+      }
+
+      return res;
+    });
+  },
 
   async applyToJob(applicantId: string, employerId: string, data: any) {
     return withSessionRecovery(async () => {
@@ -232,6 +304,28 @@ export const jobService = {
     if (!employerId || employerId === 'null' || employerId === 'undefined') {
       console.error("❌ [SERVICE_ERROR] Employer ID is invalid:", employerId);
       return { data: null, error: { message: "بيانات صاحب العمل مفقودة.", details: "Employer ID is invalid." } };
+    }
+
+    // 🔒 Check live job availability before accepting new or re-submitted applications
+    try {
+      const { data: jobStatusRow } = (await withTimeout(
+        (supabase.from('jobs') as any)
+          .select('id, is_active')
+          .eq('id', data.jobId)
+          .maybeSingle(),
+        5000,
+        'apply.checkJobActive'
+      )) as any;
+
+      if (jobStatusRow && jobStatusRow.is_active === false) {
+        return {
+          data: null,
+          error: { message: 'عذراً، تم إغلاق التقديم على هذه الوظيفة من قِبل صاحب العمل حالياً 🔒' }
+        };
+      }
+    } catch (jobCheckErr) {
+      // Non-fatal on network hiccup; rely on UI state
+      console.warn('⚠️ [applyToJob] Non-fatal job availability check warning:', jobCheckErr);
     }
 
     const mutexKey = `job_app_${applicantId}_${data.jobId}`;

@@ -11,7 +11,7 @@ import { Job, AppUser } from '../../types';
 import { safeTimeAgo } from '../../lib/utils/formatDate';
 import { BilingualSmartText } from '../../lib/utils/bilingualText';
 import { useAppContext } from '../../contexts/AppContext';
-import { getJobCategory, cleanJobDescription } from '../../lib/utils/jobCategoryUtils';
+import { getJobCategory, cleanJobDescription, isJobActive } from '../../lib/utils/jobCategoryUtils';
 import { DEFAULT_NEWS_PLACEHOLDER, handleImageError, AMAL_NEWS_IMAGE } from '../../lib/utils/placeholders';
 import { newsService } from '../../lib/services/newsService';
 
@@ -50,9 +50,17 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
   const { setSelectedProfile, allUsers: contextAllUsers, jobs: contextJobs = [], posts: contextPosts = [] } = useAppContext();
   const allUsersList = allUsers.length > 0 ? allUsers : contextAllUsers;
 
-  // ⚡ Auto-expand single-item array to full collection so the total count always appears accurately!
+  // ⚡ Keep job items synced live with AppContext.jobs so toggling open/closed reflects immediately!
   const resolvedItems = useMemo(() => {
-    if (items && items.length > 1) return items;
+    const syncWithLiveJobs = (list: any[]) => {
+      if (type !== 'job' || !contextJobs.length) return list;
+      return list.map((item: any) => {
+        const live = item?.id ? contextJobs.find(j => j.id === item.id) : null;
+        return live ? { ...item, ...live } : item;
+      });
+    };
+
+    if (items && items.length > 1) return syncWithLiveJobs(items);
     const first = items?.[0];
     if (type === 'job' || first?.feedType === 'job' || (first?.company && !first?.authorId)) {
       if (contextJobs.length > 0) return contextJobs;
@@ -68,7 +76,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
         }
       } catch {}
     }
-    return items || [];
+    return syncWithLiveJobs(items || []);
   }, [items, type, contextJobs, contextPosts]);
   
   const [currentIndex, setCurrentIndex] = useState(
@@ -317,7 +325,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                 
                 {/* ── 1. FIXED TOP HERO CARD: ثابت رغم السكرول — يظهر صورة إذا وجدت، وتصميم أنيق بدون صورة مكسورة إذا لم توجد ── */}
                 {(() => {
-                  const isActive = currentItem.is_active !== false;
+                  const isActive = isJobActive(currentItem);
                   const realJobImage = currentItem.image_url || currentItem.imageUrl || currentItem.image || null;
 
                   const handleOpenPublisher = () => {
@@ -535,7 +543,7 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                   {(() => {
                     const isPublisher = !!(appUser && !appUser.isAdmin && (appUser.id === currentItem.employerId || appUser.id === currentItem.employer_id || appUser.id === currentItem.authorId || appUser.id === currentItem.author_id));
                     const isEmployer = !!(appUser && !appUser.isAdmin && appUser.role === 'employer');
-                    const isActive = currentItem.is_active !== false;
+                    const isActive = isJobActive(currentItem);
 
                     return (
                       <button
@@ -553,6 +561,8 @@ export const DetailFeedPage: React.FC<DetailFeedPageProps> = ({
                           <span>أنت ناشر هذه الوظيفة 🏢 (لا يمكنك التقديم)</span>
                         ) : isEmployer ? (
                           <span>أصحاب العمل لا يمكنهم التقديم (للباحثين عن عمل فقط) 💼</span>
+                        ) : !isActive ? (
+                          <span>التقديم مغلق حالياً على هذه الوظيفة 🔒</span>
                         ) : (
                           <>
                             <Send size={15} />
